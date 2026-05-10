@@ -360,13 +360,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"📦 {o[2]}\n👤 {user_label(o[1], o[4])}\n🎮 ID: `{o[3]}`\n🆔 `{o[0]}`", reply_markup=btns)
             return
         if "Відгуки" in text:
-            revs = db_query("SELECT user, text FROM reviews ORDER BY rowid DESC LIMIT 15")
+            revs = db_query("SELECT rowid, user, text FROM reviews ORDER BY rowid DESC LIMIT 15")
             if not revs:
                 await update.message.reply_text("🌟 Відгуків ще немає.")
                 return
-            msg = "🌟 ОСТАННІ ВІДГУКИ:\n\n"
-            for r in revs: msg += f"👤 {r[0]}: {r[1]}\n\n"
-            await update.message.reply_text(msg)
+            await update.message.reply_text(f"🌟 ОСТАННІ ВІДГУКИ ({len(revs)}):")
+            for r in revs:
+                del_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🗑 Видалити", callback_data=f"delrev_{r[0]}")]])
+                await update.message.reply_text(f"👤 {r[1]}:\n{r[2]}", reply_markup=del_btn)
             return
         if "Статистика" in text:
             done_count = db_query_one("SELECT COUNT(*) FROM orders WHERE status='done'")[0]
@@ -439,6 +440,12 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if act == "leave":
         user_states[q.from_user.id] = "WAIT_REVIEW"
         await context.bot.send_message(q.from_user.id, "✍️ Напишіть ваш відгук:")
+        return
+
+    if act == "delrev":
+        if is_admin(q.from_user.id):
+            db_exec("DELETE FROM reviews WHERE rowid=?", (data[1],))
+            await q.edit_message_text("🗑 Відгук видалено.")
         return
 
     oid = data[1]
