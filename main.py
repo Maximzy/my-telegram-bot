@@ -51,7 +51,7 @@ if "completed_at" not in order_columns:
     _init_cur.execute("ALTER TABLE orders ADD COLUMN completed_at TEXT")
 _init_cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_id ON orders(id)")
 _init_cur.execute("DROP INDEX IF EXISTS idx_reviews_unique")
-_init_cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_user ON reviews(user)")
+_init_cur.execute("DROP INDEX IF EXISTS idx_reviews_user")
 conn.commit()
 del _init_cur
 
@@ -340,7 +340,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == "WAIT_REVIEW":
         user_states[uid] = None
         user_name = f"@{update.effective_user.username}" if update.effective_user.username else "Анонім"
-        db_exec("INSERT OR REPLACE INTO reviews (user, text) VALUES (?, ?)", (user_name, text))
+        db_exec("INSERT INTO reviews (user, text) VALUES (?, ?)", (user_name, text))
         await update.message.reply_text("✅ Дякуємо! Відгук збережено в базі.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
         return
 
