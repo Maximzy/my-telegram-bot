@@ -50,7 +50,8 @@ if "created_at" not in order_columns:
 if "completed_at" not in order_columns:
     _init_cur.execute("ALTER TABLE orders ADD COLUMN completed_at TEXT")
 _init_cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_id ON orders(id)")
-_init_cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_unique ON reviews(user, text)")
+_init_cur.execute("DROP INDEX IF EXISTS idx_reviews_unique")
+_init_cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_user ON reviews(user)")
 conn.commit()
 del _init_cur
 
