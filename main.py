@@ -12,8 +12,13 @@ MY_ID = 1440236609  # Впиши свій ID
 
 logging.basicConfig(level=logging.INFO)
 
-conn = sqlite3.connect("bot.db", check_same_thread=False)
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.db")
+conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 db_lock = threading.Lock()
+
+conn.execute("PRAGMA journal_mode=WAL")
+conn.execute("PRAGMA synchronous=FULL")
+conn.commit()
 
 def db_exec(sql, params=()):
     with db_lock:
@@ -48,6 +53,8 @@ _init_cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_id ON orders(id)
 _init_cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_unique ON reviews(user, text)")
 conn.commit()
 del _init_cur
+
+logging.info(f"База данных: {DB_PATH}")
 
 PACKS = {
     "30 UC - 19 грн": 19, "60 UC - 40 грн": 40, "120 UC - 78 грн": 78,
