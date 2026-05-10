@@ -13,17 +13,41 @@ MY_ID = 1440236609  # Впиши свій ID
 logging.basicConfig(level=logging.INFO)
 
 conn = sqlite3.connect("bot.db", check_same_thread=False)
-cur = conn.cursor()
-cur.execute("CREATE TABLE IF NOT EXISTS orders (id TEXT, user TEXT, pack TEXT, status TEXT, chat_id INTEGER, player_id TEXT)")
-cur.execute("CREATE TABLE IF NOT EXISTS admins (id INTEGER PRIMARY KEY)")
-cur.execute("CREATE TABLE IF NOT EXISTS reviews (user TEXT, text TEXT)")
-cur.execute("PRAGMA table_info(orders)")
-order_columns = [column[1] for column in cur.fetchall()]
+db_lock = threading.Lock()
+
+def db_exec(sql, params=()):
+    with db_lock:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        conn.commit()
+        return cur
+
+def db_query(sql, params=()):
+    with db_lock:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        return cur.fetchall()
+
+def db_query_one(sql, params=()):
+    with db_lock:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        return cur.fetchone()
+
+_init_cur = conn.cursor()
+_init_cur.execute("CREATE TABLE IF NOT EXISTS orders (id TEXT, user TEXT, pack TEXT, status TEXT, chat_id INTEGER, player_id TEXT)")
+_init_cur.execute("CREATE TABLE IF NOT EXISTS admins (id INTEGER PRIMARY KEY)")
+_init_cur.execute("CREATE TABLE IF NOT EXISTS reviews (user TEXT, text TEXT)")
+_init_cur.execute("PRAGMA table_info(orders)")
+order_columns = [column[1] for column in _init_cur.fetchall()]
 if "created_at" not in order_columns:
-    cur.execute("ALTER TABLE orders ADD COLUMN created_at TEXT")
+    _init_cur.execute("ALTER TABLE orders ADD COLUMN created_at TEXT")
 if "completed_at" not in order_columns:
-    cur.execute("ALTER TABLE orders ADD COLUMN completed_at TEXT")
+    _init_cur.execute("ALTER TABLE orders ADD COLUMN completed_at TEXT")
+_init_cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_id ON orders(id)")
+_init_cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_unique ON reviews(user, text)")
 conn.commit()
+del _init_cur
 
 PACKS = {
     "30 UC - 19 грн": 19, "60 UC - 40 грн": 40, "120 UC - 78 грн": 78,
@@ -124,8 +148,7 @@ def start_policy_server():
 
 def is_admin(uid):
     if uid == MY_ID: return True
-    cur.execute("SELECT id FROM admins WHERE id=?", (uid,))
-    return bool(cur.fetchone())
+    return bool(db_query_one("SELECT id FROM admins WHERE id=?", (uid,)))
 
 def get_policy_url():
     domain = os.getenv("REPLIT_DEV_DOMAIN") or os.getenv("REPLIT_DOMAINS", "").split(",")[0]
@@ -162,10 +185,10 @@ def user_label(username, chat_id=None):
 def get_done_sum(today_only=False):
     if today_only:
         today = datetime.now().strftime("%Y-%m-%d")
-        cur.execute("SELECT pack FROM orders WHERE status='done' AND COALESCE(completed_at, created_at) LIKE ?", (f"{today}%",))
+        rows = db_query("SELECT pack FROM orders WHERE status='done' AND COALESCE(completed_at, created_at) LIKE ?", (f"{today}%",))
     else:
-        cur.execute("SELECT pack FROM orders WHERE status='done'")
-    return sum(get_pack_price(row[0]) for row in cur.fetchall())
+        rows = db_query("SELECT pack FROM orders WHERE status='done'")
+    return sum(get_pack_price(row[0]) for row in rows)
 
 def shop_keyboard():
     return ReplyKeyboardMarkup([["💸 Купити UC"], ["👑 Prime", "👑 Prime Plus"], ["📋 Мої замовлення", "📄 Політика"], ["🆘 Підтримка"], ["⚙️ Адмін"]], resize_keyboard=True)
@@ -197,8 +220,7 @@ async def policy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📄 Політика магазину:\n{get_policy_url()}")
 
 async def reviews_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cur.execute("SELECT user, text FROM reviews ORDER BY rowid DESC LIMIT 15")
-    revs = cur.fetchall()
+    revs = db_query("SELECT user, text FROM reviews ORDER BY rowid DESC LIMIT 15")
     if not revs:
         await update.message.reply_text("🌟 Відгуків ще немає.")
         return
@@ -208,8 +230,7 @@ async def reviews_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    cur.execute("SELECT id, pack, status FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 1", (uid,))
-    order = cur.fetchone()
+    order = db_query_one("SELECT id, pack, status FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 1", (uid,))
     if not order:
         await update.message.reply_text("📭 У вас ще немає замовлень.")
         return
@@ -217,8 +238,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    cur.execute("SELECT id, pack, status FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 5", (uid,))
-    orders = cur.fetchall()
+    orders = db_query("SELECT id, pack, status FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 5", (uid,))
     if not orders:
         await update.message.reply_text("📭 У вас ще немає замовлень.")
         return
@@ -246,8 +266,7 @@ async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(uid):
         await update.message.reply_text("⛔ Ця команда доступна тільки адміну.")
         return
-    cur.execute("SELECT id, user, pack, player_id, chat_id FROM orders WHERE status='pending'")
-    orders = cur.fetchall()
+    orders = db_query("SELECT id, user, pack, player_id, chat_id FROM orders WHERE status='pending'")
     if not orders:
         await update.message.reply_text("📭 Немає замовлень.")
         return
@@ -260,10 +279,8 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(uid):
         await update.message.reply_text("⛔ Ця команда доступна тільки адміну.")
         return
-    cur.execute("SELECT COUNT(*) FROM orders WHERE status='done'")
-    done_count = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM orders WHERE status='canceled'")
-    canceled_count = cur.fetchone()[0]
+    done_count = db_query_one("SELECT COUNT(*) FROM orders WHERE status='done'")[0]
+    canceled_count = db_query_one("SELECT COUNT(*) FROM orders WHERE status='canceled'")[0]
     total_sum = get_done_sum()
     today_sum = get_done_sum(today_only=True)
     await update.message.reply_text(f"📊 Статистика магазину:\n✅ Виконано замовлень: {done_count}\n❌ Відхилено замовлень: {canceled_count}\n💰 Загальна сума продажів: {total_sum} грн\n📅 Сума за сьогодні: {today_sum} грн")
@@ -277,8 +294,7 @@ async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Використання: /find ID_замовлення")
         return
     oid = context.args[0]
-    cur.execute("SELECT id, user, pack, status, chat_id, player_id FROM orders WHERE id=?", (oid,))
-    order = cur.fetchone()
+    order = db_query_one("SELECT id, user, pack, status, chat_id, player_id FROM orders WHERE id=?", (oid,))
     if not order:
         await update.message.reply_text("📭 Замовлення не знайдено.")
         return
@@ -297,8 +313,7 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_broadcast(update, context, message)
 
 async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, message):
-    cur.execute("SELECT DISTINCT chat_id FROM orders WHERE chat_id IS NOT NULL")
-    users = [row[0] for row in cur.fetchall()]
+    users = [row[0] for row in db_query("SELECT DISTINCT chat_id FROM orders WHERE chat_id IS NOT NULL")]
     sent = 0
     for chat_id in users:
         try:
@@ -317,8 +332,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == "WAIT_REVIEW":
         user_states[uid] = None
         user_name = f"@{update.effective_user.username}" if update.effective_user.username else "Анонім"
-        cur.execute("INSERT INTO reviews (user, text) VALUES (?, ?)", (user_name, text))
-        conn.commit()
+        db_exec("INSERT OR IGNORE INTO reviews (user, text) VALUES (?, ?)", (user_name, text))
         await update.message.reply_text("✅ Дякуємо! Відгук збережено в базі.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
         return
 
@@ -329,8 +343,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if is_admin(uid):
         if "Замовлення" in text:
-            cur.execute("SELECT id, user, pack, player_id, chat_id FROM orders WHERE status='pending'")
-            orders = cur.fetchall()
+            orders = db_query("SELECT id, user, pack, player_id, chat_id FROM orders WHERE status='pending'")
             if not orders:
                 await update.message.reply_text("📭 Немає замовлень.")
                 return
@@ -339,8 +352,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"📦 {o[2]}\n👤 {user_label(o[1], o[4])}\n🎮 ID: `{o[3]}`\n🆔 `{o[0]}`", reply_markup=btns)
             return
         if "Відгуки" in text:
-            cur.execute("SELECT user, text FROM reviews ORDER BY rowid DESC LIMIT 15")
-            revs = cur.fetchall()
+            revs = db_query("SELECT user, text FROM reviews ORDER BY rowid DESC LIMIT 15")
             if not revs:
                 await update.message.reply_text("🌟 Відгуків ще немає.")
                 return
@@ -349,10 +361,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(msg)
             return
         if "Статистика" in text:
-            cur.execute("SELECT COUNT(*) FROM orders WHERE status='done'")
-            done_count = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM orders WHERE status='canceled'")
-            canceled_count = cur.fetchone()[0]
+            done_count = db_query_one("SELECT COUNT(*) FROM orders WHERE status='done'")[0]
+            canceled_count = db_query_one("SELECT COUNT(*) FROM orders WHERE status='canceled'")[0]
             total_sum = get_done_sum()
             today_sum = get_done_sum(today_only=True)
             await update.message.reply_text(f"📊 Статистика магазину:\n✅ Виконано замовлень: {done_count}\n❌ Відхилено замовлень: {canceled_count}\n💰 Загальна сума продажів: {total_sum} грн\n📅 Сума за сьогодні: {today_sum} грн")
@@ -368,8 +378,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if state == "WAIT_PASS":
         if text == ADMIN_PASSWORD:
-            cur.execute("INSERT OR IGNORE INTO admins VALUES (?)", (uid,))
-            conn.commit()
+            db_exec("INSERT OR IGNORE INTO admins VALUES (?)", (uid,))
             user_states[uid] = "ADMIN_MODE"
             await update.message.reply_text("✅ Доступ надано!", reply_markup=ReplyKeyboardMarkup(ADMIN_KB, resize_keyboard=True))
         else:
@@ -408,8 +417,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if isinstance(state, dict) and state.get("step") == "OK" and text.upper() in ["ОК", "OK"]:
         oid = str(uuid.uuid4())[:8]
-        cur.execute("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at) VALUES (?,?,?,?,?,?,?)", (oid, update.effective_user.username, state["pack"], "pending", uid, state["pid"], created_at_now()))
-        conn.commit()
+        db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at) VALUES (?,?,?,?,?,?,?)", (oid, update.effective_user.username, state["pack"], "pending", uid, state["pid"], created_at_now()))
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Я оплатив", callback_data=f"paid_{oid}")]])
         await update.message.reply_text(f"💳 Карта: `{PAYMENT_CARD}`", reply_markup=btn, parse_mode="Markdown")
         user_states[uid] = None
@@ -426,8 +434,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     oid = data[1]
-    cur.execute("SELECT chat_id, pack, user, player_id FROM orders WHERE id=?", (oid,))
-    res = cur.fetchone()
+    res = db_query_one("SELECT chat_id, pack, user, player_id FROM orders WHERE id=?", (oid,))
     if not res: return
 
     if act == "paid":
@@ -438,17 +445,16 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except: pass
         await q.edit_message_text("✅ Очікуйте нарахування!")
     elif act == "ok":
-        cur.execute("UPDATE orders SET status='done', completed_at=? WHERE id=?", (created_at_now(), oid))
+        db_exec("UPDATE orders SET status='done', completed_at=? WHERE id=?", (created_at_now(), oid))
         rev_kb = InlineKeyboardMarkup([[InlineKeyboardButton("✍️ Залишити відгук", callback_data="leave_review")]])
         await context.bot.send_message(res[0], f"✅ {res[1]} нараховано!", reply_markup=rev_kb)
         await q.edit_message_text(f"✅ Виконано: {oid}")
     elif act == "no":
-        cur.execute("UPDATE orders SET status='canceled' WHERE id=?", (oid,))
+        db_exec("UPDATE orders SET status='canceled' WHERE id=?", (oid,))
         try:
             await context.bot.send_message(res[0], f"❌ Ваше замовлення ({res[1]}) відхилено. Зверніться в підтримку.")
         except: pass
         await q.edit_message_text(f"❌ Відхилено: {oid}")
-    conn.commit()
 
 if __name__ == "__main__":
     start_policy_server()
