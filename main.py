@@ -226,7 +226,7 @@ def get_user_discount(uid, pack_name):
             b = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type=? AND used=0 LIMIT 1", (uid, f"discount_medium_{pct}"))
             if b: return pct, "promo", b[0]
     r = db_query_one("SELECT id FROM ref_discounts WHERE user_id=? LIMIT 1", (uid,))
-    if r: return 5, "ref", r[0]
+    if r: return 1, "ref", r[0]
     return 0, None, None
 
 def apply_discount(price, pct):
@@ -537,8 +537,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👥 РЕФЕРАЛЬНА СИСТЕМА\n\n"
             f"🔗 Ваше посилання:\n{ref_link}\n\n"
             f"👤 Запрошено людей: {len(refs)}\n"
-            f"🎁 Доступних знижок (5%): {len(discounts)}\n\n"
-            f"За кожного друга, який зробить покупку через ваше посилання — ви отримуєте знижку 5% на будь-яку покупку!"
+            f"🎁 Доступних знижок (1%): {len(discounts)}\n\n"
+            f"За кожного друга, який зробить покупку через ваше посилання — ви отримуєте знижку 1% на будь-яку покупку!"
         )
         await update.message.reply_text(msg); return
 
@@ -762,7 +762,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if ref:
             db_exec("INSERT INTO ref_discounts (user_id, created_at) VALUES (?,?)", (ref[0], created_at_now()))
             try:
-                await context.bot.send_message(ref[0], "🎉 Ваш реферал зробив покупку! Ви отримали знижку 5% на наступне замовлення. 👥")
+                await context.bot.send_message(ref[0], "🎉 Ваш реферал зробив покупку! Ви отримали знижку 1% на наступне замовлення. 👥")
             except: pass
         rev_kb = InlineKeyboardMarkup([[InlineKeyboardButton("✍️ Залишити відгук", callback_data="leave_review")]])
         await context.bot.send_message(res[0], f"✅ {res[1]} нараховано!", reply_markup=rev_kb)
