@@ -340,7 +340,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == "WAIT_REVIEW":
         user_states[uid] = None
         user_name = f"@{update.effective_user.username}" if update.effective_user.username else "Анонім"
-        db_exec("INSERT OR IGNORE INTO reviews (user, text) VALUES (?, ?)", (user_name, text))
+        db_exec("INSERT OR REPLACE INTO reviews (user, text) VALUES (?, ?)", (user_name, text))
         await update.message.reply_text("✅ Дякуємо! Відгук збережено в базі.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
         return
 
