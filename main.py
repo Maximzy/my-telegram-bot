@@ -8,14 +8,13 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Cal
 TOKEN = "8036989406:AAFVrPB-41p5XLMgrndZHlAKqWOQMMB46E4"
 ADMIN_PASSWORD = "NezukoAdmin"
 PAYMENT_CARD = "4874070020367247"
-MY_ID = 1440236609  # Впиши свій ID
+MY_ID = 1440236609
 
 logging.basicConfig(level=logging.INFO)
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.db")
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 db_lock = threading.Lock()
-
 conn.execute("PRAGMA journal_mode=WAL")
 conn.execute("PRAGMA synchronous=FULL")
 conn.commit()
@@ -39,24 +38,32 @@ def db_query_one(sql, params=()):
         cur.execute(sql, params)
         return cur.fetchone()
 
-_init_cur = conn.cursor()
-_init_cur.execute("CREATE TABLE IF NOT EXISTS orders (id TEXT, user TEXT, pack TEXT, status TEXT, chat_id INTEGER, player_id TEXT)")
-_init_cur.execute("CREATE TABLE IF NOT EXISTS admins (id INTEGER PRIMARY KEY)")
-_init_cur.execute("CREATE TABLE IF NOT EXISTS reviews (user TEXT, text TEXT)")
-_init_cur.execute("PRAGMA table_info(orders)")
-order_columns = [column[1] for column in _init_cur.fetchall()]
-if "created_at" not in order_columns:
-    _init_cur.execute("ALTER TABLE orders ADD COLUMN created_at TEXT")
-if "completed_at" not in order_columns:
-    _init_cur.execute("ALTER TABLE orders ADD COLUMN completed_at TEXT")
-_init_cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_id ON orders(id)")
-_init_cur.execute("DROP INDEX IF EXISTS idx_reviews_unique")
-_init_cur.execute("DROP INDEX IF EXISTS idx_reviews_user")
+# --- ІНІЦІАЛІЗАЦІЯ ТАБЛИЦЬ ---
+_c = conn.cursor()
+_c.execute("CREATE TABLE IF NOT EXISTS orders (id TEXT, user TEXT, pack TEXT, status TEXT, chat_id INTEGER, player_id TEXT)")
+_c.execute("CREATE TABLE IF NOT EXISTS admins (id INTEGER PRIMARY KEY)")
+_c.execute("CREATE TABLE IF NOT EXISTS reviews (user TEXT, text TEXT)")
+_c.execute("PRAGMA table_info(orders)")
+_oc = [r[1] for r in _c.fetchall()]
+for _col in ["created_at", "completed_at", "amount", "payment"]:
+    if _col not in _oc:
+        _c.execute(f"ALTER TABLE orders ADD COLUMN {_col} TEXT")
+_c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_id ON orders(id)")
+_c.execute("DROP INDEX IF EXISTS idx_reviews_unique")
+_c.execute("DROP INDEX IF EXISTS idx_reviews_user")
+_c.execute("CREATE TABLE IF NOT EXISTS referrals (referrer_id INTEGER, referred_id INTEGER PRIMARY KEY, created_at TEXT)")
+_c.execute("CREATE TABLE IF NOT EXISTS ref_discounts (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, created_at TEXT)")
+_c.execute("CREATE TABLE IF NOT EXISTS balances (user_id INTEGER PRIMARY KEY, amount INTEGER DEFAULT 0)")
+_c.execute("CREATE TABLE IF NOT EXISTS balance_requests (id TEXT PRIMARY KEY, user_id INTEGER, user_name TEXT, amount INTEGER, status TEXT DEFAULT 'pending', created_at TEXT)")
+_c.execute("CREATE TABLE IF NOT EXISTS promo_codes (code TEXT PRIMARY KEY, bonus_type TEXT, bonus_value INTEGER, created_at TEXT)")
+_c.execute("CREATE TABLE IF NOT EXISTS user_bonuses (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bonus_type TEXT, bonus_value INTEGER, used INTEGER DEFAULT 0, created_at TEXT)")
+_c.execute("CREATE TABLE IF NOT EXISTS used_promo_codes (user_id INTEGER, code TEXT, PRIMARY KEY (user_id, code))")
 conn.commit()
-del _init_cur
+del _c, _oc
 
-logging.info(f"База данных: {DB_PATH}")
+logging.info(f"База даних: {DB_PATH}")
 
+# --- ТОВАРИ ---
 PACKS = {
     "30 UC - 19 грн": 19, "60 UC - 40 грн": 40, "120 UC - 78 грн": 78,
     "180 UC - 113 грн": 111, "325 UC - 195 грн": 195, "660 UC - 389 грн": 389,
@@ -64,25 +71,49 @@ PACKS = {
     "16200 UC - 7599 грн": 7599, "24300 UC - 11399 грн": 11399, "32400 UC - 15399 грн": 15399,
     "40500 UC - 18999 грн": 18999, "81000 UC - 37900 грн": 37900
 }
-
 PRIME_PACKS = {
-    "👑 Prime 1 Місяць - 45 грн": 45,
-    "👑 Prime 3 Місяця - 130 грн": 130,
-    "👑 Prime 6 Місяців - 250 грн": 250,
-    "👑 Prime 12 Місяців - 500 грн": 500
+    "👑 Prime 1 Місяць - 45 грн": 45, "👑 Prime 3 Місяця - 130 грн": 130,
+    "👑 Prime 6 Місяців - 250 грн": 250, "👑 Prime 12 Місяців - 500 грн": 500
 }
-
 PRIME_PLUS_PACKS = {
-    "👑 Prime Plus 1 Місяць - 410 грн": 410,
-    "👑 Prime Plus 3 Місяці - 1200 грн": 1200,
-    "👑 Prime Plus 6 Місяців - 2400 грн": 2400,
-    "👑 Prime Plus 12 Місяців - 4730 грн": 4730
+    "👑 Prime Plus 1 Місяць - 410 грн": 410, "👑 Prime Plus 3 Місяці - 1200 грн": 1200,
+    "👑 Prime Plus 6 Місяців - 2400 грн": 2400, "👑 Prime Plus 12 Місяців - 4730 грн": 4730
+}
+ALL_PACKS = {**PACKS, **PRIME_PACKS, **PRIME_PLUS_PACKS}
+SMALL_UC = set(list(PACKS.keys())[:6])
+MEDIUM_UC = set(list(PACKS.keys())[6:9])
+
+BONUS_TYPES = {
+    "free_uc_60":        "🎁 60 UC безкоштовно на акаунт",
+    "discount_small_5":  "Знижка 5% на малі UC паки (30–660 UC)",
+    "discount_small_4":  "Знижка 4% на малі UC паки (30–660 UC)",
+    "discount_small_3":  "Знижка 3% на малі UC паки (30–660 UC)",
+    "discount_small_2":  "Знижка 2% на малі UC паки (30–660 UC)",
+    "discount_small_1":  "Знижка 1% на малі UC паки (30–660 UC)",
+    "discount_medium_2": "Знижка 2% на середні UC паки (1800–8100 UC)",
+    "discount_medium_1": "Знижка 1% на середні UC паки (1800–8100 UC)",
 }
 
-ALL_PACKS = {**PACKS, **PRIME_PACKS, **PRIME_PLUS_PACKS}
-
-MAIN_KB = [["🛍 Магазин"], ["💸 Купити UC"], ["👑 Prime", "👑 Prime Plus"], ["📋 Мої замовлення", "📄 Політика"], ["🆘 Підтримка"], ["⚙️ Адмін"]]
-ADMIN_KB = [["📦 Замовлення"], ["🌟 Відгуки"], ["📊 Статистика", "🚪 Вийти"]]
+# --- КЛАВІАТУРИ ---
+MAIN_KB = [
+    ["🛍 Магазин"],
+    ["💰 Баланс", "🏆 Топ донатерів"],
+    ["🎁 Промокод", "👥 Реферал"],
+    ["📋 Мої замовлення", "📄 Політика"],
+    ["🆘 Підтримка"],
+    ["⚙️ Адмін"]
+]
+SHOP_KB = ReplyKeyboardMarkup(
+    [["💸 Купити UC"], ["👑 Prime", "👑 Prime Plus"], ["🔙 Назад"]],
+    resize_keyboard=True
+)
+ADMIN_KB = [
+    ["📦 Замовлення"],
+    ["🌟 Відгуки"],
+    ["📊 Статистика"],
+    ["🎁 Промокоди", "💳 Поповнення"],
+    ["🚪 Вийти"]
+]
 
 user_states = {}
 
@@ -130,13 +161,9 @@ POLICY_HTML = """<!doctype html>
 class PolicyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/favicon.ico":
-            self.send_response(204)
-            self.end_headers()
-            return
+            self.send_response(204); self.end_headers(); return
         if self.path not in ("/", "/policy"):
-            self.send_response(404)
-            self.end_headers()
-            return
+            self.send_response(404); self.end_headers(); return
         body = POLICY_HTML.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -150,45 +177,32 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
 def start_policy_server():
     server = ThreadingHTTPServer(("0.0.0.0", 5000), PolicyHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
+    threading.Thread(target=server.serve_forever, daemon=True).start()
 
 
+# --- ПОМІЧНИКИ ---
 def is_admin(uid):
     if uid == MY_ID: return True
     return bool(db_query_one("SELECT id FROM admins WHERE id=?", (uid,)))
 
 def get_policy_url():
     domain = os.getenv("REPLIT_DEV_DOMAIN") or os.getenv("REPLIT_DOMAINS", "").split(",")[0]
-    if domain:
-        return f"https://{domain}/policy"
-    return "/policy"
+    return f"https://{domain}/policy" if domain else "/policy"
 
 def get_pack_price(pack):
-    if pack in ALL_PACKS:
-        return ALL_PACKS[pack]
-    match = re.search(r"(\d+)\s*грн", pack)
-    if match:
-        return int(match.group(1))
-    return 0
+    if pack in ALL_PACKS: return ALL_PACKS[pack]
+    m = re.search(r"(\d+)\s*грн", pack)
+    return int(m.group(1)) if m else 0
 
-def status_text(status):
-    statuses = {
-        "pending": "очікує виконання",
-        "done": "виконано",
-        "canceled": "відхилено"
-    }
-    return statuses.get(status, status)
+def status_text(s):
+    return {"pending": "очікує виконання", "done": "виконано", "canceled": "відхилено"}.get(s, s)
 
 def created_at_now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def user_label(username, chat_id=None):
-    if username:
-        return f"@{username}"
-    if chat_id:
-        return str(chat_id)
-    return "Без username"
+    if username: return f"@{username}"
+    return str(chat_id) if chat_id else "Без username"
 
 def get_done_sum(today_only=False):
     if today_only:
@@ -196,14 +210,41 @@ def get_done_sum(today_only=False):
         rows = db_query("SELECT pack FROM orders WHERE status='done' AND COALESCE(completed_at, created_at) LIKE ?", (f"{today}%",))
     else:
         rows = db_query("SELECT pack FROM orders WHERE status='done'")
-    return sum(get_pack_price(row[0]) for row in rows)
+    return sum(get_pack_price(r[0]) for r in rows)
 
-def shop_keyboard():
-    return ReplyKeyboardMarkup([["💸 Купити UC"], ["👑 Prime", "👑 Prime Plus"], ["📋 Мої замовлення", "📄 Політика"], ["🆘 Підтримка"], ["⚙️ Адмін"]], resize_keyboard=True)
+def get_user_balance(uid):
+    row = db_query_one("SELECT amount FROM balances WHERE user_id=?", (uid,))
+    return row[0] if row else 0
 
+def get_user_discount(uid, pack_name):
+    if pack_name in SMALL_UC:
+        for pct in [5, 4, 3, 2, 1]:
+            b = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type=? AND used=0 LIMIT 1", (uid, f"discount_small_{pct}"))
+            if b: return pct, "promo", b[0]
+    if pack_name in MEDIUM_UC:
+        for pct in [2, 1]:
+            b = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type=? AND used=0 LIMIT 1", (uid, f"discount_medium_{pct}"))
+            if b: return pct, "promo", b[0]
+    r = db_query_one("SELECT id FROM ref_discounts WHERE user_id=? LIMIT 1", (uid,))
+    if r: return 5, "ref", r[0]
+    return 0, None, None
+
+def apply_discount(price, pct):
+    return max(1, int(price * (100 - pct) / 100))
+
+
+# --- КОМАНДИ ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user_states[uid] = None
+    if context.args:
+        arg = context.args[0]
+        if arg.startswith("ref_"):
+            try:
+                referrer_id = int(arg[4:])
+                if referrer_id != uid and not db_query_one("SELECT referred_id FROM referrals WHERE referred_id=?", (uid,)):
+                    db_exec("INSERT OR IGNORE INTO referrals (referrer_id, referred_id, created_at) VALUES (?,?,?)", (referrer_id, uid, created_at_now()))
+            except: pass
     await update.message.reply_text("👋 Вітаємо!", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -216,7 +257,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🔑 Пароль:", reply_markup=ReplyKeyboardRemove())
 
 async def shop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🛍 Оберіть категорію:", reply_markup=shop_keyboard())
+    await update.message.reply_text("🛍 Оберіть категорію:", reply_markup=SHOP_KB)
 
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Оберіть пакет:", reply_markup=ReplyKeyboardMarkup([[p] for p in PACKS.keys()], resize_keyboard=True))
@@ -230,8 +271,7 @@ async def policy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def reviews_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     revs = db_query("SELECT user, text FROM reviews ORDER BY rowid DESC LIMIT 15")
     if not revs:
-        await update.message.reply_text("🌟 Відгуків ще немає.")
-        return
+        await update.message.reply_text("🌟 Відгуків ще немає."); return
     msg = "🌟 ОСТАННІ ВІДГУКИ:\n\n"
     for r in revs: msg += f"👤 {r[0]}: {r[1]}\n\n"
     await update.message.reply_text(msg)
@@ -240,25 +280,22 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     order = db_query_one("SELECT id, pack, status FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 1", (uid,))
     if not order:
-        await update.message.reply_text("📭 У вас ще немає замовлень.")
-        return
+        await update.message.reply_text("📭 У вас ще немає замовлень."); return
     await update.message.reply_text(f"📦 Ваш останній заказ:\n🆔 {order[0]}\n🎁 {order[1]}\n📌 Статус: {status_text(order[2])}")
 
 async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     orders = db_query("SELECT id, pack, status FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 5", (uid,))
     if not orders:
-        await update.message.reply_text("📭 У вас ще немає замовлень.")
-        return
+        await update.message.reply_text("📭 У вас ще немає замовлень."); return
     msg = "📋 Ваші останні замовлення:\n\n"
-    for order in orders:
-        msg += f"🆔 {order[0]}\n🎁 {order[1]}\n📌 Статус: {status_text(order[2])}\n\n"
+    for o in orders: msg += f"🆔 {o[0]}\n🎁 {o[1]}\n📌 Статус: {status_text(o[2])}\n\n"
     await update.message.reply_text(msg)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "ℹ️ Як користуватися ботом:\n\n"
-        "1. Натисніть /shop або кнопку «💸 Купити UC».\n"
+        "1. Натисніть «🛍 Магазин» і оберіть категорію.\n"
         "2. Оберіть потрібний пакет UC.\n"
         "3. Введіть свій ігровий ID.\n"
         "4. Напишіть «ОК» та оплатіть замовлення.\n"
@@ -272,12 +309,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid):
-        await update.message.reply_text("⛔ Ця команда доступна тільки адміну.")
-        return
+        await update.message.reply_text("⛔ Тільки для адміна."); return
     orders = db_query("SELECT id, user, pack, player_id, chat_id FROM orders WHERE status='pending'")
     if not orders:
-        await update.message.reply_text("📭 Немає замовлень.")
-        return
+        await update.message.reply_text("📭 Немає замовлень."); return
     for o in orders:
         btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Готово", callback_data=f"ok_{o[0]}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{o[0]}")]])
         await update.message.reply_text(f"📦 {o[2]}\n👤 {user_label(o[1], o[4])}\n🎮 ID: `{o[3]}`\n🆔 `{o[0]}`", reply_markup=btns)
@@ -285,8 +320,7 @@ async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid):
-        await update.message.reply_text("⛔ Ця команда доступна тільки адміну.")
-        return
+        await update.message.reply_text("⛔ Тільки для адміна."); return
     done_count = db_query_one("SELECT COUNT(*) FROM orders WHERE status='done'")[0]
     canceled_count = db_query_one("SELECT COUNT(*) FROM orders WHERE status='canceled'")[0]
     total_sum = get_done_sum()
@@ -296,52 +330,48 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid):
-        await update.message.reply_text("⛔ Ця команда доступна тільки адміну.")
-        return
+        await update.message.reply_text("⛔ Тільки для адміна."); return
     if not context.args:
-        await update.message.reply_text("Використання: /find ID_замовлення")
-        return
-    oid = context.args[0]
-    order = db_query_one("SELECT id, user, pack, status, chat_id, player_id FROM orders WHERE id=?", (oid,))
+        await update.message.reply_text("Використання: /find ID_замовлення"); return
+    order = db_query_one("SELECT id, user, pack, status, chat_id, player_id FROM orders WHERE id=?", (context.args[0],))
     if not order:
-        await update.message.reply_text("📭 Замовлення не знайдено.")
-        return
-    await update.message.reply_text(f"🔎 Замовлення знайдено:\n🆔 {order[0]}\n👤 {user_label(order[1], order[4])}\n🎁 {order[2]}\n🎮 ID: {order[5]}\n📌 Статус: {status_text(order[3])}\n💬 Chat ID: {order[4]}")
+        await update.message.reply_text("📭 Замовлення не знайдено."); return
+    await update.message.reply_text(f"🔎 Замовлення:\n🆔 {order[0]}\n👤 {user_label(order[1], order[4])}\n🎁 {order[2]}\n🎮 ID: {order[5]}\n📌 Статус: {status_text(order[3])}\n💬 Chat ID: {order[4]}")
 
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid):
-        await update.message.reply_text("⛔ Ця команда доступна тільки адміну.")
-        return
+        await update.message.reply_text("⛔ Тільки для адміна."); return
     message = " ".join(context.args)
     if not message:
         user_states[uid] = "WAIT_BROADCAST"
-        await update.message.reply_text("✉️ Напишіть текст розсилки одним повідомленням.")
-        return
+        await update.message.reply_text("✉️ Напишіть текст розсилки:"); return
     await send_broadcast(update, context, message)
 
 async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, message):
-    users = [row[0] for row in db_query("SELECT DISTINCT chat_id FROM orders WHERE chat_id IS NOT NULL")]
+    users = [r[0] for r in db_query("SELECT DISTINCT chat_id FROM orders WHERE chat_id IS NOT NULL")]
     sent = 0
     for chat_id in users:
         try:
-            await context.bot.send_message(chat_id, message)
-            sent += 1
-        except Exception:
-            pass
+            await context.bot.send_message(chat_id, message); sent += 1
+        except: pass
     await update.message.reply_text(f"✅ Розсилку надіслано. Отримали: {sent}")
 
+
+# --- ГОЛОВНИЙ ОБРОБНИК ПОВІДОМЛЕНЬ ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not update.message or not update.message.text: return
     text = update.message.text
     state = user_states.get(uid)
 
+    # ── Пріоритетні стани ──────────────────────────────────────────────────────
+
     if state == "WAIT_REVIEW":
         user_states[uid] = None
         user_name = f"@{update.effective_user.username}" if update.effective_user.username else "Анонім"
         db_exec("INSERT INTO reviews (user, text) VALUES (?, ?)", (user_name, text))
-        await update.message.reply_text("✅ Дякуємо! Відгук збережено в базі.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
+        await update.message.reply_text("✅ Дякуємо! Відгук збережено.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
         return
 
     if state == "WAIT_BROADCAST" and is_admin(uid):
@@ -349,12 +379,59 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_broadcast(update, context, text)
         return
 
+    if state == "WAIT_TOPUP":
+        cleaned = re.sub(r"[^0-9]", "", text)
+        if not cleaned or int(cleaned) < 10:
+            await update.message.reply_text("❌ Мінімальна сума поповнення: 10 грн. Введіть суму:"); return
+        amount = int(cleaned)
+        req_id = str(uuid.uuid4())[:8]
+        uname = user_label(update.effective_user.username, uid)
+        db_exec("INSERT INTO balance_requests (id, user_id, user_name, amount, status, created_at) VALUES (?,?,?,?,?,?)",
+                (req_id, uid, uname, amount, "pending", created_at_now()))
+        btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Я оплатив поповнення", callback_data=f"topup_paid_{req_id}")]])
+        await update.message.reply_text(
+            f"💳 Карта для поповнення: `{PAYMENT_CARD}`\n💵 Сума: *{amount} грн*\n\nПісля оплати натисніть кнопку:",
+            reply_markup=btn, parse_mode="Markdown"
+        )
+        user_states[uid] = None
+        return
+
+    if state == "WAIT_PROMO_CODE":
+        user_states[uid] = None
+        code = text.upper().strip().replace(" ", "")
+        promo = db_query_one("SELECT bonus_type, bonus_value FROM promo_codes WHERE code=?", (code,))
+        if not promo:
+            await update.message.reply_text("❌ Промокод не знайдено або він недійсний.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True)); return
+        already = db_query_one("SELECT 1 FROM used_promo_codes WHERE user_id=? AND code=?", (uid, code))
+        if already:
+            await update.message.reply_text("❌ Ви вже використали цей промокод.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True)); return
+        bonus_type, bonus_value = promo
+        db_exec("INSERT OR IGNORE INTO used_promo_codes (user_id, code) VALUES (?,?)", (uid, code))
+        db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)", (uid, bonus_type, bonus_value, created_at_now()))
+        bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
+        if bonus_type == "free_uc_60":
+            kb = ReplyKeyboardMarkup([["🎁 60 UC Free"]] + MAIN_KB, resize_keyboard=True)
+            await update.message.reply_text(f"✅ Промокод активовано!\n🎁 Бонус: {bonus_name}\n\nНатисніть кнопку нижче для отримання UC:", reply_markup=kb)
+        else:
+            await update.message.reply_text(f"✅ Промокод активовано!\n🎁 Бонус: {bonus_name}\n\nЗнижка буде застосована автоматично при наступній покупці.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
+        return
+
+    if isinstance(state, dict) and state.get("step") == "WAIT_PROMO_CODE_NAME" and is_admin(uid):
+        code = text.upper().strip().replace(" ", "")
+        if not code:
+            await update.message.reply_text("❌ Введіть назву промокоду:"); return
+        user_states[uid] = {"step": "WAIT_PROMO_BONUS", "code": code}
+        btns = [[InlineKeyboardButton(desc, callback_data=f"promo_bonus_{btype}")] for btype, desc in BONUS_TYPES.items()]
+        await update.message.reply_text(f"🎁 Промокод: *{code}*\nОберіть тип бонусу:", reply_markup=InlineKeyboardMarkup(btns), parse_mode="Markdown")
+        return
+
+    # ── Адмін кнопки ──────────────────────────────────────────────────────────
+
     if is_admin(uid):
         if "Замовлення" in text:
             orders = db_query("SELECT id, user, pack, player_id, chat_id FROM orders WHERE status='pending'")
             if not orders:
-                await update.message.reply_text("📭 Немає замовлень.")
-                return
+                await update.message.reply_text("📭 Немає замовлень."); return
             for o in orders:
                 btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Готово", callback_data=f"ok_{o[0]}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{o[0]}")]])
                 await update.message.reply_text(f"📦 {o[2]}\n👤 {user_label(o[1], o[4])}\n🎮 ID: `{o[3]}`\n🆔 `{o[0]}`", reply_markup=btns)
@@ -362,8 +439,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if "Відгуки" in text:
             revs = db_query("SELECT rowid, user, text FROM reviews ORDER BY rowid DESC LIMIT 15")
             if not revs:
-                await update.message.reply_text("🌟 Відгуків ще немає.")
-                return
+                await update.message.reply_text("🌟 Відгуків ще немає."); return
             await update.message.reply_text(f"🌟 ОСТАННІ ВІДГУКИ ({len(revs)}):")
             for r in revs:
                 del_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🗑 Видалити", callback_data=f"delrev_{r[0]}")]])
@@ -374,16 +450,41 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             canceled_count = db_query_one("SELECT COUNT(*) FROM orders WHERE status='canceled'")[0]
             total_sum = get_done_sum()
             today_sum = get_done_sum(today_only=True)
-            await update.message.reply_text(f"📊 Статистика магазину:\n✅ Виконано замовлень: {done_count}\n❌ Відхилено замовлень: {canceled_count}\n💰 Загальна сума продажів: {total_sum} грн\n📅 Сума за сьогодні: {today_sum} грн")
+            await update.message.reply_text(f"📊 Статистика магазину:\n✅ Виконано: {done_count}\n❌ Відхилено: {canceled_count}\n💰 Загальна сума: {total_sum} грн\n📅 Сума за сьогодні: {today_sum} грн")
+            return
+        if "Промокоди" in text:
+            codes = db_query("SELECT code, bonus_type FROM promo_codes ORDER BY code")
+            inline_btns = []
+            msg = "🎁 ПРОМОКОДИ:\n\n"
+            if codes:
+                for code, btype in codes:
+                    msg += f"• {code} — {BONUS_TYPES.get(btype, btype)}\n"
+                    inline_btns.append([InlineKeyboardButton(f"🗑 Видалити {code}", callback_data=f"promo_del_{code}")])
+            else:
+                msg += "Активних промокодів немає.\n"
+            inline_btns.append([InlineKeyboardButton("➕ Створити промокод", callback_data="promo_create")])
+            await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(inline_btns))
+            return
+        if "Поповнення" in text:
+            reqs = db_query("SELECT id, user_name, amount FROM balance_requests WHERE status='pending'")
+            if not reqs:
+                await update.message.reply_text("💳 Немає запитів на поповнення."); return
+            for r in reqs:
+                btns = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("✅ Підтвердити", callback_data=f"topok_{r[0]}"),
+                    InlineKeyboardButton("❌ Відхилити", callback_data=f"topno_{r[0]}")
+                ]])
+                await update.message.reply_text(f"💳 Запит на поповнення\n👤 {r[1]}\n💵 Сума: {r[2]} грн\n🆔 {r[0]}", reply_markup=btns)
             return
         if "Вийти" in text:
             user_states[uid] = None
             await update.message.reply_text("Головне меню", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
             return
 
+    # ── Загальні кнопки ────────────────────────────────────────────────────────
+
     if text == "⚙️ Адмін":
-        await admin_panel(update, context)
-        return
+        await admin_panel(update, context); return
 
     if state == "WAIT_PASS":
         if text == ADMIN_PASSWORD:
@@ -396,80 +497,291 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "🛍 Магазин":
-        await update.message.reply_text("🛍 Оберіть категорію:", reply_markup=shop_keyboard())
-        return
+        await update.message.reply_text("🛍 Оберіть категорію:", reply_markup=SHOP_KB); return
+
+    if text == "🔙 Назад":
+        await update.message.reply_text("Головне меню", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True)); return
+
+    if text == "💰 Баланс":
+        balance = get_user_balance(uid)
+        free_uc = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type='free_uc_60' AND used=0 LIMIT 1", (uid,))
+        btn = InlineKeyboardMarkup([[InlineKeyboardButton("➕ Поповнити баланс", callback_data="topup_start")]])
+        extra = "\n\n🎁 У вас є бонус: 60 UC безкоштовно!" if free_uc else ""
+        await update.message.reply_text(f"💰 Ваш баланс: *{balance} грн*{extra}\n\nЗ балансу можна оплачувати UC без введення карти.", reply_markup=btn, parse_mode="Markdown"); return
+
+    if text == "🏆 Топ донатерів":
+        raw = db_query("SELECT user, chat_id, pack FROM orders WHERE status='done'")
+        totals = {}
+        for user, cid, pack in raw:
+            key = (user_label(user, cid), cid)
+            totals[key] = totals.get(key, 0) + get_pack_price(pack)
+        top = sorted(totals.items(), key=lambda x: x[1], reverse=True)[:10]
+        if not top:
+            await update.message.reply_text("🏆 Поки що немає даних для таблиці лідерів."); return
+        msg = "🏆 ТОП-10 ДОНАТЕРІВ:\n\n"
+        medals = ["🥇", "🥈", "🥉"] + ["🏅"] * 7
+        for i, ((uname, _), total) in enumerate(top):
+            msg += f"{medals[i]} {uname} — {total} грн\n"
+        await update.message.reply_text(msg); return
+
+    if text == "🎁 Промокод":
+        user_states[uid] = "WAIT_PROMO_CODE"
+        await update.message.reply_text("🎁 Введіть промокод:", reply_markup=ReplyKeyboardRemove()); return
+
+    if text == "👥 Реферал":
+        bot_username = context.bot.username
+        ref_link = f"https://t.me/{bot_username}?start=ref_{uid}"
+        refs = db_query("SELECT referred_id FROM referrals WHERE referrer_id=?", (uid,))
+        discounts = db_query("SELECT id FROM ref_discounts WHERE user_id=?", (uid,))
+        msg = (
+            f"👥 РЕФЕРАЛЬНА СИСТЕМА\n\n"
+            f"🔗 Ваше посилання:\n{ref_link}\n\n"
+            f"👤 Запрошено людей: {len(refs)}\n"
+            f"🎁 Доступних знижок (5%): {len(discounts)}\n\n"
+            f"За кожного друга, який зробить покупку через ваше посилання — ви отримуєте знижку 5% на будь-яку покупку!"
+        )
+        await update.message.reply_text(msg); return
+
     if text == "💸 Купити UC":
-        await update.message.reply_text("Оберіть пакет:", reply_markup=ReplyKeyboardMarkup([[p] for p in PACKS.keys()], resize_keyboard=True))
-        return
+        await update.message.reply_text("Оберіть пакет:", reply_markup=ReplyKeyboardMarkup([[p] for p in PACKS.keys()], resize_keyboard=True)); return
+
     if text == "👑 Prime":
-        await update.message.reply_text("Оберіть Prime:", reply_markup=ReplyKeyboardMarkup([[p] for p in PRIME_PACKS.keys()], resize_keyboard=True))
-        return
+        await update.message.reply_text("Оберіть Prime:", reply_markup=ReplyKeyboardMarkup([[p] for p in PRIME_PACKS.keys()], resize_keyboard=True)); return
+
     if text == "👑 Prime Plus":
-        await update.message.reply_text("Оберіть Prime Plus:", reply_markup=ReplyKeyboardMarkup([[p] for p in PRIME_PLUS_PACKS.keys()], resize_keyboard=True))
-        return
+        await update.message.reply_text("Оберіть Prime Plus:", reply_markup=ReplyKeyboardMarkup([[p] for p in PRIME_PLUS_PACKS.keys()], resize_keyboard=True)); return
+
     if text == "🆘 Підтримка":
-        await update.message.reply_text("👨‍💻 Менеджер: @Manager_Nezuko")
-        return
+        await update.message.reply_text("👨‍💻 Менеджер: @Manager_Nezuko"); return
+
     if text == "📋 Мої замовлення":
-        await history_command(update, context)
-        return
+        await history_command(update, context); return
+
     if text == "📄 Політика":
-        await policy_command(update, context)
-        return
+        await policy_command(update, context); return
+
+    if text == "🎁 60 UC Free":
+        bonus = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type='free_uc_60' AND used=0 LIMIT 1", (uid,))
+        if not bonus:
+            await update.message.reply_text("❌ Цей бонус недоступний.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True)); return
+        user_states[uid] = {"step": "FREE_UC_ID", "bonus_id": bonus[0]}
+        await update.message.reply_text("🎮 Введіть ваш ігровий ID для нарахування 60 UC:", reply_markup=ReplyKeyboardRemove()); return
+
+    # ── Вибір пакету ───────────────────────────────────────────────────────────
+
     if text in ALL_PACKS:
         user_states[uid] = {"pack": text, "step": "ID"}
-        await update.message.reply_text("🎮 Введіть ваш ігровий ID:", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("🎮 Введіть ваш ігровий ID:", reply_markup=ReplyKeyboardRemove()); return
+
+    # ── Флоу замовлення ────────────────────────────────────────────────────────
+
+    if isinstance(state, dict) and state.get("step") == "FREE_UC_ID":
+        game_id = text
+        bonus_id = state["bonus_id"]
+        db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (bonus_id,))
+        oid = str(uuid.uuid4())[:8]
+        db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment) VALUES (?,?,?,?,?,?,?,?,?)",
+                (oid, update.effective_user.username, "🎁 60 UC Free (бонус)", "pending", uid, game_id, created_at_now(), 0, "bonus"))
+        if MY_ID != 0:
+            try:
+                btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Надіслано", callback_data=f"ok_{oid}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{oid}")]])
+                await context.bot.send_message(MY_ID, f"🎁 БЕЗКОШТОВНІ UC!\n🆔 {oid}\n👤 {user_label(update.effective_user.username, uid)}\n🎮 ID: {game_id}\n💵 60 UC (безкоштовно)", reply_markup=btns)
+            except: pass
+        user_states[uid] = None
+        await update.message.reply_text("✅ Заявку прийнято! 60 UC буде нараховано найближчим часом.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
         return
+
     if isinstance(state, dict) and state.get("step") == "ID":
         state["pid"] = text; state["step"] = "OK"
-        await update.message.reply_text(f"📝 {state['pack']}\nID: {text}\nНапишіть 'ОК' для оплати.")
-        return
-    if isinstance(state, dict) and state.get("step") == "OK" and text.upper() in ["ОК", "OK"]:
-        oid = str(uuid.uuid4())[:8]
-        db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at) VALUES (?,?,?,?,?,?,?)", (oid, update.effective_user.username, state["pack"], "pending", uid, state["pid"], created_at_now()))
-        btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Я оплатив", callback_data=f"paid_{oid}")]])
-        await update.message.reply_text(f"💳 Карта: `{PAYMENT_CARD}`", reply_markup=btn, parse_mode="Markdown")
-        user_states[uid] = None
+        await update.message.reply_text(f"📝 {state['pack']}\nID: {text}\nНапишіть 'ОК' для підтвердження."); return
 
+    if isinstance(state, dict) and state.get("step") == "OK" and text.upper() in ["ОК", "OK"]:
+        pack = state["pack"]
+        pid = state["pid"]
+        price = get_pack_price(pack)
+        disc_pct, disc_src, disc_id = get_user_discount(uid, pack)
+        final_price = apply_discount(price, disc_pct) if disc_pct else price
+
+        oid = str(uuid.uuid4())[:8]
+        db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment) VALUES (?,?,?,?,?,?,?,?,?)",
+                (oid, update.effective_user.username, pack, "pending", uid, pid, created_at_now(), final_price, "card"))
+
+        if disc_pct and disc_src == "promo":
+            db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (disc_id,))
+        elif disc_pct and disc_src == "ref":
+            db_exec("DELETE FROM ref_discounts WHERE id=?", (disc_id,))
+
+        price_text = f"💵 Сума: *{final_price} грн*"
+        if disc_pct:
+            price_text += f" _(знижка {disc_pct}%, було {price} грн)_"
+
+        balance = get_user_balance(uid)
+        buttons = [[InlineKeyboardButton("✅ Я оплатив карткою", callback_data=f"paid_{oid}")]]
+        if balance >= final_price:
+            buttons.append([InlineKeyboardButton(f"💰 Оплатити з балансу ({balance} грн)", callback_data=f"balpay_{oid}")])
+
+        await update.message.reply_text(
+            f"💳 Карта: `{PAYMENT_CARD}`\n{price_text}",
+            reply_markup=InlineKeyboardMarkup(buttons), parse_mode="Markdown"
+        )
+        user_states[uid] = None
+        return
+
+
+# --- CALLBACK ОБРОБНИК ---
 async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    data = q.data.split("_")
-    act = data[0]
+    data = q.data
 
-    if act == "leave":
+    if data == "leave_review":
         user_states[q.from_user.id] = "WAIT_REVIEW"
         await context.bot.send_message(q.from_user.id, "✍️ Напишіть ваш відгук:")
         return
 
-    if act == "delrev":
+    if data.startswith("delrev_"):
         if is_admin(q.from_user.id):
-            db_exec("DELETE FROM reviews WHERE rowid=?", (data[1],))
+            db_exec("DELETE FROM reviews WHERE rowid=?", (data[7:],))
             await q.edit_message_text("🗑 Відгук видалено.")
         return
 
-    oid = data[1]
-    res = db_query_one("SELECT chat_id, pack, user, player_id FROM orders WHERE id=?", (oid,))
+    # ── Промокоди (адмін) ────────────────────────────────────────────────────
+    if data == "promo_create":
+        if is_admin(q.from_user.id):
+            user_states[q.from_user.id] = {"step": "WAIT_PROMO_CODE_NAME"}
+            await context.bot.send_message(q.from_user.id, "🎁 Введіть назву нового промокоду (напр. SUMMER2024):")
+        return
+
+    if data.startswith("promo_del_"):
+        if is_admin(q.from_user.id):
+            code = data[len("promo_del_"):]
+            db_exec("DELETE FROM promo_codes WHERE code=?", (code,))
+            await q.edit_message_text(f"🗑 Промокод {code} видалено.")
+        return
+
+    if data.startswith("promo_bonus_"):
+        if is_admin(q.from_user.id):
+            bonus_type = data[len("promo_bonus_"):]
+            st = user_states.get(q.from_user.id)
+            if isinstance(st, dict) and st.get("step") == "WAIT_PROMO_BONUS":
+                code = st["code"]
+                db_exec("INSERT OR REPLACE INTO promo_codes (code, bonus_type, bonus_value, created_at) VALUES (?,?,?,?)",
+                        (code, bonus_type, 0, created_at_now()))
+                user_states[q.from_user.id] = None
+                bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
+                await q.edit_message_text(f"✅ Промокод {code} створено!\n🎁 Бонус: {bonus_name}")
+        return
+
+    # ── Поповнення балансу ───────────────────────────────────────────────────
+    if data == "topup_start":
+        user_states[q.from_user.id] = "WAIT_TOPUP"
+        await context.bot.send_message(q.from_user.id, "💰 Введіть суму поповнення балансу (грн):", reply_markup=ReplyKeyboardRemove())
+        return
+
+    if data.startswith("topup_paid_"):
+        req_id = data[len("topup_paid_"):]
+        req = db_query_one("SELECT user_id, user_name, amount FROM balance_requests WHERE id=?", (req_id,))
+        if not req: return
+        btns = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Підтвердити", callback_data=f"topok_{req_id}"),
+            InlineKeyboardButton("❌ Відхилити", callback_data=f"topno_{req_id}")
+        ]])
+        try:
+            await context.bot.send_message(MY_ID, f"💳 ПОПОВНЕННЯ БАЛАНСУ\n👤 {req[1]}\n💵 Сума: {req[2]} грн\n🆔 {req_id}", reply_markup=btns)
+        except: pass
+        await q.edit_message_text("✅ Запит відправлено адміністратору. Очікуйте підтвердження.")
+        return
+
+    if data.startswith("topok_"):
+        req_id = data[6:]
+        req = db_query_one("SELECT user_id, user_name, amount FROM balance_requests WHERE id=? AND status='pending'", (req_id,))
+        if not req:
+            await q.answer("Вже оброблено!"); return
+        db_exec("UPDATE balance_requests SET status='done' WHERE id=?", (req_id,))
+        db_exec("INSERT OR IGNORE INTO balances (user_id, amount) VALUES (?,0)", (req[0],))
+        db_exec("UPDATE balances SET amount = amount + ? WHERE user_id=?", (req[2], req[0]))
+        new_balance = get_user_balance(req[0])
+        try:
+            await context.bot.send_message(req[0], f"✅ Баланс поповнено на {req[2]} грн!\n💰 Ваш баланс: {new_balance} грн")
+        except: pass
+        await q.edit_message_text(f"✅ Баланс {req[1]} поповнено на {req[2]} грн.")
+        return
+
+    if data.startswith("topno_"):
+        req_id = data[6:]
+        req = db_query_one("SELECT user_id, user_name, amount FROM balance_requests WHERE id=? AND status='pending'", (req_id,))
+        if not req:
+            await q.answer("Вже оброблено!"); return
+        db_exec("UPDATE balance_requests SET status='canceled' WHERE id=?", (req_id,))
+        try:
+            await context.bot.send_message(req[0], f"❌ Запит на поповнення {req[2]} грн відхилено. Зверніться в підтримку.")
+        except: pass
+        await q.edit_message_text("❌ Запит відхилено.")
+        return
+
+    # ── Оплата з балансу ─────────────────────────────────────────────────────
+    if data.startswith("balpay_"):
+        oid = data[7:]
+        order = db_query_one("SELECT chat_id, pack, user, player_id, amount FROM orders WHERE id=?", (oid,))
+        if not order: return
+        uid_buyer = order[0]
+        amount = order[4] if order[4] else get_pack_price(order[1])
+        balance = get_user_balance(uid_buyer)
+        if balance < amount:
+            await q.answer("Недостатньо коштів на балансі!", show_alert=True); return
+        db_exec("UPDATE balances SET amount = amount - ? WHERE user_id=?", (amount, uid_buyer))
+        db_exec("UPDATE orders SET payment='balance' WHERE id=?", (oid,))
+        btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Готово", callback_data=f"ok_{oid}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{oid}")]])
+        try:
+            await context.bot.send_message(MY_ID, f"💰 ОПЛАТА З БАЛАНСУ!\n🆔 {oid}\n👤 {user_label(order[2], uid_buyer)}\n🎁 {order[1]}\n🎮 ID: {order[3]}\n💵 Сума: {amount} грн", reply_markup=btns)
+        except: pass
+        await q.edit_message_text("✅ Оплачено з балансу! Очікуйте нарахування.")
+        return
+
+    # ── Старі колбеки замовлень ───────────────────────────────────────────────
+    parts = data.split("_", 1)
+    if len(parts) < 2: return
+    act, oid = parts[0], parts[1]
+
+    res = db_query_one("SELECT chat_id, pack, user, player_id, payment FROM orders WHERE id=?", (oid,))
     if not res: return
 
     if act == "paid":
         if MY_ID != 0:
             try:
                 btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Готово", callback_data=f"ok_{oid}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{oid}")]])
-                await context.bot.send_message(MY_ID, f"💰 ОПЛАТА!\n🆔 {oid}\n👤 {user_label(res[2], res[0])}\n🎁 {res[1]}\n🎮 ID: {res[3]}\n💵 Сума: {get_pack_price(res[1])} грн", reply_markup=btns)
+                price = db_query_one("SELECT amount FROM orders WHERE id=?", (oid,))
+                price_val = (price[0] if price and price[0] else get_pack_price(res[1]))
+                await context.bot.send_message(MY_ID, f"💰 ОПЛАТА!\n🆔 {oid}\n👤 {user_label(res[2], res[0])}\n🎁 {res[1]}\n🎮 ID: {res[3]}\n💵 Сума: {price_val} грн", reply_markup=btns)
             except: pass
         await q.edit_message_text("✅ Очікуйте нарахування!")
+
     elif act == "ok":
         db_exec("UPDATE orders SET status='done', completed_at=? WHERE id=?", (created_at_now(), oid))
+        ref = db_query_one("SELECT referrer_id FROM referrals WHERE referred_id=?", (res[0],))
+        if ref:
+            db_exec("INSERT INTO ref_discounts (user_id, created_at) VALUES (?,?)", (ref[0], created_at_now()))
+            try:
+                await context.bot.send_message(ref[0], "🎉 Ваш реферал зробив покупку! Ви отримали знижку 5% на наступне замовлення. 👥")
+            except: pass
         rev_kb = InlineKeyboardMarkup([[InlineKeyboardButton("✍️ Залишити відгук", callback_data="leave_review")]])
         await context.bot.send_message(res[0], f"✅ {res[1]} нараховано!", reply_markup=rev_kb)
         await q.edit_message_text(f"✅ Виконано: {oid}")
+
     elif act == "no":
+        order_info = db_query_one("SELECT payment, amount, chat_id FROM orders WHERE id=?", (oid,))
         db_exec("UPDATE orders SET status='canceled' WHERE id=?", (oid,))
-        try:
-            await context.bot.send_message(res[0], f"❌ Ваше замовлення ({res[1]}) відхилено. Зверніться в підтримку.")
-        except: pass
+        if order_info and order_info[0] == "balance" and order_info[1]:
+            db_exec("UPDATE balances SET amount = amount + ? WHERE user_id=?", (order_info[1], order_info[2]))
+            try:
+                await context.bot.send_message(res[0], f"❌ Замовлення ({res[1]}) відхилено. Кошти повернуто на баланс.")
+            except: pass
+        else:
+            try:
+                await context.bot.send_message(res[0], f"❌ Ваше замовлення ({res[1]}) відхилено. Зверніться в підтримку.")
+            except: pass
         await q.edit_message_text(f"❌ Відхилено: {oid}")
+
 
 if __name__ == "__main__":
     start_policy_server()
