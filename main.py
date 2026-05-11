@@ -313,6 +313,32 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Історія замовлень: /history"
     )
 
+async def mypromos_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    bonuses = db_query("SELECT bonus_type, bonus_value FROM user_bonuses WHERE user_id=? AND used=0", (uid,))
+    ref_discounts = db_query("SELECT id FROM ref_discounts WHERE user_id=?", (uid,))
+
+    if not bonuses and not ref_discounts:
+        await update.message.reply_text("🎁 У вас поки немає активних бонусів.\n\nАктивуйте промокод або запросіть друзів через реферальне посилання!")
+        return
+
+    msg = "🎁 ВАШІ АКТИВНІ БОНУСИ:\n\n"
+
+    bonus_counts = {}
+    for bonus_type, _ in bonuses:
+        bonus_counts[bonus_type] = bonus_counts.get(bonus_type, 0) + 1
+
+    for bonus_type, count in bonus_counts.items():
+        name = BONUS_TYPES.get(bonus_type, bonus_type)
+        plural = "шт." if count == 1 else "шт."
+        msg += f"✅ {name}\n   Кількість: {count} {plural}\n\n"
+
+    if ref_discounts:
+        msg += f"✅ Реферальна знижка 1% на будь-яку покупку\n   Кількість: {len(ref_discounts)} шт.\n\n"
+
+    msg += "💡 Знижки та бонуси застосовуються автоматично при покупці."
+    await update.message.reply_text(msg)
+
 async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid):
@@ -736,6 +762,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("history", history_command))
     app.add_handler(CommandHandler("reviews", reviews_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("mypromos", mypromos_command))
     app.add_handler(CommandHandler("orders", orders_command))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("find", find_command))
