@@ -108,6 +108,12 @@ MAIN_KB = [
     ["🆘 Підтримка"],
     ["⚙️ Адмін"]
 ]
+def get_main_kb(uid):
+    has_free_uc = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type='free_uc_60' AND used=0 LIMIT 1", (uid,))
+    if has_free_uc:
+        return [["🎁 60 UC Free"]] + MAIN_KB
+    return MAIN_KB
+
 SHOP_KB = ReplyKeyboardMarkup(
     [["💸 Купити UC"], ["👑 Prime", "👑 Prime Plus"], ["🔙 Назад"]],
     resize_keyboard=True
@@ -252,7 +258,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if referrer_id != uid and not db_query_one("SELECT referred_id FROM referrals WHERE referred_id=?", (uid,)):
                     db_exec("INSERT OR IGNORE INTO referrals (referrer_id, referred_id, created_at) VALUES (?,?,?)", (referrer_id, uid, created_at_now()))
             except: pass
-    await update.message.reply_text("👋 Вітаємо!", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
+    await update.message.reply_text("👋 Вітаємо!", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -404,7 +410,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[uid] = None
         user_name = f"@{update.effective_user.username}" if update.effective_user.username else "Анонім"
         db_exec("INSERT INTO reviews (user, text) VALUES (?, ?)", (user_name, text))
-        await update.message.reply_text("✅ Дякуємо! Відгук збережено.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
+        await update.message.reply_text("✅ Дякуємо! Відгук збережено.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
         return
 
     if state == "WAIT_BROADCAST" and is_admin(uid):
@@ -417,14 +423,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         code = text.upper().strip().replace(" ", "")
         promo = db_query_one("SELECT bonus_type, bonus_value, uses_left, total_uses FROM promo_codes WHERE code=?", (code,))
         if not promo:
-            await update.message.reply_text("❌ Промокод не знайдено або він недійсний.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True)); return
+            await update.message.reply_text("❌ Промокод не знайдено або він недійсний.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
         already = db_query_one("SELECT 1 FROM used_promo_codes WHERE user_id=? AND code=?", (uid, code))
         if already:
-            await update.message.reply_text("❌ Ви вже використали цей промокод.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True)); return
+            await update.message.reply_text("❌ Ви вже використали цей промокод.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
         bonus_type, bonus_value, uses_left, total_uses = promo
         # Перевірка залишку активацій
         if uses_left is not None and uses_left != -1 and uses_left <= 0:
-            await update.message.reply_text("❌ Цей промокод вичерпав ліміт активацій.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True)); return
+            await update.message.reply_text("❌ Цей промокод вичерпав ліміт активацій.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
         # Застосовуємо промокод
         db_exec("INSERT OR IGNORE INTO used_promo_codes (user_id, code) VALUES (?,?)", (uid, code))
         db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)", (uid, bonus_type, bonus_value, created_at_now()))
@@ -438,10 +444,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db_exec("UPDATE promo_codes SET uses_left=? WHERE code=?", (new_uses, code))
         bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
         if bonus_type == "free_uc_60":
-            kb = ReplyKeyboardMarkup([["🎁 60 UC Free"]] + MAIN_KB, resize_keyboard=True)
+            kb = ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)
             await update.message.reply_text(f"✅ Промокод активовано!\n🎁 Бонус: {bonus_name}\n\nНатисніть кнопку нижче для отримання UC:", reply_markup=kb)
         else:
-            await update.message.reply_text(f"✅ Промокод активовано!\n🎁 Бонус: {bonus_name}\n\nЗнижка буде застосована автоматично при наступній покупці.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
+            await update.message.reply_text(f"✅ Промокод активовано!\n🎁 Бонус: {bonus_name}\n\nЗнижка буде застосована автоматично при наступній покупці.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
         return
 
     if isinstance(state, dict) and state.get("step") == "WAIT_PROMO_CODE_NAME" and is_admin(uid):
@@ -512,7 +518,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if "Вийти" in text:
             user_states[uid] = None
-            await update.message.reply_text("Головне меню", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
+            await update.message.reply_text("Головне меню", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
             return
 
     # ── Загальні кнопки ────────────────────────────────────────────────────────
@@ -527,14 +533,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("✅ Доступ надано!", reply_markup=ReplyKeyboardMarkup(ADMIN_KB, resize_keyboard=True))
         else:
             user_states[uid] = None
-            await update.message.reply_text("❌ Невірно", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
+            await update.message.reply_text("❌ Невірно", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
         return
 
     if text == "🛍 Магазин":
         await update.message.reply_text("🛍 Оберіть категорію:", reply_markup=SHOP_KB); return
 
     if text == "🔙 Назад":
-        await update.message.reply_text("Головне меню", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True)); return
+        await update.message.reply_text("Головне меню", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
 
     if text == "🏆 Топ донатерів":
         raw = db_query("SELECT user, chat_id, pack FROM orders WHERE status='done'")
@@ -590,7 +596,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "🎁 60 UC Free":
         bonus = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type='free_uc_60' AND used=0 LIMIT 1", (uid,))
         if not bonus:
-            await update.message.reply_text("❌ Цей бонус недоступний.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True)); return
+            await update.message.reply_text("❌ Цей бонус недоступний.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
         user_states[uid] = {"step": "FREE_UC_ID", "bonus_id": bonus[0]}
         await update.message.reply_text("🎮 Введіть ваш ігровий ID для нарахування 60 UC:", reply_markup=ReplyKeyboardRemove()); return
 
@@ -615,7 +621,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(MY_ID, f"🎁 БЕЗКОШТОВНІ UC!\n🆔 {oid}\n👤 {user_label(update.effective_user.username, uid)}\n🎮 ID: {game_id}\n💵 60 UC (безкоштовно)", reply_markup=btns)
             except: pass
         user_states[uid] = None
-        await update.message.reply_text("✅ Заявку прийнято! 60 UC буде нараховано найближчим часом.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True))
+        await update.message.reply_text("✅ Заявку прийнято! 60 UC буде нараховано найближчим часом.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
         return
 
     if isinstance(state, dict) and state.get("step") == "ID":
