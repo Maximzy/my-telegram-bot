@@ -53,14 +53,16 @@ _c.execute("DROP INDEX IF EXISTS idx_reviews_unique")
 _c.execute("DROP INDEX IF EXISTS idx_reviews_user")
 _c.execute("CREATE TABLE IF NOT EXISTS referrals (referrer_id INTEGER, referred_id INTEGER PRIMARY KEY, created_at TEXT)")
 _c.execute("CREATE TABLE IF NOT EXISTS ref_discounts (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, created_at TEXT)")
-_c.execute("CREATE TABLE IF NOT EXISTS promo_codes (code TEXT PRIMARY KEY, bonus_type TEXT, bonus_value INTEGER, uses_left INTEGER DEFAULT -1, created_at TEXT)")
+_c.execute("CREATE TABLE IF NOT EXISTS promo_codes (code TEXT PRIMARY KEY, bonus_type TEXT, bonus_value INTEGER, uses_left INTEGER DEFAULT -1, total_uses INTEGER DEFAULT -1, created_at TEXT)")
 _c.execute("CREATE TABLE IF NOT EXISTS user_bonuses (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bonus_type TEXT, bonus_value INTEGER, used INTEGER DEFAULT 0, created_at TEXT)")
 _c.execute("CREATE TABLE IF NOT EXISTS used_promo_codes (user_id INTEGER, code TEXT, PRIMARY KEY (user_id, code))")
-# Додаємо uses_left якщо таблиця promo_codes вже існувала без неї
+# Додаємо колонки якщо таблиця promo_codes вже існувала без них
 _c.execute("PRAGMA table_info(promo_codes)")
 _pc_cols = [r[1] for r in _c.fetchall()]
 if "uses_left" not in _pc_cols:
     _c.execute("ALTER TABLE promo_codes ADD COLUMN uses_left INTEGER DEFAULT -1")
+if "total_uses" not in _pc_cols:
+    _c.execute("ALTER TABLE promo_codes ADD COLUMN total_uses INTEGER DEFAULT -1")
 conn.commit()
 del _c, _oc, _pc_cols
 
@@ -231,9 +233,11 @@ def get_user_discount(uid, pack_name):
 def apply_discount(price, pct):
     return max(1, int(price * (100 - pct) / 100))
 
-def uses_left_label(n):
-    if n is None or n == -1: return "∞ безліміт"
-    return f"{n} активацій залишилось"
+def uses_left_label(uses_left, total_uses=None):
+    if uses_left is None or uses_left == -1: return "∞ безліміт"
+    if total_uses is not None and total_uses != -1:
+        return f"{uses_left}/{total_uses} активацій"
+    return f"{uses_left} активацій залишилось"
 
 
 # --- КОМАНДИ ---
@@ -385,13 +389,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == "WAIT_PROMO_CODE":
         user_states[uid] = None
         code = text.upper().strip().replace(" ", "")
-        promo = db_query_one("SELECT bonus_type, bonus_value, uses_left FROM promo_codes WHERE code=?", (code,))
+        promo = db_query_one("SELECT bonus_type, bonus_value, uses_left, total_uses FROM promo_codes WHERE code=?", (code,))
         if not promo:
             await update.message.reply_text("❌ Промокод не знайдено або він недійсний.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True)); return
         already = db_query_one("SELECT 1 FROM used_promo_codes WHERE user_id=? AND code=?", (uid, code))
         if already:
             await update.message.reply_text("❌ Ви вже використали цей промокод.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True)); return
-        bonus_type, bonus_value, uses_left = promo
+        bonus_type, bonus_value, uses_left, total_uses = promo
         # Перевірка залишку активацій
         if uses_left is not None and uses_left != -1 and uses_left <= 0:
             await update.message.reply_text("❌ Цей промокод вичерпав ліміт активацій.", reply_markup=ReplyKeyboardMarkup(MAIN_KB, resize_keyboard=True)); return
@@ -403,6 +407,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             new_uses = uses_left - 1
             if new_uses <= 0:
                 db_exec("DELETE FROM promo_codes WHERE code=?", (code,))
+                db_exec("DELETE FROM used_promo_codes WHERE code=?", (code,))
             else:
                 db_exec("UPDATE promo_codes SET uses_left=? WHERE code=?", (new_uses, code))
         bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
@@ -431,11 +436,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Введіть число від 1 до 1000000:"); return
         code = state["code"]
         bonus_type = state["bonus_type"]
-        db_exec("INSERT OR REPLACE INTO promo_codes (code, bonus_type, bonus_value, uses_left, created_at) VALUES (?,?,?,?,?)",
-                (code, bonus_type, 0, uses, created_at_now()))
+        db_exec("INSERT OR REPLACE INTO promo_codes (code, bonus_type, bonus_value, uses_left, total_uses, created_at) VALUES (?,?,?,?,?,?)",
+                (code, bonus_type, 0, uses, uses, created_at_now()))
+        db_exec("DELETE FROM used_promo_codes WHERE code=?", (code,))
         user_states[uid] = None
         bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
-        await update.message.reply_text(f"✅ Промокод *{code}* створено!\n🎁 Бонус: {bonus_name}\n🔢 Активацій: {uses}", parse_mode="Markdown")
+        await update.message.reply_text(f"✅ Промокод *{code}* створено!\n🎁 Бонус: {bonus_name}\n🔢 Активацій: {uses}/{uses}", parse_mode="Markdown")
         return
 
     # ── Адмін кнопки ──────────────────────────────────────────────────────────
@@ -466,12 +472,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"📊 Статистика магазину:\n✅ Виконано: {done_count}\n❌ Відхилено: {canceled_count}\n💰 Загальна сума: {total_sum} грн\n📅 Сума за сьогодні: {today_sum} грн")
             return
         if "Промокоди" in text:
-            codes = db_query("SELECT code, bonus_type, uses_left FROM promo_codes ORDER BY code")
+            codes = db_query("SELECT code, bonus_type, uses_left, total_uses FROM promo_codes ORDER BY code")
             inline_btns = []
             msg = "🎁 ПРОМОКОДИ:\n\n"
             if codes:
-                for code, btype, ul in codes:
-                    msg += f"• {code} — {BONUS_TYPES.get(btype, btype)}\n  🔢 {uses_left_label(ul)}\n\n"
+                for code, btype, ul, tu in codes:
+                    msg += f"• {code} — {BONUS_TYPES.get(btype, btype)}\n  🔢 {uses_left_label(ul, tu)}\n\n"
                     inline_btns.append([InlineKeyboardButton(f"🗑 Видалити {code}", callback_data=f"promo_del_{code}")])
             else:
                 msg += "Активних промокодів немає.\n"
@@ -647,6 +653,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_admin(q.from_user.id):
             code = data[len("promo_del_"):]
             db_exec("DELETE FROM promo_codes WHERE code=?", (code,))
+            db_exec("DELETE FROM used_promo_codes WHERE code=?", (code,))
             await q.edit_message_text(f"🗑 Промокод {code} видалено.")
         return
 
