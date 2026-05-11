@@ -665,10 +665,24 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 code = st["code"]
                 user_states[q.from_user.id] = {"step": "WAIT_PROMO_USES", "code": code, "bonus_type": bonus_type}
                 bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
+                unlimited_btn = InlineKeyboardMarkup([[InlineKeyboardButton("∞ Без ліміту", callback_data=f"promo_unlimited_{code}|{bonus_type}")]])
                 await q.edit_message_text(
-                    f"🎁 Промокод: *{code}*\n✅ Бонус: {bonus_name}\n\n🔢 Введіть кількість активацій (1–1 000 000):",
-                    parse_mode="Markdown"
+                    f"🎁 Промокод: *{code}*\n✅ Бонус: {bonus_name}\n\n🔢 Введіть кількість активацій (1–1 000 000)\nабо натисніть кнопку нижче:",
+                    parse_mode="Markdown", reply_markup=unlimited_btn
                 )
+        return
+
+    if data.startswith("promo_unlimited_"):
+        if is_admin(q.from_user.id):
+            payload = data[len("promo_unlimited_"):]
+            if "|" in payload:
+                code, bonus_type = payload.split("|", 1)
+                db_exec("INSERT OR REPLACE INTO promo_codes (code, bonus_type, bonus_value, uses_left, total_uses, created_at) VALUES (?,?,?,?,?,?)",
+                        (code, bonus_type, 0, -1, -1, created_at_now()))
+                db_exec("DELETE FROM used_promo_codes WHERE code=?", (code,))
+                user_states[q.from_user.id] = None
+                bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
+                await q.edit_message_text(f"✅ Промокод *{code}* створено!\n🎁 Бонус: {bonus_name}\n🔢 Активацій: ∞ безліміт", parse_mode="Markdown")
         return
 
     # ── Замовлення ────────────────────────────────────────────────────────────
