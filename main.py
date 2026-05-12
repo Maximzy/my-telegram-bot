@@ -328,8 +328,10 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
 
 def start_policy_server():
-    server = ThreadingHTTPServer(("0.0.0.0", 5000), PolicyHandler)
+    port = int(os.environ.get("PORT", 5000))
+    server = ThreadingHTTPServer(("0.0.0.0", port), PolicyHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    logging.info(f"Веб-сервер запущено на порту {port}")
 
 
 # --- ПОМІЧНИКИ ---
