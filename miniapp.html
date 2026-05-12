@@ -7,567 +7,187 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
-
   :root {
-    --bg: #0d0608;
-    --bg2: #180b0f;
-    --bg3: #221018;
-    --card: #2a1220;
-    --card2: #331828;
-    --pink: #ff6b9d;
-    --pink2: #ff4081;
-    --red: #c9184a;
-    --red2: #a4133c;
-    --gold: #ffd166;
-    --text: #f5e0e8;
-    --muted: #9b7585;
-    --border: #4a2035;
-    --green: #52d68a;
-    --radius: 16px;
+    --bg:#0d0608;--bg2:#180b0f;--bg3:#221018;--card:#2a1220;--card2:#331828;
+    --pink:#ff6b9d;--pink2:#ff4081;--red:#c9184a;--red2:#a4133c;--gold:#ffd166;
+    --text:#f5e0e8;--muted:#9b7585;--border:#4a2035;--green:#52d68a;--radius:16px;
+    --blue:#60a5fa;--purple:#a78bfa;
   }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-
-  body {
-    font-family: 'Nunito', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    overflow-x: hidden;
-    padding-bottom: 80px;
-  }
-
-  /* ===== HEADER ===== */
-  .header {
-    background: linear-gradient(135deg, #1a0510 0%, #2d0a1a 50%, #1a0510 100%);
-    padding: 16px 20px 14px;
-    text-align: center;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    border-bottom: 1px solid var(--border);
-    box-shadow: 0 4px 20px rgba(201,24,74,0.25);
-  }
-
-  .header-title {
-    font-size: 22px;
-    font-weight: 900;
-    background: linear-gradient(90deg, var(--pink), var(--gold), var(--pink));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    letter-spacing: 1px;
-  }
-
-  .header-sub {
-    font-size: 11px;
-    color: var(--muted);
-    margin-top: 2px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-  }
-
-  .nezuko-deco {
-    display: flex;
-    justify-content: center;
-    gap: 6px;
-    margin-top: 6px;
-    font-size: 14px;
-  }
-
-  /* ===== TABS ===== */
-  .tabs {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: #1a0810;
-    border-top: 1px solid var(--border);
-    display: flex;
-    padding: 8px 4px env(safe-area-inset-bottom);
-    z-index: 100;
-  }
-
-  .tab {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 3px;
-    padding: 6px 2px;
-    cursor: pointer;
-    border-radius: 10px;
-    transition: all 0.2s;
-    border: none;
-    background: none;
-    color: var(--muted);
-    font-family: 'Nunito', sans-serif;
-  }
-
-  .tab.active {
-    color: var(--pink);
-  }
-
-  .tab .tab-icon { font-size: 20px; }
-  .tab .tab-label { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
-
-  .tab.active .tab-label {
-    color: var(--pink);
-  }
-
-  /* ===== SCREENS ===== */
-  .screen { display: none; padding: 16px; }
-  .screen.active { display: block; }
-
-  /* ===== HERO BANNER ===== */
-  .hero {
-    background: linear-gradient(135deg, #2d0a1a, #1a0510);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 20px;
-    margin-bottom: 16px;
-    text-align: center;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .hero::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at 30% 50%, rgba(255,107,157,0.12) 0%, transparent 60%),
-                radial-gradient(circle at 70% 50%, rgba(201,24,74,0.1) 0%, transparent 60%);
-    pointer-events: none;
-  }
-
-  .hero-emoji { font-size: 48px; display: block; margin-bottom: 8px; }
-
-  .hero h2 {
-    font-size: 18px;
-    font-weight: 800;
-    color: var(--text);
-    margin-bottom: 4px;
-  }
-
-  .hero p {
-    font-size: 13px;
-    color: var(--muted);
-    line-height: 1.4;
-  }
-
-  .bamboo-dots {
-    position: absolute;
-    right: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-size: 28px;
-    opacity: 0.2;
-    line-height: 1;
-  }
-
-  /* ===== SECTION TITLE ===== */
-  .section-title {
-    font-size: 13px;
-    font-weight: 800;
-    color: var(--pink);
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-bottom: 10px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .section-title::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: linear-gradient(90deg, var(--border), transparent);
-  }
-
-  /* ===== CATEGORY CARDS ===== */
-  .category-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin-bottom: 20px;
-  }
-
-  .cat-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 16px 8px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .cat-card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, transparent, rgba(255,107,157,0.05));
-  }
-
-  .cat-card:active { transform: scale(0.95); }
-
-  .cat-card.selected {
-    border-color: var(--pink);
-    background: linear-gradient(135deg, #3d1525, #2a1220);
-    box-shadow: 0 0 20px rgba(255,107,157,0.2);
-  }
-
-  .cat-card .cat-icon { font-size: 28px; display: block; margin-bottom: 6px; }
-  .cat-card .cat-name { font-size: 12px; font-weight: 700; color: var(--text); }
-  .cat-card .cat-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
-
-  /* ===== PRODUCT LIST ===== */
-  .product-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
-
-  .product-item {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px 16px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .product-item:active { transform: scale(0.98); }
-
-  .product-item.selected {
-    border-color: var(--pink);
-    background: linear-gradient(135deg, #3d1525, #2a1220);
-    box-shadow: 0 0 15px rgba(255,107,157,0.2);
-  }
-
-  .product-name { font-size: 14px; font-weight: 700; }
-  .product-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
-  .product-price {
-    font-size: 16px;
-    font-weight: 900;
-    color: var(--gold);
-    white-space: nowrap;
-  }
-
-  /* ===== FORM ===== */
-  .form-group { margin-bottom: 14px; }
-
-  .form-label {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--pink);
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    margin-bottom: 6px;
-    display: block;
-  }
-
-  .form-input {
-    width: 100%;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 14px 16px;
-    color: var(--text);
-    font-family: 'Nunito', sans-serif;
-    font-size: 15px;
-    font-weight: 600;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-
-  .form-input:focus { border-color: var(--pink); }
-  .form-input::placeholder { color: var(--muted); }
-
-  /* ===== BUTTONS ===== */
-  .btn {
-    width: 100%;
-    padding: 16px;
-    border-radius: 14px;
-    border: none;
-    font-family: 'Nunito', sans-serif;
-    font-size: 15px;
-    font-weight: 800;
-    cursor: pointer;
-    transition: all 0.2s;
-    letter-spacing: 0.5px;
-  }
-
-  .btn:active { transform: scale(0.97); }
-
-  .btn-primary {
-    background: linear-gradient(135deg, var(--red), var(--pink2));
-    color: white;
-    box-shadow: 0 4px 20px rgba(201,24,74,0.4);
-  }
-
-  .btn-secondary {
-    background: var(--card2);
-    color: var(--text);
-    border: 1px solid var(--border);
-    margin-top: 8px;
-  }
-
-  .btn-green {
-    background: linear-gradient(135deg, #2d8a5e, #52d68a);
-    color: white;
-    box-shadow: 0 4px 20px rgba(82,214,138,0.3);
-  }
-
-  /* ===== CONFIRM BOX ===== */
-  .confirm-box {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 20px;
-    margin-bottom: 16px;
-  }
-
-  .confirm-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .confirm-row:last-child { border-bottom: none; }
-  .confirm-row .label { font-size: 13px; color: var(--muted); }
-  .confirm-row .value { font-size: 14px; font-weight: 700; color: var(--text); }
-  .confirm-row .value.price { color: var(--gold); font-size: 18px; font-weight: 900; }
-
-  /* ===== PAYMENT ===== */
-  .payment-card {
-    background: linear-gradient(135deg, #1a0a3d, #2d1a5e);
-    border: 1px solid #4a3080;
-    border-radius: 20px;
-    padding: 24px;
-    text-align: center;
-    margin-bottom: 16px;
-  }
-
-  .card-number {
-    font-size: 20px;
-    font-weight: 900;
-    letter-spacing: 4px;
-    color: white;
-    margin: 12px 0;
-    cursor: pointer;
-    background: rgba(255,255,255,0.1);
-    padding: 12px;
-    border-radius: 10px;
-    transition: background 0.2s;
-  }
-
-  .card-number:active { background: rgba(255,255,255,0.2); }
-
-  .copy-hint { font-size: 11px; color: rgba(255,255,255,0.5); }
-
-  /* ===== ORDER CARDS ===== */
-  .order-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px 16px;
-    margin-bottom: 10px;
-  }
-
-  .order-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-  }
-
-  .order-pack { font-size: 14px; font-weight: 700; }
-  .order-id { font-size: 10px; color: var(--muted); margin-top: 2px; }
-
-  .badge {
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-size: 11px;
-    font-weight: 700;
-  }
-
-  .badge-pending { background: rgba(255,214,0,0.15); color: var(--gold); }
-  .badge-done { background: rgba(82,214,138,0.15); color: var(--green); }
-  .badge-canceled { background: rgba(255,107,107,0.15); color: #ff6b6b; }
-
-  .order-meta { font-size: 11px; color: var(--muted); }
-
-  /* ===== PROMO ===== */
-  .promo-box {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 20px;
-    margin-bottom: 16px;
-  }
-
-  .promo-icon { font-size: 48px; text-align: center; display: block; margin-bottom: 12px; }
-
-  /* ===== REFERRAL ===== */
-  .ref-box {
-    background: linear-gradient(135deg, #1a0510, #2d1525);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 20px;
-    margin-bottom: 16px;
-    text-align: center;
-  }
-
-  .ref-link {
-    background: var(--card2);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 12px;
-    font-size: 13px;
-    color: var(--pink);
-    word-break: break-all;
-    margin: 12px 0;
-    cursor: pointer;
-    font-weight: 700;
-  }
-
-  /* ===== INFO BOX ===== */
-  .info-section {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 20px;
-    margin-bottom: 12px;
-  }
-
-  .info-section h3 {
-    font-size: 15px;
-    font-weight: 800;
-    color: var(--pink);
-    margin-bottom: 8px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .info-section p {
-    font-size: 13px;
-    color: var(--muted);
-    line-height: 1.6;
-  }
-
-  /* ===== TOAST ===== */
-  .toast {
-    position: fixed;
-    bottom: 100px;
-    left: 50%;
-    transform: translateX(-50%) translateY(20px);
-    background: #1a2a1a;
-    border: 1px solid var(--green);
-    color: var(--green);
-    padding: 12px 24px;
-    border-radius: 30px;
-    font-weight: 700;
-    font-size: 14px;
-    opacity: 0;
-    transition: all 0.3s;
-    white-space: nowrap;
-    z-index: 200;
-  }
-
-  .toast.show {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-
-  .toast.error {
-    background: #2a1a1a;
-    border-color: #ff6b6b;
-    color: #ff6b6b;
-  }
-
-  /* ===== LOADER ===== */
-  .loader {
-    text-align: center;
-    padding: 40px;
-    color: var(--muted);
-    font-size: 13px;
-  }
-
-  .loader-spin {
-    display: inline-block;
-    font-size: 30px;
-    animation: spin 1s linear infinite;
-    margin-bottom: 10px;
-    display: block;
-  }
-
-  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
-  /* ===== EMPTY ===== */
-  .empty {
-    text-align: center;
-    padding: 50px 20px;
-    color: var(--muted);
-  }
-
-  .empty-icon { font-size: 48px; display: block; margin-bottom: 12px; }
-  .empty-text { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
-  .empty-sub { font-size: 13px; }
-
-  /* ===== SUCCESS ===== */
-  .success-screen {
-    text-align: center;
-    padding: 40px 20px;
-    display: none;
-  }
-
-  .success-screen.active { display: block; }
-  .success-icon { font-size: 64px; display: block; margin-bottom: 16px; }
-  .success-title { font-size: 22px; font-weight: 900; color: var(--green); margin-bottom: 8px; }
-  .success-text { font-size: 14px; color: var(--muted); line-height: 1.5; }
-
-  /* ===== SAKURA ANIMATION ===== */
-  .sakura {
-    position: fixed;
-    top: -20px;
-    font-size: 16px;
-    animation: fall linear forwards;
-    pointer-events: none;
-    z-index: 999;
-    opacity: 0.7;
-  }
-
-  @keyframes fall {
-    0% { transform: translateY(0) rotate(0deg); opacity: 0.7; }
-    100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
-  }
-
-  /* ===== DIVIDER ===== */
-  .divider { height: 1px; background: var(--border); margin: 16px 0; }
-
-  .step-indicator {
-    display: flex;
-    justify-content: center;
-    gap: 6px;
-    margin-bottom: 16px;
-  }
-
-  .step-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--border);
-    transition: all 0.3s;
-  }
-
-  .step-dot.active { background: var(--pink); width: 24px; border-radius: 4px; }
-  .step-dot.done { background: var(--green); }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;padding-bottom:80px}
+
+  /* HEADER */
+  .header{background:linear-gradient(135deg,#1a0510 0%,#2d0a1a 50%,#1a0510 100%);padding:14px 20px 12px;text-align:center;position:sticky;top:0;z-index:100;border-bottom:1px solid var(--border);box-shadow:0 4px 20px rgba(201,24,74,.25)}
+  .header-title{font-size:20px;font-weight:900;background:linear-gradient(90deg,var(--pink),var(--gold),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:1px}
+  .header-sub{font-size:10px;color:var(--muted);margin-top:1px;letter-spacing:2px;text-transform:uppercase}
+  .header-deco{font-size:12px;margin-top:4px}
+
+  /* TABS */
+  .tabs{position:fixed;bottom:0;left:0;right:0;background:#1a0810;border-top:1px solid var(--border);display:flex;padding:6px 2px env(safe-area-inset-bottom);z-index:100}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 1px;cursor:pointer;border-radius:8px;transition:all .2s;border:none;background:none;color:var(--muted);font-family:'Nunito',sans-serif}
+  .tab.active{color:var(--pink)}
+  .tab .ti{font-size:18px}
+  .tab .tl{font-size:9px;font-weight:700;letter-spacing:.3px}
+  .tab.admin-tab{color:#a78bfa}
+  .tab.admin-tab.active{color:#c4b5fd}
+
+  /* SCREENS */
+  .screen{display:none;padding:14px}
+  .screen.active{display:block}
+
+  /* HERO */
+  .hero{background:linear-gradient(135deg,#2d0a1a,#1a0510);border:1px solid var(--border);border-radius:20px;padding:18px;margin-bottom:14px;text-align:center;position:relative;overflow:hidden}
+  .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 30% 50%,rgba(255,107,157,.12) 0%,transparent 60%),radial-gradient(circle at 70% 50%,rgba(201,24,74,.1) 0%,transparent 60%);pointer-events:none}
+  .hero-emoji{font-size:42px;display:block;margin-bottom:6px}
+  .hero h2{font-size:17px;font-weight:800;margin-bottom:3px}
+  .hero p{font-size:12px;color:var(--muted);line-height:1.4}
+  .bamboo-deco{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:24px;opacity:.2;line-height:1}
+
+  /* SECTION TITLE */
+  .stitle{font-size:11px;font-weight:800;color:var(--pink);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .stitle::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent)}
+
+  /* CATEGORY GRID */
+  .cat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
+  .cat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 6px;text-align:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+  .cat-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent,rgba(255,107,157,.05))}
+  .cat-card:active{transform:scale(.95)}
+  .cat-card.selected{border-color:var(--pink);background:linear-gradient(135deg,#3d1525,#2a1220);box-shadow:0 0 18px rgba(255,107,157,.2)}
+  .cat-icon{font-size:26px;display:block;margin-bottom:5px}
+  .cat-name{font-size:12px;font-weight:700}
+  .cat-sub{font-size:10px;color:var(--muted);margin-top:1px}
+
+  /* PRODUCT LIST */
+  .plist{display:flex;flex-direction:column;gap:7px;margin-bottom:16px}
+  .pitem{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:all .2s}
+  .pitem:active{transform:scale(.98)}
+  .pitem.selected{border-color:var(--pink);background:linear-gradient(135deg,#3d1525,#2a1220);box-shadow:0 0 14px rgba(255,107,157,.2)}
+  .pname{font-size:13px;font-weight:700}
+  .pprice{font-size:15px;font-weight:900;color:var(--gold);white-space:nowrap}
+
+  /* FORM */
+  .fgroup{margin-bottom:12px}
+  .flabel{font-size:11px;font-weight:700;color:var(--pink);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px;display:block}
+  .finput{width:100%;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px 14px;color:var(--text);font-family:'Nunito',sans-serif;font-size:14px;font-weight:600;outline:none;transition:border-color .2s}
+  .finput:focus{border-color:var(--pink)}
+  .finput::placeholder{color:var(--muted)}
+
+  /* BUTTONS */
+  .btn{width:100%;padding:14px;border-radius:13px;border:none;font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;cursor:pointer;transition:all .2s;letter-spacing:.5px}
+  .btn:active{transform:scale(.97)}
+  .btn:disabled{opacity:.5;pointer-events:none}
+  .btn-primary{background:linear-gradient(135deg,var(--red),var(--pink2));color:#fff;box-shadow:0 4px 18px rgba(201,24,74,.4)}
+  .btn-secondary{background:var(--card2);color:var(--text);border:1px solid var(--border);margin-top:8px}
+  .btn-green{background:linear-gradient(135deg,#2d8a5e,#52d68a);color:#fff;box-shadow:0 4px 18px rgba(82,214,138,.3)}
+  .btn-red{background:linear-gradient(135deg,#7f1d1d,#ef4444);color:#fff}
+  .btn-purple{background:linear-gradient(135deg,#4c1d95,#8b5cf6);color:#fff;box-shadow:0 4px 18px rgba(139,92,246,.3)}
+  .btn-sm{padding:8px 14px;font-size:12px;border-radius:10px;width:auto}
+
+  /* CONFIRM BOX */
+  .cbox{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:16px;margin-bottom:14px}
+  .crow{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)}
+  .crow:last-child{border-bottom:none}
+  .crow .lbl{font-size:12px;color:var(--muted)}
+  .crow .val{font-size:13px;font-weight:700}
+  .crow .val.price{color:var(--gold);font-size:17px;font-weight:900}
+
+  /* PAYMENT CARD */
+  .pay-card{background:linear-gradient(135deg,#1a0a3d,#2d1a5e);border:1px solid #4a3080;border-radius:20px;padding:20px;text-align:center;margin-bottom:14px}
+  .card-num{font-size:18px;font-weight:900;letter-spacing:4px;color:#fff;margin:10px 0;cursor:pointer;background:rgba(255,255,255,.1);padding:10px;border-radius:10px;transition:background .2s}
+  .card-num:active{background:rgba(255,255,255,.2)}
+  .copy-hint{font-size:10px;color:rgba(255,255,255,.4)}
+
+  /* ORDER CARDS */
+  .ocard{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px}
+  .ohead{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .opack{font-size:13px;font-weight:700}
+  .oid{font-size:10px;color:var(--muted);margin-top:1px}
+  .ometa{font-size:11px;color:var(--muted)}
+  .badge{padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700}
+  .badge-p{background:rgba(255,214,0,.15);color:var(--gold)}
+  .badge-d{background:rgba(82,214,138,.15);color:var(--green)}
+  .badge-c{background:rgba(255,107,107,.15);color:#ff6b6b}
+
+  /* TOP */
+  .top-item{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+  .top-rank{font-size:20px;font-weight:900;min-width:36px;text-align:center}
+  .top-rank.r1{color:var(--gold)}
+  .top-rank.r2{color:#c0c0c0}
+  .top-rank.r3{color:#cd7f32}
+  .top-name{font-size:13px;font-weight:700;flex:1}
+  .top-sum{font-size:14px;font-weight:900;color:var(--gold)}
+
+  /* STEP DOTS */
+  .sdots{display:flex;justify-content:center;gap:5px;margin-bottom:14px}
+  .sdot{width:7px;height:7px;border-radius:50%;background:var(--border);transition:all .3s}
+  .sdot.active{background:var(--pink);width:20px;border-radius:4px}
+  .sdot.done{background:var(--green)}
+
+  /* STAT GRID */
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+  .stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;text-align:center}
+  .stat-val{font-size:22px;font-weight:900;margin-bottom:3px}
+  .stat-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+  .stat-card.green .stat-val{color:var(--green)}
+  .stat-card.gold .stat-val{color:var(--gold)}
+  .stat-card.blue .stat-val{color:var(--blue)}
+  .stat-card.red .stat-val{color:#ff6b6b}
+
+  /* ADMIN TABS */
+  .atabs{display:flex;gap:6px;margin-bottom:14px}
+  .atab{flex:1;padding:9px 4px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-family:'Nunito',sans-serif;font-size:11px;font-weight:700;cursor:pointer;text-align:center;transition:all .2s}
+  .atab.active{background:linear-gradient(135deg,#3d1525,#2a1220);border-color:var(--purple);color:var(--purple)}
+
+  /* ADMIN ORDER CARD */
+  .aocard{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px}
+  .aohead{font-size:13px;font-weight:700;margin-bottom:6px;color:var(--text)}
+  .aometa{font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5}
+  .aobtns{display:flex;gap:6px}
+
+  /* INFO SECTION */
+  .isec{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:16px;margin-bottom:10px}
+  .isec h3{font-size:14px;font-weight:800;color:var(--pink);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+  .isec p{font-size:12px;color:var(--muted);line-height:1.6}
+
+  /* REF */
+  .ref-box{background:linear-gradient(135deg,#1a0510,#2d1525);border:1px solid var(--border);border-radius:20px;padding:16px;margin-bottom:14px;text-align:center}
+  .ref-link{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px;font-size:12px;color:var(--pink);word-break:break-all;margin:10px 0;cursor:pointer;font-weight:700}
+
+  /* PASSWORD SCREEN */
+  .pwd-screen{text-align:center;padding:30px 0}
+  .pwd-icon{font-size:52px;display:block;margin-bottom:12px}
+  .pwd-title{font-size:18px;font-weight:900;margin-bottom:4px;color:var(--purple)}
+  .pwd-sub{font-size:12px;color:var(--muted);margin-bottom:20px}
+
+  /* SUCCESS */
+  .success-s{text-align:center;padding:40px 16px;display:none}
+  .success-s.active{display:block}
+  .sicon{font-size:60px;display:block;margin-bottom:14px}
+  .stitle2{font-size:20px;font-weight:900;color:var(--green);margin-bottom:6px}
+  .ssub{font-size:13px;color:var(--muted);line-height:1.5}
+
+  /* TOAST */
+  .toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%) translateY(16px);background:#1a2a1a;border:1px solid var(--green);color:var(--green);padding:10px 20px;border-radius:30px;font-weight:700;font-size:13px;opacity:0;transition:all .3s;white-space:nowrap;z-index:300}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.err{background:#2a1a1a;border-color:#ff6b6b;color:#ff6b6b}
+
+  /* LOADER / EMPTY */
+  .loader{text-align:center;padding:36px;color:var(--muted);font-size:12px}
+  .lspin{display:block;font-size:28px;animation:spin 1s linear infinite;margin-bottom:8px}
+  @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+  .empty{text-align:center;padding:40px 16px;color:var(--muted)}
+  .eicon{font-size:44px;display:block;margin-bottom:10px}
+  .etitle{font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px}
+  .esub{font-size:12px}
+
+  /* SAKURA */
+  .sakura{position:fixed;top:-20px;animation:fall linear forwards;pointer-events:none;z-index:999;opacity:.7}
+  @keyframes fall{0%{transform:translateY(0) rotate(0);opacity:.7}100%{transform:translateY(110vh) rotate(360deg);opacity:0}}
+
+  /* DIVIDER */
+  .div{height:1px;background:var(--border);margin:12px 0}
+  .mb8{margin-bottom:8px}
+  .mb12{margin-bottom:12px}
 </style>
 </head>
 <body>
@@ -575,581 +195,558 @@
 <div class="header">
   <div class="header-title">🌸 UC Shop — Nezuko</div>
   <div class="header-sub">PUBG Mobile Store</div>
-  <div class="nezuko-deco">🎋 ❤️ 🎋</div>
+  <div class="header-deco">🎋 ❤️ 🎋</div>
 </div>
 
-<!-- SCREENS -->
-
-<!-- SHOP -->
+<!-- ===== SHOP ===== -->
 <div class="screen active" id="screen-shop">
-  <!-- Step 1: Category -->
+
+  <!-- Step: Category -->
   <div id="step-category">
     <div class="hero">
       <span class="hero-emoji">💰</span>
       <h2>Поповнення UC</h2>
       <p>Вибери категорію та отримай UC на акаунт швидко і надійно</p>
-      <div class="bamboo-dots">🎋<br>🎋<br>🎋</div>
+      <div class="bamboo-deco">🎋<br>🎋<br>🎋</div>
     </div>
-
-    <div class="step-indicator">
-      <div class="step-dot active" id="dot1"></div>
-      <div class="step-dot" id="dot2"></div>
-      <div class="step-dot" id="dot3"></div>
-      <div class="step-dot" id="dot4"></div>
-    </div>
-
-    <div class="section-title">🌸 Категорія</div>
-    <div class="category-grid">
-      <div class="cat-card" onclick="selectCategory('uc')">
-        <span class="cat-icon">💎</span>
-        <div class="cat-name">UC</div>
-        <div class="cat-sub">30–81000 UC</div>
-      </div>
-      <div class="cat-card" onclick="selectCategory('prime')">
-        <span class="cat-icon">👑</span>
-        <div class="cat-name">Prime</div>
-        <div class="cat-sub">1–12 міс.</div>
-      </div>
-      <div class="cat-card" onclick="selectCategory('prime_plus')">
-        <span class="cat-icon">💫</span>
-        <div class="cat-name">Prime+</div>
-        <div class="cat-sub">1–12 міс.</div>
-      </div>
+    <div class="sdots"><div class="sdot active"></div><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div></div>
+    <div class="stitle">🌸 Категорія</div>
+    <div class="cat-grid">
+      <div class="cat-card" onclick="selectCat('uc',this)"><span class="cat-icon">💎</span><div class="cat-name">UC</div><div class="cat-sub">30–81000 UC</div></div>
+      <div class="cat-card" onclick="selectCat('prime',this)"><span class="cat-icon">👑</span><div class="cat-name">Prime</div><div class="cat-sub">1–12 міс.</div></div>
+      <div class="cat-card" onclick="selectCat('prime_plus',this)"><span class="cat-icon">💫</span><div class="cat-name">Prime+</div><div class="cat-sub">1–12 міс.</div></div>
     </div>
   </div>
 
-  <!-- Step 2: Products -->
+  <!-- Step: Products -->
   <div id="step-product" style="display:none">
-    <div class="step-indicator">
-      <div class="step-dot done"></div>
-      <div class="step-dot active"></div>
-      <div class="step-dot"></div>
-      <div class="step-dot"></div>
-    </div>
-    <div class="section-title">🛍 Оберіть пакет</div>
-    <div class="product-list" id="product-list"></div>
-    <button class="btn btn-secondary" onclick="goToStep('category')">← Назад</button>
+    <div class="sdots"><div class="sdot done"></div><div class="sdot active"></div><div class="sdot"></div><div class="sdot"></div></div>
+    <div class="stitle">🛍 Оберіть пакет</div>
+    <div class="plist" id="product-list"></div>
+    <button class="btn btn-secondary" onclick="showStep('category')">← Назад</button>
   </div>
 
-  <!-- Step 3: Player ID -->
+  <!-- Step: Player ID -->
   <div id="step-playerid" style="display:none">
-    <div class="step-indicator">
-      <div class="step-dot done"></div>
-      <div class="step-dot done"></div>
-      <div class="step-dot active"></div>
-      <div class="step-dot"></div>
+    <div class="sdots"><div class="sdot done"></div><div class="sdot done"></div><div class="sdot active"></div><div class="sdot"></div></div>
+    <div class="stitle">🎮 Ігровий ID</div>
+    <div class="cbox">
+      <div class="crow"><span class="lbl">Пакет</span><span class="val" id="cp-pack">—</span></div>
+      <div class="crow"><span class="lbl">Сума</span><span class="val price" id="cp-price">—</span></div>
     </div>
-    <div class="section-title">🎮 Ігровий ID</div>
-    <div class="confirm-box">
-      <div class="confirm-row">
-        <span class="label">Пакет</span>
-        <span class="value" id="confirm-pack-mini">—</span>
-      </div>
-      <div class="confirm-row">
-        <span class="label">Сума</span>
-        <span class="value price" id="confirm-price-mini">—</span>
-      </div>
+    <div class="fgroup">
+      <label class="flabel">Твій ігровий ID в PUBG Mobile</label>
+      <input class="finput" id="player-id" type="number" placeholder="Наприклад: 5123456789" inputmode="numeric">
     </div>
-    <div class="form-group">
-      <label class="form-label">Твій ігровий ID в PUBG Mobile</label>
-      <input class="form-input" id="player-id-input" type="number" placeholder="Наприклад: 5123456789" inputmode="numeric">
-    </div>
-    <button class="btn btn-primary" onclick="goToConfirm()">Далі →</button>
-    <button class="btn btn-secondary" onclick="goToStep('product')">← Назад</button>
+    <button class="btn btn-primary" onclick="goConfirm()">Далі →</button>
+    <button class="btn btn-secondary" onclick="showStep('product')">← Назад</button>
   </div>
 
-  <!-- Step 4: Confirm + Payment -->
+  <!-- Step: Confirm + Pay -->
   <div id="step-confirm" style="display:none">
-    <div class="step-indicator">
-      <div class="step-dot done"></div>
-      <div class="step-dot done"></div>
-      <div class="step-dot done"></div>
-      <div class="step-dot active"></div>
+    <div class="sdots"><div class="sdot done"></div><div class="sdot done"></div><div class="sdot done"></div><div class="sdot active"></div></div>
+    <div class="stitle">💳 Оплата</div>
+    <div class="cbox">
+      <div class="crow"><span class="lbl">Пакет</span><span class="val" id="cf-pack">—</span></div>
+      <div class="crow"><span class="lbl">Ігровий ID</span><span class="val" id="cf-id">—</span></div>
+      <div class="crow"><span class="lbl">До сплати</span><span class="val price" id="cf-price">—</span></div>
     </div>
-    <div class="section-title">💳 Оплата</div>
-    <div class="confirm-box">
-      <div class="confirm-row">
-        <span class="label">Пакет</span>
-        <span class="value" id="confirm-pack">—</span>
-      </div>
-      <div class="confirm-row">
-        <span class="label">Ігровий ID</span>
-        <span class="value" id="confirm-id">—</span>
-      </div>
-      <div class="confirm-row">
-        <span class="label">До сплати</span>
-        <span class="value price" id="confirm-price">—</span>
-      </div>
-    </div>
-    <div class="payment-card">
-      <div style="font-size:12px; color:rgba(255,255,255,0.6); letter-spacing:2px; text-transform:uppercase;">Картка для оплати</div>
-      <div class="card-number" id="card-number" onclick="copyCard()">4874 0700 2036 7247</div>
+    <div class="pay-card">
+      <div style="font-size:11px;color:rgba(255,255,255,.5);letter-spacing:2px;text-transform:uppercase;">Картка для оплати</div>
+      <div class="card-num" onclick="copyCard()">4874 0700 2036 7247</div>
       <div class="copy-hint">👆 Натисніть щоб скопіювати</div>
     </div>
-    <div style="font-size:13px; color:var(--muted); margin-bottom:16px; text-align:center; line-height:1.5;">
-      Після оплати натисни кнопку нижче.<br>Адмін підтвердить і нарахує UC.
-    </div>
-    <button class="btn btn-green" id="paid-btn" onclick="confirmPayment()">✅ Я оплатив!</button>
-    <button class="btn btn-secondary" onclick="goToStep('playerid')">← Назад</button>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;text-align:center;line-height:1.5;">Після оплати натисни кнопку нижче.<br>Адмін підтвердить і нарахує UC.</div>
+    <button class="btn btn-green" id="paid-btn" onclick="confirmPay()">✅ Я оплатив!</button>
+    <button class="btn btn-secondary" onclick="showStep('playerid')">← Назад</button>
   </div>
 
   <!-- Success -->
-  <div class="success-screen" id="step-success">
-    <span class="success-icon">🌸</span>
-    <div class="success-title">Дякуємо!</div>
-    <div class="success-text">
-      Твоє замовлення прийнято!<br>
-      Адмін підтвердить оплату та нарахує UC.<br><br>
-      Слідкуй за статусом у розділі <strong>Замовлення</strong> 📋
-    </div>
-    <button class="btn btn-primary" style="margin-top:24px;" onclick="resetShop()">🛍 Нове замовлення</button>
+  <div class="success-s" id="step-success">
+    <span class="sicon">🌸</span>
+    <div class="stitle2">Дякуємо!</div>
+    <div class="ssub">Твоє замовлення прийнято!<br>Адмін підтвердить та нарахує UC.<br><br>Слідкуй за статусом у розділі <strong>Замовлення</strong> 📋</div>
+    <button class="btn btn-primary" style="margin-top:22px" onclick="resetShop()">🛍 Нове замовлення</button>
   </div>
+
 </div>
 
-<!-- ORDERS -->
+<!-- ===== ORDERS ===== -->
 <div class="screen" id="screen-orders">
   <div class="hero">
     <span class="hero-emoji">📋</span>
     <h2>Мої замовлення</h2>
     <p>Слідкуй за статусом своїх покупок</p>
   </div>
-  <div class="section-title">📦 Останні замовлення</div>
-  <div id="orders-list">
-    <div class="loader">
-      <span class="loader-spin">🌸</span>
-      Завантаження...
-    </div>
-  </div>
+  <div class="stitle">📦 Останні замовлення</div>
+  <div id="orders-list"><div class="loader"><span class="lspin">🌸</span>Завантаження...</div></div>
 </div>
 
-<!-- PROMO -->
+<!-- ===== PROMO ===== -->
 <div class="screen" id="screen-promo">
   <div class="hero">
     <span class="hero-emoji">🎁</span>
     <h2>Промокод</h2>
     <p>Введи промокод щоб отримати знижку або бонус</p>
   </div>
-  <div class="promo-box">
-    <div class="form-group">
-      <label class="form-label">Твій промокод</label>
-      <input class="form-input" id="promo-input" type="text" placeholder="Наприклад: NEZUKO10" style="text-transform:uppercase; letter-spacing:2px; text-align:center; font-size:18px; font-weight:900;">
+  <div class="cbox mb12">
+    <div class="fgroup" style="margin-bottom:10px">
+      <label class="flabel">Твій промокод</label>
+      <input class="finput" id="promo-input" type="text" placeholder="NEZUKO10" style="text-transform:uppercase;letter-spacing:2px;text-align:center;font-size:17px;font-weight:900">
     </div>
     <button class="btn btn-primary" onclick="activatePromo()">🎁 Активувати</button>
   </div>
 
-  <div class="section-title">🌸 Мої бонуси</div>
-  <div id="bonuses-list">
-    <div class="loader">
-      <span class="loader-spin">🌸</span>
-      Завантаження...
-    </div>
-  </div>
-</div>
+  <div class="stitle">🌸 Мої бонуси</div>
+  <div id="bonuses-list"><div class="loader"><span class="lspin">🌸</span>Завантаження...</div></div>
 
-<!-- REFERRAL -->
-<div class="screen" id="screen-ref">
-  <div class="hero">
-    <span class="hero-emoji">👥</span>
-    <h2>Реферальна програма</h2>
-    <p>Запрошуй друзів — отримуй знижку 1% на кожну покупку за кожного запрошеного</p>
-  </div>
+  <div class="div"></div>
+  <div class="stitle">👥 Реферальна програма</div>
   <div class="ref-box">
-    <div style="font-size:13px; color:var(--muted); margin-bottom:8px;">Твоє реферальне посилання:</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Твоє реферальне посилання:</div>
     <div class="ref-link" id="ref-link" onclick="copyRef()">Завантаження...</div>
-    <div style="font-size:11px; color:var(--muted);">👆 Натисніть щоб скопіювати</div>
-    <button class="btn btn-primary" style="margin-top:16px;" onclick="shareRef()">📤 Поділитися</button>
+    <div style="font-size:10px;color:var(--muted)">👆 Натисніть щоб скопіювати</div>
+    <button class="btn btn-primary" style="margin-top:12px" onclick="shareRef()">📤 Поділитися</button>
   </div>
-
-  <div class="info-section">
+  <div class="isec">
     <h3>🎋 Як це працює</h3>
-    <p>
-      1. Поділись своїм посиланням з другом<br>
-      2. Друг реєструється через твоє посилання<br>
-      3. Коли друг робить першу покупку — ти отримуєш знижку 1%<br>
-      4. Знижки накопичуються і застосовуються автоматично!
-    </p>
+    <p>1. Поділись посиланням з другом<br>2. Друг реєструється через твоє посилання<br>3. Коли друг робить першу покупку — ти отримуєш знижку 1%<br>4. Знижки накопичуються і застосовуються автоматично!</p>
   </div>
 </div>
 
-<!-- INFO -->
-<div class="screen" id="screen-info">
-  <div class="hero">
-    <span class="hero-emoji">🌸</span>
-    <h2>UC Shop Nezuko</h2>
-    <p>Офіційний магазин UC для PUBG Mobile</p>
+<!-- ===== ТОП ===== -->
+<div class="screen" id="screen-top">
+  <div class="hero" style="background:linear-gradient(135deg,#1a1a0a,#2d2a0a)">
+    <span class="hero-emoji">🏆</span>
+    <h2>Топ донатерів</h2>
+    <p>Найкращі гравці нашого магазину</p>
+    <div class="bamboo-deco">🌟<br>⭐<br>🌟</div>
   </div>
-
-  <div class="info-section">
-    <h3>🆘 Підтримка</h3>
-    <p>Є питання по замовленню? Пишіть менеджеру:</p>
-    <button class="btn btn-primary" style="margin-top:12px; font-size:13px; padding:12px;" onclick="openSupport()">
-      💬 @Manager_Nezuko
-    </button>
-  </div>
-
-  <div class="info-section">
-    <h3>📄 Як зробити замовлення</h3>
-    <p>
-      1. Перейди в розділ <strong>Магазин</strong> 🛍<br>
-      2. Обери категорію та пакет UC<br>
-      3. Вкажи свій ігровий ID<br>
-      4. Оплати замовлення на картку<br>
-      5. Натисни <strong>"Я оплатив"</strong><br>
-      6. Адмін підтвердить та нарахує UC ✅
-    </p>
-  </div>
-
-  <div class="info-section">
-    <h3>⏱ Час обробки</h3>
-    <p>Зазвичай від 5 до 30 хвилин. У пікові години може бути трохи довше.</p>
-  </div>
-
-  <div class="info-section">
-    <h3>💳 Оплата</h3>
-    <p>Оплата на картку Monobank/PrivatBank. Картка показується при оформленні замовлення.</p>
-  </div>
-
-  <div class="info-section">
-    <h3>🔄 Повернення</h3>
-    <p>Повернення можливе лише якщо замовлення ще не виконано. Після нарахування UC повернення не здійснюється.</p>
-  </div>
+  <div class="stitle">👑 Рейтинг</div>
+  <div id="top-list"><div class="loader"><span class="lspin">🌸</span>Завантаження...</div></div>
 </div>
 
-<!-- TABS -->
+<!-- ===== АДМІН ===== -->
+<div class="screen" id="screen-admin">
+
+  <!-- Password gate -->
+  <div id="admin-auth" class="pwd-screen">
+    <span class="pwd-icon">🔐</span>
+    <div class="pwd-title">Адмін-панель</div>
+    <div class="pwd-sub">Введи пароль для доступу</div>
+    <div class="fgroup">
+      <input class="finput" id="admin-pwd" type="password" placeholder="Пароль" style="text-align:center;font-size:18px;letter-spacing:4px">
+    </div>
+    <button class="btn btn-purple" onclick="authAdmin()">🔓 Увійти</button>
+    <div id="auth-err" style="color:#ff6b6b;font-size:12px;margin-top:10px;text-align:center;display:none">❌ Невірний пароль</div>
+  </div>
+
+  <!-- Admin panel -->
+  <div id="admin-panel" style="display:none">
+    <div class="hero" style="background:linear-gradient(135deg,#0d0a1a,#1a1030)">
+      <span class="hero-emoji">⚙️</span>
+      <h2 style="color:var(--purple)">Адмін-панель</h2>
+      <p>Керуй замовленнями та користувачами</p>
+    </div>
+
+    <!-- Admin sub-tabs -->
+    <div class="atabs">
+      <button class="atab active" id="at-orders" onclick="aTab('orders')">📦 Замовлення</button>
+      <button class="atab" id="at-stats" onclick="aTab('stats')">📊 Статистика</button>
+      <button class="atab" id="at-admins" onclick="aTab('admins')">👤 Адміни</button>
+    </div>
+
+    <!-- Admin: Orders -->
+    <div id="apanel-orders">
+      <div class="stitle">⏳ Очікують виконання</div>
+      <div id="admin-orders-list"><div class="loader"><span class="lspin">⚙️</span>Завантаження...</div></div>
+    </div>
+
+    <!-- Admin: Stats -->
+    <div id="apanel-stats" style="display:none">
+      <div class="stitle">📊 Статистика магазину</div>
+      <div id="admin-stats-content"><div class="loader"><span class="lspin">⚙️</span>Завантаження...</div></div>
+    </div>
+
+    <!-- Admin: Admins -->
+    <div id="apanel-admins" style="display:none">
+      <div class="stitle">👤 Управління адмінами</div>
+      <div class="cbox mb12">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Введи Telegram ID користувача:</div>
+        <div class="fgroup" style="margin-bottom:8px">
+          <input class="finput" id="admin-userid" type="number" placeholder="Telegram ID (наприклад: 123456789)" inputmode="numeric">
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-green btn-sm" style="flex:1" onclick="toggleAdmin('add')">✅ Видати адмінку</button>
+          <button class="btn btn-red btn-sm" style="flex:1" onclick="toggleAdmin('remove')">❌ Забрати адмінку</button>
+        </div>
+      </div>
+      <div class="stitle">📋 Поточні адміни</div>
+      <div id="admin-admins-list"><div class="loader"><span class="lspin">⚙️</span>Завантаження...</div></div>
+      <button class="btn btn-secondary" style="margin-top:8px" onclick="loadAdmins()">🔄 Оновити список</button>
+    </div>
+
+    <div class="div"></div>
+    <button class="btn btn-secondary" onclick="logoutAdmin()">🚪 Вийти з адмінки</button>
+  </div>
+
+</div>
+
+<!-- ===== TABS ===== -->
 <div class="tabs">
-  <button class="tab active" id="tab-shop" onclick="switchTab('shop')">
-    <span class="tab-icon">🛍</span>
-    <span class="tab-label">Магазин</span>
-  </button>
-  <button class="tab" id="tab-orders" onclick="switchTab('orders')">
-    <span class="tab-icon">📋</span>
-    <span class="tab-label">Замовлення</span>
-  </button>
-  <button class="tab" id="tab-promo" onclick="switchTab('promo')">
-    <span class="tab-icon">🎁</span>
-    <span class="tab-label">Промокод</span>
-  </button>
-  <button class="tab" id="tab-ref" onclick="switchTab('ref')">
-    <span class="tab-icon">👥</span>
-    <span class="tab-label">Реферал</span>
-  </button>
-  <button class="tab" id="tab-info" onclick="switchTab('info')">
-    <span class="tab-icon">ℹ️</span>
-    <span class="tab-label">Інфо</span>
-  </button>
+  <button class="tab active" id="tab-shop" onclick="switchTab('shop')"><span class="ti">🛍</span><span class="tl">Магазин</span></button>
+  <button class="tab" id="tab-orders" onclick="switchTab('orders')"><span class="ti">📋</span><span class="tl">Замовлення</span></button>
+  <button class="tab" id="tab-promo" onclick="switchTab('promo')"><span class="ti">🎁</span><span class="tl">Бонуси</span></button>
+  <button class="tab" id="tab-top" onclick="switchTab('top')"><span class="ti">🏆</span><span class="tl">Топ</span></button>
+  <button class="tab admin-tab" id="tab-admin" onclick="switchTab('admin')"><span class="ti">⚙️</span><span class="tl">Адмін</span></button>
 </div>
 
-<!-- TOAST -->
 <div class="toast" id="toast"></div>
 
 <script>
-  // Telegram WebApp init
-  const tg = window.Telegram?.WebApp;
-  if (tg) {
-    tg.ready();
-    tg.expand();
-    tg.setHeaderColor('#0d0608');
-    tg.setBackgroundColor('#0d0608');
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+const USER_ID = tg?.initDataUnsafe?.user?.id || 0;
+const USERNAME = tg?.initDataUnsafe?.user?.username || '';
+
+const PRODUCTS = {
+  uc:[
+    {name:"30 UC",price:19,full:"30 UC - 19 грн"},
+    {name:"60 UC",price:40,full:"60 UC - 40 грн"},
+    {name:"120 UC",price:78,full:"120 UC - 78 грн"},
+    {name:"180 UC",price:111,full:"180 UC - 113 грн"},
+    {name:"325 UC",price:195,full:"325 UC - 195 грн"},
+    {name:"660 UC",price:389,full:"660 UC - 389 грн"},
+    {name:"1800 UC",price:960,full:"1800 UC - 960 грн"},
+    {name:"3800 UC",price:1909,full:"3800 UC - 1909 грн"},
+    {name:"8100 UC",price:3840,full:"8100 UC - 3840 грн"},
+    {name:"16200 UC",price:7599,full:"16200 UC - 7599 грн"},
+    {name:"24300 UC",price:11399,full:"24300 UC - 11399 грн"},
+    {name:"32400 UC",price:15399,full:"32400 UC - 15399 грн"},
+    {name:"40500 UC",price:18999,full:"40500 UC - 18999 грн"},
+    {name:"81000 UC",price:37900,full:"81000 UC - 37900 грн"},
+  ],
+  prime:[
+    {name:"Prime 1 Місяць",price:45,full:"👑 Prime 1 Місяць - 45 грн"},
+    {name:"Prime 3 Місяці",price:130,full:"👑 Prime 3 Місяця - 130 грн"},
+    {name:"Prime 6 Місяців",price:250,full:"👑 Prime 6 Місяців - 250 грн"},
+    {name:"Prime 12 Місяців",price:500,full:"👑 Prime 12 Місяців - 500 грн"},
+  ],
+  prime_plus:[
+    {name:"Prime Plus 1 Місяць",price:410,full:"👑 Prime Plus 1 Місяць - 410 грн"},
+    {name:"Prime Plus 3 Місяці",price:1200,full:"👑 Prime Plus 3 Місяці - 1200 грн"},
+    {name:"Prime Plus 6 Місяців",price:2400,full:"👑 Prime Plus 6 Місяців - 2400 грн"},
+    {name:"Prime Plus 12 Місяців",price:4730,full:"👑 Prime Plus 12 Місяців - 4730 грн"},
+  ]
+};
+
+let selCat=null, selProd=null, adminPwd=null;
+
+// ---- TABS ----
+function switchTab(tab){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('screen-'+tab).classList.add('active');
+  document.getElementById('tab-'+tab).classList.add('active');
+  if(tab==='orders') loadOrders();
+  if(tab==='promo'){loadBonuses();loadRefLink();}
+  if(tab==='top') loadTop();
+  if(tab==='admin' && adminPwd) loadAdminOrders();
+}
+
+// ---- SHOP ----
+function showStep(step){
+  ['category','product','playerid','confirm','success'].forEach(s=>{
+    const el=document.getElementById('step-'+s);
+    if(el) el.style.display='none';
+    if(el && el.classList) el.classList.remove('active');
+  });
+  const target=document.getElementById('step-'+step);
+  if(target){
+    if(target.classList.contains('success-s')) target.classList.add('active');
+    else target.style.display='block';
   }
+}
 
-  const USER_ID = tg?.initDataUnsafe?.user?.id || 0;
-  const USERNAME = tg?.initDataUnsafe?.user?.username || '';
+function selectCat(cat, el){
+  selCat=cat;
+  document.querySelectorAll('.cat-card').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected');
+  const list=document.getElementById('product-list');
+  list.innerHTML='';
+  PRODUCTS[cat].forEach((p,i)=>{
+    list.innerHTML+=`<div class="pitem" id="prod-${i}" onclick="selectProd(${i})">
+      <div class="pname">${p.name}</div>
+      <div class="pprice">${p.price} грн</div>
+    </div>`;
+  });
+  setTimeout(()=>showStep('product'),120);
+}
 
-  const PRODUCTS = {
-    uc: [
-      { name: "30 UC", price: 19, full: "30 UC - 19 грн" },
-      { name: "60 UC", price: 40, full: "60 UC - 40 грн" },
-      { name: "120 UC", price: 78, full: "120 UC - 78 грн" },
-      { name: "180 UC", price: 111, full: "180 UC - 113 грн" },
-      { name: "325 UC", price: 195, full: "325 UC - 195 грн" },
-      { name: "660 UC", price: 389, full: "660 UC - 389 грн" },
-      { name: "1800 UC", price: 960, full: "1800 UC - 960 грн" },
-      { name: "3800 UC", price: 1909, full: "3800 UC - 1909 грн" },
-      { name: "8100 UC", price: 3840, full: "8100 UC - 3840 грн" },
-      { name: "16200 UC", price: 7599, full: "16200 UC - 7599 грн" },
-      { name: "24300 UC", price: 11399, full: "24300 UC - 11399 грн" },
-      { name: "32400 UC", price: 15399, full: "32400 UC - 15399 грн" },
-      { name: "40500 UC", price: 18999, full: "40500 UC - 18999 грн" },
-      { name: "81000 UC", price: 37900, full: "81000 UC - 37900 грн" },
-    ],
-    prime: [
-      { name: "Prime 1 Місяць", price: 45, full: "👑 Prime 1 Місяць - 45 грн" },
-      { name: "Prime 3 Місяці", price: 130, full: "👑 Prime 3 Місяця - 130 грн" },
-      { name: "Prime 6 Місяців", price: 250, full: "👑 Prime 6 Місяців - 250 грн" },
-      { name: "Prime 12 Місяців", price: 500, full: "👑 Prime 12 Місяців - 500 грн" },
-    ],
-    prime_plus: [
-      { name: "Prime Plus 1 Місяць", price: 410, full: "👑 Prime Plus 1 Місяць - 410 грн" },
-      { name: "Prime Plus 3 Місяці", price: 1200, full: "👑 Prime Plus 3 Місяці - 1200 грн" },
-      { name: "Prime Plus 6 Місяців", price: 2400, full: "👑 Prime Plus 6 Місяців - 2400 грн" },
-      { name: "Prime Plus 12 Місяців", price: 4730, full: "👑 Prime Plus 12 Місяців - 4730 грн" },
-    ]
-  };
+function selectProd(idx){
+  selProd=PRODUCTS[selCat][idx];
+  document.querySelectorAll('.pitem').forEach(el=>el.classList.remove('selected'));
+  document.getElementById('prod-'+idx).classList.add('selected');
+  document.getElementById('cp-pack').textContent=selProd.name;
+  document.getElementById('cp-price').textContent=selProd.price+' грн';
+  setTimeout(()=>showStep('playerid'),120);
+}
 
-  let currentTab = 'shop';
-  let selectedCategory = null;
-  let selectedProduct = null;
-  let currentOrderId = null;
+function goConfirm(){
+  const pid=document.getElementById('player-id').value.trim();
+  if(!pid||pid.length<5){showToast('Введи правильний ігровий ID',true);return;}
+  document.getElementById('cf-pack').textContent=selProd.name;
+  document.getElementById('cf-id').textContent=pid;
+  document.getElementById('cf-price').textContent=selProd.price+' грн';
+  showStep('confirm');
+}
 
-  function switchTab(tab) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.getElementById(`screen-${tab}`).classList.add('active');
-    document.getElementById(`tab-${tab}`).classList.add('active');
-    currentTab = tab;
+async function confirmPay(){
+  const pid=document.getElementById('player-id').value.trim();
+  const btn=document.getElementById('paid-btn');
+  btn.disabled=true; btn.textContent='⏳ Надсилаємо...';
+  try{
+    const r=await fetch('/api/submit-order',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({user_id:USER_ID,username:USERNAME,pack:selProd.full,player_id:pid,amount:selProd.price})});
+    const d=await r.json();
+    if(d.ok){spawnSakura();showStep('success');}
+    else{showToast(d.error||'Помилка. Спробуй ще раз',true);btn.disabled=false;btn.textContent='✅ Я оплатив!';}
+  }catch{showToast('Помилка з\'єднання',true);btn.disabled=false;btn.textContent='✅ Я оплатив!';}
+}
 
-    if (tab === 'orders') loadOrders();
-    if (tab === 'promo') loadBonuses();
-    if (tab === 'ref') loadRefLink();
-  }
+function copyCard(){
+  navigator.clipboard?.writeText('4874070020367247').then(()=>showToast('✅ Картку скопійовано!')).catch(()=>showToast('4874 0700 2036 7247'));
+}
 
-  function goToStep(step) {
-    document.querySelectorAll('#screen-shop > div').forEach(el => {
-      el.style.display = 'none';
-    });
-    document.getElementById(`step-${step}`).style.display = 'block';
-  }
+function resetShop(){
+  selCat=null;selProd=null;
+  document.getElementById('player-id').value='';
+  showStep('category');
+}
 
-  function selectCategory(cat) {
-    selectedCategory = cat;
-    const icons = { uc: '💎', prime: '👑', prime_plus: '💫' };
-    const catCards = document.querySelectorAll('.cat-card');
-    catCards.forEach(c => c.classList.remove('selected'));
-    event.currentTarget.classList.add('selected');
+// ---- ORDERS ----
+async function loadOrders(){
+  const el=document.getElementById('orders-list');
+  el.innerHTML='<div class="loader"><span class="lspin">🌸</span>Завантаження...</div>';
+  try{
+    const r=await fetch('/api/orders?user_id='+USER_ID);
+    const d=await r.json();
+    if(!d.orders||!d.orders.length){el.innerHTML='<div class="empty"><span class="eicon">📭</span><div class="etitle">Замовлень ще немає</div><div class="esub">Зроби перше замовлення!</div></div>';return;}
+    el.innerHTML=d.orders.map(o=>{
+      const b=o.status==='done'?'<span class="badge badge-d">✅ Виконано</span>':o.status==='canceled'?'<span class="badge badge-c">❌ Відхилено</span>':'<span class="badge badge-p">⏳ Очікує</span>';
+      return`<div class="ocard"><div class="ohead"><div><div class="opack">${o.pack}</div><div class="oid">ID: ${o.id}</div></div>${b}</div><div class="ometa">🎮 ${o.player_id||'—'} | ${o.created_at||''}</div></div>`;
+    }).join('');
+  }catch{el.innerHTML='<div class="empty"><span class="eicon">⚠️</span><div class="etitle">Помилка завантаження</div></div>';}
+}
 
-    const list = document.getElementById('product-list');
-    list.innerHTML = '';
-    PRODUCTS[cat].forEach((p, i) => {
-      list.innerHTML += `
-        <div class="product-item" id="prod-${i}" onclick="selectProduct(${i})">
-          <div>
-            <div class="product-name">${p.name}</div>
+// ---- PROMO ----
+async function loadBonuses(){
+  const el=document.getElementById('bonuses-list');
+  el.innerHTML='<div class="loader"><span class="lspin">🌸</span>Завантаження...</div>';
+  try{
+    const r=await fetch('/api/bonuses?user_id='+USER_ID);
+    const d=await r.json();
+    if(!d.bonuses||!d.bonuses.length){el.innerHTML='<div class="empty"><span class="eicon">🎁</span><div class="etitle">Бонусів немає</div><div class="esub">Активуй промокод або запроси друзів!</div></div>';return;}
+    el.innerHTML=d.bonuses.map(b=>`<div class="ocard"><div class="ohead"><div class="opack">${b.name}</div><span class="badge badge-d">✅ Активний</span></div><div class="ometa">Кількість: ${b.count} шт.</div></div>`).join('');
+  }catch{el.innerHTML='';}
+}
+
+async function activatePromo(){
+  const code=document.getElementById('promo-input').value.trim().toUpperCase();
+  if(!code){showToast('Введи промокод',true);return;}
+  try{
+    const r=await fetch('/api/promo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:USER_ID,code})});
+    const d=await r.json();
+    if(d.ok){showToast('🎉 '+(d.message||'Промокод активовано!'));document.getElementById('promo-input').value='';loadBonuses();}
+    else showToast(d.error||'Невірний промокод',true);
+  }catch{showToast('Помилка з\'єднання',true);}
+}
+
+function loadRefLink(){
+  const link=`https://t.me/NezukoUCBot?start=ref_${USER_ID}`;
+  document.getElementById('ref-link').textContent=link;
+}
+
+function copyRef(){
+  const link=document.getElementById('ref-link').textContent;
+  navigator.clipboard?.writeText(link).then(()=>showToast('✅ Посилання скопійовано!'));
+}
+
+function shareRef(){
+  const link=document.getElementById('ref-link').textContent;
+  const text=`🌸 Купуй UC для PUBG Mobile у магазині Nezuko!\n${link}`;
+  if(tg) tg.switchInlineQuery(text); else copyRef();
+}
+
+// ---- TOP ----
+async function loadTop(){
+  const el=document.getElementById('top-list');
+  el.innerHTML='<div class="loader"><span class="lspin">🌸</span>Завантаження...</div>';
+  try{
+    const r=await fetch('/api/top');
+    const d=await r.json();
+    if(!d.top||!d.top.length){el.innerHTML='<div class="empty"><span class="eicon">🏆</span><div class="etitle">Рейтинг порожній</div><div class="esub">Будь першим донатером!</div></div>';return;}
+    const medals=['🥇','🥈','🥉'];
+    el.innerHTML=d.top.map((t,i)=>{
+      const cls=i===0?'r1':i===1?'r2':i===2?'r3':'';
+      const icon=i<3?medals[i]:`#${t.rank}`;
+      return`<div class="top-item"><div class="top-rank ${cls}">${icon}</div><div class="top-name">${t.name}</div><div class="top-sum">${t.total} грн</div></div>`;
+    }).join('');
+  }catch{el.innerHTML='<div class="empty"><span class="eicon">⚠️</span><div class="etitle">Помилка</div></div>';}
+}
+
+// ---- ADMIN AUTH ----
+async function authAdmin(){
+  const pwd=document.getElementById('admin-pwd').value;
+  if(!pwd){return;}
+  try{
+    const r=await fetch('/api/admin/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd})});
+    const d=await r.json();
+    if(d.ok){
+      adminPwd=pwd;
+      document.getElementById('admin-auth').style.display='none';
+      document.getElementById('admin-panel').style.display='block';
+      document.getElementById('auth-err').style.display='none';
+      loadAdminOrders();
+    } else {
+      document.getElementById('auth-err').style.display='block';
+      document.getElementById('admin-pwd').value='';
+    }
+  }catch{showToast('Помилка з\'єднання',true);}
+}
+
+function logoutAdmin(){
+  adminPwd=null;
+  document.getElementById('admin-pwd').value='';
+  document.getElementById('admin-auth').style.display='block';
+  document.getElementById('admin-panel').style.display='none';
+  document.getElementById('auth-err').style.display='none';
+}
+
+// ---- ADMIN TABS ----
+function aTab(tab){
+  ['orders','stats','admins'].forEach(t=>{
+    document.getElementById('apanel-'+t).style.display='none';
+    document.getElementById('at-'+t).classList.remove('active');
+  });
+  document.getElementById('apanel-'+tab).style.display='block';
+  document.getElementById('at-'+tab).classList.add('active');
+  if(tab==='orders') loadAdminOrders();
+  if(tab==='stats') loadAdminStats();
+  if(tab==='admins') loadAdmins();
+}
+
+// ---- ADMIN ORDERS ----
+async function loadAdminOrders(){
+  const el=document.getElementById('admin-orders-list');
+  el.innerHTML='<div class="loader"><span class="lspin">⚙️</span>Завантаження...</div>';
+  try{
+    const r=await fetch('/api/admin/orders?password='+encodeURIComponent(adminPwd));
+    const d=await r.json();
+    if(!d.ok){showToast(d.error,true);return;}
+    if(!d.orders.length){el.innerHTML='<div class="empty"><span class="eicon">📭</span><div class="etitle">Нових замовлень немає</div></div>';return;}
+    el.innerHTML=d.orders.map(o=>`
+      <div class="aocard" id="ao-${o.id}">
+        <div class="aohead">${o.pack}</div>
+        <div class="aometa">👤 ${o.user}<br>🎮 ID: ${o.player_id}<br>💵 ${o.amount} грн | 🕐 ${o.created_at}<br>🆔 ${o.id}</div>
+        <div class="aobtns">
+          <button class="btn btn-green btn-sm" style="flex:1" onclick="doAction('${o.id}','ok')">✅ Виконано</button>
+          <button class="btn btn-red btn-sm" style="flex:1" onclick="doAction('${o.id}','no')">❌ Відхилити</button>
+        </div>
+      </div>`).join('');
+  }catch{el.innerHTML='<div class="empty"><span class="eicon">⚠️</span><div class="etitle">Помилка</div></div>';}
+}
+
+async function doAction(orderId, action){
+  try{
+    const r=await fetch('/api/admin/action',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({password:adminPwd,order_id:orderId,action})});
+    const d=await r.json();
+    if(d.ok){
+      showToast(action==='ok'?'✅ Замовлення виконано!':'❌ Замовлення відхилено');
+      const card=document.getElementById('ao-'+orderId);
+      if(card) card.style.display='none';
+    } else showToast(d.error||'Помилка',true);
+  }catch{showToast('Помилка з\'єднання',true);}
+}
+
+// ---- ADMIN STATS ----
+async function loadAdminStats(){
+  const el=document.getElementById('admin-stats-content');
+  el.innerHTML='<div class="loader"><span class="lspin">⚙️</span>Завантаження...</div>';
+  try{
+    const r=await fetch('/api/admin/stats?password='+encodeURIComponent(adminPwd));
+    const d=await r.json();
+    if(!d.ok){showToast(d.error,true);return;}
+    el.innerHTML=`
+      <div class="stat-grid">
+        <div class="stat-card green"><div class="stat-val">${d.done}</div><div class="stat-lbl">✅ Виконано</div></div>
+        <div class="stat-card red"><div class="stat-val">${d.canceled}</div><div class="stat-lbl">❌ Відхилено</div></div>
+        <div class="stat-card gold"><div class="stat-val">${d.today_sum}</div><div class="stat-lbl">💰 Сьогодні (грн)</div></div>
+        <div class="stat-card blue"><div class="stat-val">${d.total_sum}</div><div class="stat-lbl">📊 Всього (грн)</div></div>
+      </div>
+      <div class="ocard"><div class="ohead"><div class="opack">⏳ Очікують підтвердження</div><span class="badge badge-p">${d.pending}</span></div></div>
+      <button class="btn btn-secondary" onclick="loadAdminStats()">🔄 Оновити</button>`;
+  }catch{el.innerHTML='<div class="empty"><span class="eicon">⚠️</span><div class="etitle">Помилка</div></div>';}
+}
+
+// ---- ADMIN ADMINS ----
+async function loadAdmins(){
+  const el=document.getElementById('admin-admins-list');
+  el.innerHTML='<div class="loader"><span class="lspin">⚙️</span>Завантаження...</div>';
+  try{
+    const r=await fetch('/api/admin/admins?password='+encodeURIComponent(adminPwd));
+    const d=await r.json();
+    if(!d.ok){showToast(d.error,true);return;}
+    if(!d.admins.length){el.innerHTML='<div class="empty"><span class="eicon">👤</span><div class="etitle">Додаткових адмінів немає</div></div>';return;}
+    el.innerHTML=`<div class="ocard mb8"><div class="ohead"><div class="opack">👑 Власник</div><span class="badge badge-d">${d.owner_id}</span></div></div>`+
+      d.admins.map(a=>`
+        <div class="ocard mb8">
+          <div class="ohead">
+            <div class="opack">⚙️ Адмін ID: ${a.id}</div>
+            <button class="btn btn-red btn-sm" onclick="toggleAdmin('remove','${a.id}')">❌ Забрати</button>
           </div>
-          <div class="product-price">${p.price} грн</div>
-        </div>`;
-    });
-    setTimeout(() => goToStep('product'), 150);
-  }
-
-  function selectProduct(idx) {
-    selectedProduct = PRODUCTS[selectedCategory][idx];
-    document.querySelectorAll('.product-item').forEach(el => el.classList.remove('selected'));
-    document.getElementById(`prod-${idx}`).classList.add('selected');
-    document.getElementById('confirm-pack-mini').textContent = selectedProduct.name;
-    document.getElementById('confirm-price-mini').textContent = selectedProduct.price + ' грн';
-    setTimeout(() => goToStep('playerid'), 150);
-  }
-
-  function goToConfirm() {
-    const pid = document.getElementById('player-id-input').value.trim();
-    if (!pid || pid.length < 5) {
-      showToast('Введи правильний ігровий ID', true);
-      return;
-    }
-    document.getElementById('confirm-pack').textContent = selectedProduct.name;
-    document.getElementById('confirm-id').textContent = pid;
-    document.getElementById('confirm-price').textContent = selectedProduct.price + ' грн';
-    goToStep('confirm');
-  }
-
-  async function confirmPayment() {
-    const pid = document.getElementById('player-id-input').value.trim();
-    const btn = document.getElementById('paid-btn');
-    btn.disabled = true;
-    btn.textContent = '⏳ Надсилаємо...';
-
-    try {
-      const res = await fetch('/api/submit-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: USER_ID,
-          username: USERNAME,
-          pack: selectedProduct.full,
-          player_id: pid,
-          amount: selectedProduct.price
-        })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        currentOrderId = data.order_id;
-        spawnSakura();
-        goToStep('success');
-      } else {
-        showToast(data.error || 'Помилка. Спробуй ще раз', true);
-        btn.disabled = false;
-        btn.textContent = '✅ Я оплатив!';
-      }
-    } catch(e) {
-      showToast('Помилка з\'єднання', true);
-      btn.disabled = false;
-      btn.textContent = '✅ Я оплатив!';
-    }
-  }
-
-  function copyCard() {
-    const num = '4874070020367247';
-    navigator.clipboard?.writeText(num).then(() => {
-      showToast('✅ Картку скопійовано!');
-    }).catch(() => {
-      showToast('4874 0700 2036 7247');
-    });
-  }
-
-  function resetShop() {
-    selectedCategory = null;
-    selectedProduct = null;
-    document.getElementById('player-id-input').value = '';
-    goToStep('category');
-  }
-
-  async function loadOrders() {
-    const list = document.getElementById('orders-list');
-    list.innerHTML = '<div class="loader"><span class="loader-spin">🌸</span>Завантаження...</div>';
-
-    try {
-      const res = await fetch(`/api/orders?user_id=${USER_ID}`);
-      const data = await res.json();
-      if (!data.orders || data.orders.length === 0) {
-        list.innerHTML = `
-          <div class="empty">
-            <span class="empty-icon">📭</span>
-            <div class="empty-text">Замовлень ще немає</div>
-            <div class="empty-sub">Зроби перше замовлення в розділі Магазин!</div>
-          </div>`;
-        return;
-      }
-      list.innerHTML = data.orders.map(o => {
-        const badge = o.status === 'done'
-          ? '<span class="badge badge-done">✅ Виконано</span>'
-          : o.status === 'canceled'
-          ? '<span class="badge badge-canceled">❌ Відхилено</span>'
-          : '<span class="badge badge-pending">⏳ Очікує</span>';
-        return `
-          <div class="order-card">
-            <div class="order-header">
-              <div>
-                <div class="order-pack">${o.pack}</div>
-                <div class="order-id">ID: ${o.id}</div>
-              </div>
-              ${badge}
-            </div>
-            <div class="order-meta">🎮 ${o.player_id || '—'} &nbsp;|&nbsp; ${o.created_at || ''}</div>
-          </div>`;
-      }).join('');
-    } catch(e) {
-      list.innerHTML = '<div class="empty"><span class="empty-icon">⚠️</span><div class="empty-text">Помилка завантаження</div></div>';
-    }
-  }
-
-  async function loadBonuses() {
-    const list = document.getElementById('bonuses-list');
-    list.innerHTML = '<div class="loader"><span class="loader-spin">🌸</span>Завантаження...</div>';
-    try {
-      const res = await fetch(`/api/bonuses?user_id=${USER_ID}`);
-      const data = await res.json();
-      if (!data.bonuses || data.bonuses.length === 0) {
-        list.innerHTML = `
-          <div class="empty">
-            <span class="empty-icon">🎁</span>
-            <div class="empty-text">Активних бонусів немає</div>
-            <div class="empty-sub">Активуй промокод або запроси друзів!</div>
-          </div>`;
-        return;
-      }
-      list.innerHTML = data.bonuses.map(b => `
-        <div class="order-card">
-          <div class="order-header">
-            <div class="order-pack">${b.name}</div>
-            <span class="badge badge-done">✅ Активний</span>
-          </div>
-          <div class="order-meta">Кількість: ${b.count} шт.</div>
         </div>`).join('');
-    } catch(e) {
-      list.innerHTML = '';
-    }
-  }
+  }catch{el.innerHTML='<div class="empty"><span class="eicon">⚠️</span><div class="etitle">Помилка</div></div>';}
+}
 
-  async function activatePromo() {
-    const code = document.getElementById('promo-input').value.trim().toUpperCase();
-    if (!code) { showToast('Введи промокод', true); return; }
-    try {
-      const res = await fetch('/api/promo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: USER_ID, code })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        showToast('🎉 ' + (data.message || 'Промокод активовано!'));
-        document.getElementById('promo-input').value = '';
-        loadBonuses();
-      } else {
-        showToast(data.error || 'Невірний промокод', true);
-      }
-    } catch(e) {
-      showToast('Помилка з\'єднання', true);
-    }
-  }
+async function toggleAdmin(action, prefilledId=null){
+  const uid=prefilledId||document.getElementById('admin-userid').value.trim();
+  if(!uid){showToast('Введи Telegram ID',true);return;}
+  try{
+    const r=await fetch('/api/admin/toggle-admin',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({password:adminPwd,user_id:parseInt(uid),action})});
+    const d=await r.json();
+    if(d.ok){showToast(d.message);document.getElementById('admin-userid').value='';loadAdmins();}
+    else showToast(d.error||'Помилка',true);
+  }catch{showToast('Помилка з\'єднання',true);}
+}
 
-  function loadRefLink() {
-    const botName = 'NezukoUCBot';
-    const link = `https://t.me/${botName}?start=ref_${USER_ID}`;
-    document.getElementById('ref-link').textContent = link;
-  }
+// ---- HELPERS ----
+function showToast(msg,isErr=false){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='toast'+(isErr?' err':'');
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
 
-  function copyRef() {
-    const link = document.getElementById('ref-link').textContent;
-    navigator.clipboard?.writeText(link).then(() => {
-      showToast('✅ Посилання скопійовано!');
-    });
-  }
+function spawnSakura(){
+  const p=['🌸','🌺','🌼','💮'];
+  for(let i=0;i<12;i++) setTimeout(()=>{
+    const el=document.createElement('div');
+    el.className='sakura';
+    el.textContent=p[Math.floor(Math.random()*p.length)];
+    el.style.left=Math.random()*100+'vw';
+    el.style.fontSize=(12+Math.random()*14)+'px';
+    el.style.animationDuration=(2+Math.random()*2)+'s';
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(),4000);
+  },i*140);
+}
 
-  function shareRef() {
-    const link = document.getElementById('ref-link').textContent;
-    const text = `🌸 Купуй UC для PUBG Mobile у магазині Nezuko — швидко, надійно та дешево!\n${link}`;
-    if (tg) {
-      tg.switchInlineQuery(text);
-    } else {
-      copyRef();
-    }
-  }
-
-  function openSupport() {
-    if (tg) {
-      tg.openTelegramLink('https://t.me/Manager_Nezuko');
-    } else {
-      window.open('https://t.me/Manager_Nezuko', '_blank');
-    }
-  }
-
-  function showToast(msg, isError = false) {
-    const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.className = 'toast' + (isError ? ' error' : '');
-    t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 2500);
-  }
-
-  function spawnSakura() {
-    const petals = ['🌸', '🌺', '🌼', '💮', '🌸'];
-    for (let i = 0; i < 12; i++) {
-      setTimeout(() => {
-        const el = document.createElement('div');
-        el.className = 'sakura';
-        el.textContent = petals[Math.floor(Math.random() * petals.length)];
-        el.style.left = Math.random() * 100 + 'vw';
-        el.style.fontSize = (12 + Math.random() * 16) + 'px';
-        el.style.animationDuration = (2 + Math.random() * 2) + 's';
-        document.body.appendChild(el);
-        setTimeout(() => el.remove(), 4000);
-      }, i * 150);
-    }
-  }
-
-  // init
-  goToStep('category');
-  loadRefLink();
+// init
+showStep('category');
+loadRefLink();
 </script>
 </body>
 </html>

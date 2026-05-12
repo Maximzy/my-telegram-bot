@@ -197,6 +197,14 @@ def _html_response(handler, html):
     handler.end_headers()
     handler.wfile.write(body)
 
+def _send_tg_message(chat_id, text):
+    try:
+        params = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
+        req = urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=params)
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        logging.warning(f"_send_tg_message failed: {e}")
+
 def _notify_admin_order(order_id, pack, player_id, amount, user_id, username):
     try:
         user_label_str = f"@{username}" if username else str(user_id)
@@ -271,6 +279,46 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 result.append({"name": "Реферальна знижка 1%", "count": len(ref_disc)})
             _json_response(self, {"bonuses": result}); return
 
+        if path == "/api/top":
+            rows = db_query(
+                "SELECT user, chat_id, SUM(CAST(COALESCE(amount,0) AS INTEGER)) as total "
+                "FROM orders WHERE status='done' GROUP BY chat_id ORDER BY total DESC LIMIT 10"
+            )
+            top = []
+            for i, r in enumerate(rows):
+                name = f"@{r[0]}" if r[0] else f"ID {r[1]}"
+                top.append({"rank": i+1, "name": name, "total": r[2]})
+            _json_response(self, {"top": top}); return
+
+        if path == "/api/admin/orders":
+            pwd = params.get("password", "")
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            rows = db_query("SELECT id, user, pack, player_id, chat_id, created_at, amount FROM orders WHERE status='pending' ORDER BY rowid DESC")
+            orders = [{"id": r[0], "user": f"@{r[1]}" if r[1] else str(r[4]), "pack": r[2],
+                       "player_id": r[3], "chat_id": r[4], "created_at": (r[5] or "")[:16], "amount": r[6] or "?"} for r in rows]
+            _json_response(self, {"ok": True, "orders": orders}); return
+
+        if path == "/api/admin/stats":
+            pwd = params.get("password", "")
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            done = db_query_one("SELECT COUNT(*) FROM orders WHERE status='done'")[0]
+            canceled = db_query_one("SELECT COUNT(*) FROM orders WHERE status='canceled'")[0]
+            pending = db_query_one("SELECT COUNT(*) FROM orders WHERE status='pending'")[0]
+            total_sum = get_done_sum()
+            today_sum = get_done_sum(today_only=True)
+            _json_response(self, {"ok": True, "done": done, "canceled": canceled, "pending": pending,
+                                  "total_sum": total_sum, "today_sum": today_sum}); return
+
+        if path == "/api/admin/admins":
+            pwd = params.get("password", "")
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            rows = db_query("SELECT id FROM admins")
+            admins = [{"id": r[0]} for r in rows]
+            _json_response(self, {"ok": True, "admins": admins, "owner_id": MY_ID}); return
+
         self.send_response(404); self.end_headers()
 
     def do_POST(self):
@@ -320,6 +368,54 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 db_exec("UPDATE promo_codes SET uses_left=uses_left-1 WHERE code=?", (code,))
             bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
             _json_response(self, {"ok": True, "message": f"Бонус активовано: {bonus_name}"}); return
+
+        if path == "/api/admin/auth":
+            pwd = str(data.get("password", ""))
+            if pwd == ADMIN_PASSWORD:
+                _json_response(self, {"ok": True}); return
+            _json_response(self, {"ok": False, "error": "Невірний пароль"}); return
+
+        if path == "/api/admin/action":
+            pwd = str(data.get("password", ""))
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            order_id = str(data.get("order_id", ""))
+            action = str(data.get("action", ""))
+            res = db_query_one("SELECT chat_id, pack, user, player_id FROM orders WHERE id=?", (order_id,))
+            if not res:
+                _json_response(self, {"ok": False, "error": "Замовлення не знайдено"}); return
+            chat_id, pack, user, player_id = res
+            if action == "ok":
+                db_exec("UPDATE orders SET status='done', completed_at=? WHERE id=?", (created_at_now(), order_id))
+                ref = db_query_one("SELECT referrer_id FROM referrals WHERE referred_id=?", (chat_id,))
+                if ref:
+                    db_exec("INSERT INTO ref_discounts (user_id, created_at) VALUES (?,?)", (ref[0], created_at_now()))
+                    _send_tg_message(ref[0], "🎉 Ваш реферал зробив покупку! Ви отримали знижку 1%.")
+                _send_tg_message(chat_id, f"✅ {pack} нараховано! Дякуємо за покупку 🌸")
+                _json_response(self, {"ok": True, "message": f"Замовлення {order_id} виконано"}); return
+            elif action == "no":
+                db_exec("UPDATE orders SET status='canceled' WHERE id=?", (order_id,))
+                _send_tg_message(chat_id, f"❌ Ваше замовлення ({pack}) відхилено. Зверніться в підтримку.")
+                _json_response(self, {"ok": True, "message": f"Замовлення {order_id} відхилено"}); return
+            _json_response(self, {"ok": False, "error": "Невідома дія"}); return
+
+        if path == "/api/admin/toggle-admin":
+            pwd = str(data.get("password", ""))
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            target_id = int(data.get("user_id", 0))
+            action = str(data.get("action", ""))
+            if not target_id:
+                _json_response(self, {"ok": False, "error": "Невірний user_id"}); return
+            if target_id == MY_ID:
+                _json_response(self, {"ok": False, "error": "Не можна змінити власника"}); return
+            if action == "add":
+                db_exec("INSERT OR IGNORE INTO admins (id) VALUES (?)", (target_id,))
+                _json_response(self, {"ok": True, "message": f"Адмін {target_id} доданий"}); return
+            elif action == "remove":
+                db_exec("DELETE FROM admins WHERE id=?", (target_id,))
+                _json_response(self, {"ok": True, "message": f"Адмін {target_id} видалений"}); return
+            _json_response(self, {"ok": False, "error": "Невідома дія"}); return
 
         self.send_response(404); self.end_headers()
 
