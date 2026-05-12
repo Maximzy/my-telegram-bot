@@ -329,6 +329,42 @@ class PolicyHandler(BaseHTTPRequestHandler):
                        "created_at": (r[5] or "")[:16]} for r in rows]
             _json_response(self, {"ok": True, "promos": promos, "bonus_types": BONUS_TYPES}); return
 
+        if path == "/api/reviews":
+            rows = db_query("SELECT rowid, user, text FROM reviews ORDER BY rowid DESC LIMIT 20")
+            reviews = [{"id": r[0], "user": r[1], "text": r[2]} for r in rows]
+            _json_response(self, {"ok": True, "reviews": reviews}); return
+
+        if path == "/api/referral-stats":
+            uid = int(params.get("user_id", 0))
+            refs = db_query("SELECT COUNT(*) FROM referrals WHERE referrer_id=?", (uid,))
+            discounts = db_query("SELECT COUNT(*) FROM ref_discounts WHERE user_id=?", (uid,))
+            invited = refs[0][0] if refs else 0
+            disc_count = discounts[0][0] if discounts else 0
+            _json_response(self, {"ok": True, "invited": invited, "discounts": disc_count}); return
+
+        if path == "/api/admin/reviews":
+            pwd = params.get("password", "")
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            rows = db_query("SELECT rowid, user, text FROM reviews ORDER BY rowid DESC LIMIT 30")
+            reviews = [{"id": r[0], "user": r[1], "text": r[2]} for r in rows]
+            _json_response(self, {"ok": True, "reviews": reviews}); return
+
+        if path == "/api/admin/find":
+            pwd = params.get("password", "")
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            order_id = params.get("order_id", "").strip().upper()
+            if not order_id:
+                _json_response(self, {"ok": False, "error": "Вкажи ID замовлення"}); return
+            row = db_query_one("SELECT id, user, pack, status, chat_id, player_id, created_at, amount FROM orders WHERE id=?", (order_id,))
+            if not row:
+                _json_response(self, {"ok": False, "error": "Замовлення не знайдено"}); return
+            order = {"id": row[0], "user": f"@{row[1]}" if row[1] else str(row[4]),
+                     "pack": row[2], "status": row[3], "chat_id": row[4],
+                     "player_id": row[5], "created_at": (row[6] or "")[:16], "amount": row[7] or "?"}
+            _json_response(self, {"ok": True, "order": order}); return
+
         self.send_response(404); self.end_headers()
 
     def do_POST(self):
@@ -456,6 +492,60 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 _json_response(self, {"ok": False, "error": "Вкажи код"}); return
             db_exec("DELETE FROM promo_codes WHERE code=?", (code,))
             _json_response(self, {"ok": True, "message": f"Промокод {code} видалено"}); return
+
+        if path == "/api/submit-review":
+            user_id = int(data.get("user_id", 0))
+            username = str(data.get("username", "")).strip()
+            text = str(data.get("text", "")).strip()
+            if not text or len(text) < 3:
+                _json_response(self, {"ok": False, "error": "Відгук занадто короткий"}); return
+            if len(text) > 500:
+                _json_response(self, {"ok": False, "error": "Відгук занадто довгий (макс. 500 символів)"}); return
+            user_label_str = f"@{username}" if username else str(user_id)
+            db_exec("INSERT INTO reviews (user, text) VALUES (?,?)", (user_label_str, text))
+            _json_response(self, {"ok": True, "message": "Відгук збережено!"}); return
+
+        if path == "/api/claim-free-uc":
+            user_id = int(data.get("user_id", 0))
+            username = str(data.get("username", ""))
+            player_id = str(data.get("player_id", "")).strip()
+            if not player_id or len(player_id) < 5:
+                _json_response(self, {"ok": False, "error": "Введи правильний ігровий ID"}); return
+            bonus = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type='free_uc_60' AND used=0 LIMIT 1", (user_id,))
+            if not bonus:
+                _json_response(self, {"ok": False, "error": "Бонус 60 UC недоступний"}); return
+            db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (bonus[0],))
+            oid = str(uuid.uuid4())[:8].upper()
+            db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (oid, username, "🎁 60 UC Free (бонус)", "pending", user_id, player_id, created_at_now(), 0, "bonus"))
+            _send_tg_message(MY_ID, f"🎁 БЕЗКОШТОВНІ UC!\n🆔 {oid}\n👤 {'@'+username if username else str(user_id)}\n🎮 ID: {player_id}\n💵 60 UC (безкоштовно)")
+            _json_response(self, {"ok": True, "message": "Заявку прийнято! 60 UC буде нараховано."}); return
+
+        if path == "/api/admin/delete-review":
+            pwd = str(data.get("password", ""))
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            review_id = int(data.get("review_id", 0))
+            if not review_id:
+                _json_response(self, {"ok": False, "error": "Невірний ID"}); return
+            db_exec("DELETE FROM reviews WHERE rowid=?", (review_id,))
+            _json_response(self, {"ok": True, "message": "Відгук видалено"}); return
+
+        if path == "/api/admin/broadcast":
+            pwd = str(data.get("password", ""))
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            message = str(data.get("message", "")).strip()
+            if not message:
+                _json_response(self, {"ok": False, "error": "Повідомлення порожнє"}); return
+            users = [r[0] for r in db_query("SELECT DISTINCT chat_id FROM orders WHERE chat_id IS NOT NULL")]
+            sent = 0
+            for chat_id in users:
+                try:
+                    _send_tg_message(chat_id, message)
+                    sent += 1
+                except: pass
+            _json_response(self, {"ok": True, "message": f"Розсилку надіслано. Отримали: {sent}"}); return
 
         self.send_response(404); self.end_headers()
 

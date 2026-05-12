@@ -7,397 +7,526 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
-  :root {
-    --bg:#0d0608;--bg2:#180b0f;--bg3:#221018;--card:#2a1220;--card2:#331828;
-    --pink:#ff6b9d;--pink2:#ff4081;--red:#c9184a;--red2:#a4133c;--gold:#ffd166;
-    --text:#f5e0e8;--muted:#9b7585;--border:#4a2035;--green:#52d68a;--radius:16px;
-    --blue:#60a5fa;--purple:#a78bfa;
+  :root{
+    --bg:#0d0608;--bg2:#180b0f;--card:#2a1220;--card2:#331828;
+    --pink:#ff6b9d;--pink2:#ff4081;--red:#c9184a;--gold:#ffd166;
+    --text:#f5e0e8;--muted:#9b7585;--border:#4a2035;--green:#52d68a;
+    --blue:#60a5fa;--purple:#a78bfa;--orange:#fb923c;--radius:16px;
   }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-  body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;padding-bottom:80px}
+  body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;padding-bottom:82px}
 
   /* HEADER */
-  .header{background:linear-gradient(135deg,#1a0510 0%,#2d0a1a 50%,#1a0510 100%);padding:14px 20px 12px;text-align:center;position:sticky;top:0;z-index:100;border-bottom:1px solid var(--border);box-shadow:0 4px 20px rgba(201,24,74,.25)}
-  .header-title{font-size:20px;font-weight:900;background:linear-gradient(90deg,var(--pink),var(--gold),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:1px}
-  .header-sub{font-size:10px;color:var(--muted);margin-top:1px;letter-spacing:2px;text-transform:uppercase}
-  .header-deco{font-size:12px;margin-top:4px}
+  .hdr{background:linear-gradient(135deg,#1a0510,#2d0a1a,#1a0510);padding:13px 20px 11px;text-align:center;position:sticky;top:0;z-index:100;border-bottom:1px solid var(--border);box-shadow:0 4px 20px rgba(201,24,74,.25)}
+  .hdr-title{font-size:19px;font-weight:900;background:linear-gradient(90deg,var(--pink),var(--gold),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:1px}
+  .hdr-sub{font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+  .hdr-deco{font-size:11px;margin-top:3px}
 
-  /* TABS */
-  .tabs{position:fixed;bottom:0;left:0;right:0;background:#1a0810;border-top:1px solid var(--border);display:flex;padding:6px 2px env(safe-area-inset-bottom);z-index:100}
-  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 1px;cursor:pointer;border-radius:8px;transition:all .2s;border:none;background:none;color:var(--muted);font-family:'Nunito',sans-serif}
+  /* BOTTOM TABS */
+  .tabs{position:fixed;bottom:0;left:0;right:0;background:#130810;border-top:1px solid var(--border);display:flex;padding:5px 2px env(safe-area-inset-bottom);z-index:100}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 1px;cursor:pointer;border-radius:8px;border:none;background:none;color:var(--muted);font-family:'Nunito',sans-serif;transition:color .2s}
   .tab.active{color:var(--pink)}
+  .tab.at{color:#a78bfa}
+  .tab.at.active{color:#c4b5fd}
   .tab .ti{font-size:18px}
   .tab .tl{font-size:9px;font-weight:700;letter-spacing:.3px}
-  .tab.admin-tab{color:#a78bfa}
-  .tab.admin-tab.active{color:#c4b5fd}
 
   /* SCREENS */
-  .screen{display:none;padding:14px}
+  .screen{display:none;padding:13px}
   .screen.active{display:block}
 
   /* HERO */
-  .hero{background:linear-gradient(135deg,#2d0a1a,#1a0510);border:1px solid var(--border);border-radius:20px;padding:18px;margin-bottom:14px;text-align:center;position:relative;overflow:hidden}
-  .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 30% 50%,rgba(255,107,157,.12) 0%,transparent 60%),radial-gradient(circle at 70% 50%,rgba(201,24,74,.1) 0%,transparent 60%);pointer-events:none}
-  .hero-emoji{font-size:42px;display:block;margin-bottom:6px}
-  .hero h2{font-size:17px;font-weight:800;margin-bottom:3px}
-  .hero p{font-size:12px;color:var(--muted);line-height:1.4}
-  .bamboo-deco{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:24px;opacity:.2;line-height:1}
+  .hero{background:linear-gradient(135deg,#2d0a1a,#1a0510);border:1px solid var(--border);border-radius:20px;padding:16px;margin-bottom:12px;text-align:center;position:relative;overflow:hidden}
+  .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 30% 50%,rgba(255,107,157,.12),transparent 60%),radial-gradient(circle at 70% 50%,rgba(201,24,74,.1),transparent 60%);pointer-events:none}
+  .hero-em{font-size:38px;display:block;margin-bottom:5px}
+  .hero h2{font-size:16px;font-weight:900;margin-bottom:2px}
+  .hero p{font-size:11px;color:var(--muted);line-height:1.4}
+  .hero.blue{background:linear-gradient(135deg,#0a1a2d,#102040)}
+  .hero.gold{background:linear-gradient(135deg,#1a1a0a,#2d2a0a)}
+  .hero.purple{background:linear-gradient(135deg,#0d0a1a,#1a1030)}
+  .hero.green{background:linear-gradient(135deg,#0a1a10,#102918)}
+  .bdeco{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:22px;opacity:.18;line-height:1.2}
+
+  /* SUB-TABS */
+  .stabs{display:flex;gap:5px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+  .stabs::-webkit-scrollbar{display:none}
+  .stab{flex-shrink:0;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-family:'Nunito',sans-serif;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .2s}
+  .stab.active{background:linear-gradient(135deg,#3d1525,#2a1220);border-color:var(--purple);color:var(--purple)}
 
   /* SECTION TITLE */
-  .stitle{font-size:11px;font-weight:800;color:var(--pink);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px}
-  .stitle::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent)}
+  .st{font-size:10px;font-weight:800;color:var(--pink);letter-spacing:2px;text-transform:uppercase;margin-bottom:7px;display:flex;align-items:center;gap:5px}
+  .st::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent)}
 
   /* CATEGORY GRID */
-  .cat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
-  .cat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 6px;text-align:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
-  .cat-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent,rgba(255,107,157,.05))}
-  .cat-card:active{transform:scale(.95)}
-  .cat-card.selected{border-color:var(--pink);background:linear-gradient(135deg,#3d1525,#2a1220);box-shadow:0 0 18px rgba(255,107,157,.2)}
-  .cat-icon{font-size:26px;display:block;margin-bottom:5px}
-  .cat-name{font-size:12px;font-weight:700}
-  .cat-sub{font-size:10px;color:var(--muted);margin-top:1px}
+  .cg{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:14px}
+  .cc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:13px 5px;text-align:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+  .cc:active{transform:scale(.95)}
+  .cc.sel{border-color:var(--pink);background:linear-gradient(135deg,#3d1525,#2a1220);box-shadow:0 0 16px rgba(255,107,157,.2)}
+  .cc-ic{font-size:24px;display:block;margin-bottom:4px}
+  .cc-n{font-size:11px;font-weight:700}
+  .cc-s{font-size:9px;color:var(--muted);margin-top:1px}
 
   /* PRODUCT LIST */
-  .plist{display:flex;flex-direction:column;gap:7px;margin-bottom:16px}
-  .pitem{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:all .2s}
-  .pitem:active{transform:scale(.98)}
-  .pitem.selected{border-color:var(--pink);background:linear-gradient(135deg,#3d1525,#2a1220);box-shadow:0 0 14px rgba(255,107,157,.2)}
-  .pname{font-size:13px;font-weight:700}
-  .pprice{font-size:15px;font-weight:900;color:var(--gold);white-space:nowrap}
+  .pl{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+  .pi{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:11px 13px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:all .2s}
+  .pi:active{transform:scale(.98)}
+  .pi.sel{border-color:var(--pink);background:linear-gradient(135deg,#3d1525,#2a1220);box-shadow:0 0 12px rgba(255,107,157,.2)}
+  .pi-n{font-size:13px;font-weight:700}
+  .pi-p{font-size:14px;font-weight:900;color:var(--gold);white-space:nowrap}
 
   /* FORM */
-  .fgroup{margin-bottom:12px}
-  .flabel{font-size:11px;font-weight:700;color:var(--pink);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px;display:block}
-  .finput{width:100%;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px 14px;color:var(--text);font-family:'Nunito',sans-serif;font-size:14px;font-weight:600;outline:none;transition:border-color .2s}
-  .finput:focus{border-color:var(--pink)}
-  .finput::placeholder{color:var(--muted)}
+  .fg{margin-bottom:11px}
+  .fl{font-size:10px;font-weight:800;color:var(--pink);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;display:block}
+  .fi{width:100%;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 13px;color:var(--text);font-family:'Nunito',sans-serif;font-size:14px;font-weight:600;outline:none;transition:border-color .2s}
+  .fi:focus{border-color:var(--pink)}
+  .fi::placeholder{color:var(--muted)}
+  select.fi{appearance:none;cursor:pointer}
+  textarea.fi{resize:vertical;min-height:80px;line-height:1.4}
 
   /* BUTTONS */
-  .btn{width:100%;padding:14px;border-radius:13px;border:none;font-family:'Nunito',sans-serif;font-size:14px;font-weight:800;cursor:pointer;transition:all .2s;letter-spacing:.5px}
+  .btn{width:100%;padding:13px;border-radius:13px;border:none;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;cursor:pointer;transition:all .2s;letter-spacing:.4px;display:block}
   .btn:active{transform:scale(.97)}
   .btn:disabled{opacity:.5;pointer-events:none}
-  .btn-primary{background:linear-gradient(135deg,var(--red),var(--pink2));color:#fff;box-shadow:0 4px 18px rgba(201,24,74,.4)}
-  .btn-secondary{background:var(--card2);color:var(--text);border:1px solid var(--border);margin-top:8px}
-  .btn-green{background:linear-gradient(135deg,#2d8a5e,#52d68a);color:#fff;box-shadow:0 4px 18px rgba(82,214,138,.3)}
-  .btn-red{background:linear-gradient(135deg,#7f1d1d,#ef4444);color:#fff}
-  .btn-purple{background:linear-gradient(135deg,#4c1d95,#8b5cf6);color:#fff;box-shadow:0 4px 18px rgba(139,92,246,.3)}
-  .btn-sm{padding:8px 14px;font-size:12px;border-radius:10px;width:auto}
-
-  /* CONFIRM BOX */
-  .cbox{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:16px;margin-bottom:14px}
-  .crow{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)}
-  .crow:last-child{border-bottom:none}
-  .crow .lbl{font-size:12px;color:var(--muted)}
-  .crow .val{font-size:13px;font-weight:700}
-  .crow .val.price{color:var(--gold);font-size:17px;font-weight:900}
-
-  /* PAYMENT CARD */
-  .pay-card{background:linear-gradient(135deg,#1a0a3d,#2d1a5e);border:1px solid #4a3080;border-radius:20px;padding:20px;text-align:center;margin-bottom:14px}
-  .card-num{font-size:18px;font-weight:900;letter-spacing:4px;color:#fff;margin:10px 0;cursor:pointer;background:rgba(255,255,255,.1);padding:10px;border-radius:10px;transition:background .2s}
-  .card-num:active{background:rgba(255,255,255,.2)}
-  .copy-hint{font-size:10px;color:rgba(255,255,255,.4)}
-
-  /* ORDER CARDS */
-  .ocard{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px}
-  .ohead{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-  .opack{font-size:13px;font-weight:700}
-  .oid{font-size:10px;color:var(--muted);margin-top:1px}
-  .ometa{font-size:11px;color:var(--muted)}
-  .badge{padding:3px 9px;border-radius:20px;font-size:10px;font-weight:700}
-  .badge-p{background:rgba(255,214,0,.15);color:var(--gold)}
-  .badge-d{background:rgba(82,214,138,.15);color:var(--green)}
-  .badge-c{background:rgba(255,107,107,.15);color:#ff6b6b}
-
-  /* TOP */
-  .top-item{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
-  .top-rank{font-size:20px;font-weight:900;min-width:36px;text-align:center}
-  .top-rank.r1{color:var(--gold)}
-  .top-rank.r2{color:#c0c0c0}
-  .top-rank.r3{color:#cd7f32}
-  .top-name{font-size:13px;font-weight:700;flex:1}
-  .top-sum{font-size:14px;font-weight:900;color:var(--gold)}
+  .btn-p{background:linear-gradient(135deg,var(--red),var(--pink2));color:#fff;box-shadow:0 4px 16px rgba(201,24,74,.4)}
+  .btn-s{background:var(--card2);color:var(--text);border:1px solid var(--border);margin-top:7px}
+  .btn-g{background:linear-gradient(135deg,#2d8a5e,#52d68a);color:#fff;box-shadow:0 4px 14px rgba(82,214,138,.3)}
+  .btn-r{background:linear-gradient(135deg,#7f1d1d,#ef4444);color:#fff}
+  .btn-u{background:linear-gradient(135deg,#4c1d95,#8b5cf6);color:#fff;box-shadow:0 4px 14px rgba(139,92,246,.3)}
+  .btn-b{background:linear-gradient(135deg,#0c4a6e,#0284c7);color:#fff}
+  .btn-o{background:linear-gradient(135deg,#7c2d12,#ea580c);color:#fff}
+  .btn-sm{padding:7px 12px;font-size:11px;border-radius:9px;width:auto;display:inline-block}
 
   /* STEP DOTS */
-  .sdots{display:flex;justify-content:center;gap:5px;margin-bottom:14px}
-  .sdot{width:7px;height:7px;border-radius:50%;background:var(--border);transition:all .3s}
-  .sdot.active{background:var(--pink);width:20px;border-radius:4px}
-  .sdot.done{background:var(--green)}
+  .dots{display:flex;justify-content:center;gap:5px;margin-bottom:12px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--border);transition:all .3s}
+  .dot.a{background:var(--pink);width:18px;border-radius:4px}
+  .dot.d{background:var(--green)}
+
+  /* CONFIRM BOX */
+  .cb{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px;margin-bottom:12px}
+  .cr{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
+  .cr:last-child{border-bottom:none}
+  .cr .lb{font-size:11px;color:var(--muted)}
+  .cr .vl{font-size:13px;font-weight:700}
+  .cr .vl.pr{color:var(--gold);font-size:16px;font-weight:900}
+
+  /* PAY CARD */
+  .pc{background:linear-gradient(135deg,#1a0a3d,#2d1a5e);border:1px solid #4a3080;border-radius:18px;padding:18px;text-align:center;margin-bottom:12px}
+  .cn{font-size:17px;font-weight:900;letter-spacing:3px;color:#fff;margin:9px 0;cursor:pointer;background:rgba(255,255,255,.1);padding:9px;border-radius:9px;transition:background .2s}
+  .cn:active{background:rgba(255,255,255,.2)}
+  .ch{font-size:10px;color:rgba(255,255,255,.4)}
+
+  /* CARDS */
+  .oc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:11px 13px;margin-bottom:7px}
+  .oh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px}
+  .on{font-size:12px;font-weight:700}
+  .oid{font-size:10px;color:var(--muted);margin-top:1px}
+  .om{font-size:10px;color:var(--muted)}
+  .badge{padding:3px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap}
+  .bp{background:rgba(255,214,0,.15);color:var(--gold)}
+  .bd{background:rgba(82,214,138,.15);color:var(--green)}
+  .bc{background:rgba(255,107,107,.15);color:#ff6b6b}
+
+  /* TOP */
+  .ti2{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:11px 13px;margin-bottom:7px;display:flex;align-items:center;gap:11px}
+  .tr{font-size:19px;font-weight:900;min-width:34px;text-align:center}
+  .tr.r1{color:var(--gold)} .tr.r2{color:#c0c0c0} .tr.r3{color:#cd7f32}
+  .tn{font-size:12px;font-weight:700;flex:1}
+  .ts{font-size:13px;font-weight:900;color:var(--gold)}
 
   /* STAT GRID */
-  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
-  .stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px;text-align:center}
-  .stat-val{font-size:22px;font-weight:900;margin-bottom:3px}
-  .stat-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
-  .stat-card.green .stat-val{color:var(--green)}
-  .stat-card.gold .stat-val{color:var(--gold)}
-  .stat-card.blue .stat-val{color:var(--blue)}
-  .stat-card.red .stat-val{color:#ff6b6b}
+  .sg{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px}
+  .sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:13px;text-align:center}
+  .sv{font-size:21px;font-weight:900;margin-bottom:2px}
+  .sl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+  .sc.g .sv{color:var(--green)} .sc.go .sv{color:var(--gold)} .sc.b .sv{color:var(--blue)} .sc.r .sv{color:#ff6b6b} .sc.o .sv{color:var(--orange)}
 
-  /* ADMIN TABS */
-  .atabs{display:flex;gap:6px;margin-bottom:14px}
-  .atab{flex:1;padding:9px 4px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-family:'Nunito',sans-serif;font-size:11px;font-weight:700;cursor:pointer;text-align:center;transition:all .2s}
-  .atab.active{background:linear-gradient(135deg,#3d1525,#2a1220);border-color:var(--purple);color:var(--purple)}
+  /* INFO BLOCK */
+  .ib{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px;margin-bottom:9px}
+  .ib h3{font-size:13px;font-weight:800;color:var(--pink);margin-bottom:5px;display:flex;align-items:center;gap:5px}
+  .ib p{font-size:11px;color:var(--muted);line-height:1.6}
+  .ib a{color:var(--blue);text-decoration:none;font-weight:700}
 
-  /* ADMIN ORDER CARD */
-  .aocard{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px}
-  .aohead{font-size:13px;font-weight:700;margin-bottom:6px;color:var(--text)}
-  .aometa{font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5}
-  .aobtns{display:flex;gap:6px}
+  /* REF BOX */
+  .rb{background:linear-gradient(135deg,#1a0510,#2d1525);border:1px solid var(--border);border-radius:18px;padding:14px;margin-bottom:12px;text-align:center}
+  .rl{background:var(--card2);border:1px solid var(--border);border-radius:9px;padding:9px;font-size:11px;color:var(--pink);word-break:break-all;margin:8px 0;cursor:pointer;font-weight:700}
+  .rs{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}
+  .rsc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:11px;text-align:center}
+  .rsv{font-size:20px;font-weight:900;color:var(--pink)}
+  .rsl{font-size:10px;color:var(--muted)}
 
-  /* INFO SECTION */
-  .isec{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:16px;margin-bottom:10px}
-  .isec h3{font-size:14px;font-weight:800;color:var(--pink);margin-bottom:6px;display:flex;align-items:center;gap:6px}
-  .isec p{font-size:12px;color:var(--muted);line-height:1.6}
+  /* REVIEW */
+  .rv{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:11px 13px;margin-bottom:7px}
+  .rv-u{font-size:11px;font-weight:700;color:var(--pink);margin-bottom:3px}
+  .rv-t{font-size:12px;color:var(--text);line-height:1.5}
 
-  /* REF */
-  .ref-box{background:linear-gradient(135deg,#1a0510,#2d1525);border:1px solid var(--border);border-radius:20px;padding:16px;margin-bottom:14px;text-align:center}
-  .ref-link{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:10px;font-size:12px;color:var(--pink);word-break:break-all;margin:10px 0;cursor:pointer;font-weight:700}
-
-  /* PASSWORD SCREEN */
-  .pwd-screen{text-align:center;padding:30px 0}
-  .pwd-icon{font-size:52px;display:block;margin-bottom:12px}
-  .pwd-title{font-size:18px;font-weight:900;margin-bottom:4px;color:var(--purple)}
-  .pwd-sub{font-size:12px;color:var(--muted);margin-bottom:20px}
+  /* POLICY */
+  .pol{font-size:11px;color:var(--muted);line-height:1.7;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px;margin-bottom:9px}
+  .pol h4{font-size:12px;font-weight:800;color:var(--text);margin-bottom:3px;margin-top:10px}
+  .pol h4:first-child{margin-top:0}
 
   /* SUCCESS */
-  .success-s{text-align:center;padding:40px 16px;display:none}
-  .success-s.active{display:block}
-  .sicon{font-size:60px;display:block;margin-bottom:14px}
-  .stitle2{font-size:20px;font-weight:900;color:var(--green);margin-bottom:6px}
-  .ssub{font-size:13px;color:var(--muted);line-height:1.5}
+  .succ{text-align:center;padding:36px 14px;display:none}
+  .succ.a{display:block}
+  .si{font-size:56px;display:block;margin-bottom:12px}
+  .st2{font-size:19px;font-weight:900;color:var(--green);margin-bottom:5px}
+  .ss{font-size:12px;color:var(--muted);line-height:1.5}
+
+  /* PWD GATE */
+  .pwg{text-align:center;padding:28px 0}
+  .pwi{font-size:50px;display:block;margin-bottom:10px}
+  .pwt{font-size:17px;font-weight:900;margin-bottom:3px;color:var(--purple)}
+  .pws{font-size:11px;color:var(--muted);margin-bottom:18px}
+
+  /* FIND RESULT */
+  .fr{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:13px;margin-top:10px}
+  .frl{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px}
+  .frl:last-child{border-bottom:none}
+  .frk{color:var(--muted)}
+  .frv{font-weight:700;text-align:right;max-width:60%}
 
   /* TOAST */
-  .toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%) translateY(16px);background:#1a2a1a;border:1px solid var(--green);color:var(--green);padding:10px 20px;border-radius:30px;font-weight:700;font-size:13px;opacity:0;transition:all .3s;white-space:nowrap;z-index:300}
-  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast{position:fixed;bottom:94px;left:50%;transform:translateX(-50%) translateY(14px);background:#1a2a1a;border:1px solid var(--green);color:var(--green);padding:9px 18px;border-radius:30px;font-weight:700;font-size:12px;opacity:0;transition:all .3s;white-space:nowrap;z-index:300;max-width:88vw;text-align:center}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
   .toast.err{background:#2a1a1a;border-color:#ff6b6b;color:#ff6b6b}
 
   /* LOADER / EMPTY */
-  .loader{text-align:center;padding:36px;color:var(--muted);font-size:12px}
-  .lspin{display:block;font-size:28px;animation:spin 1s linear infinite;margin-bottom:8px}
-  @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
-  .empty{text-align:center;padding:40px 16px;color:var(--muted)}
-  .eicon{font-size:44px;display:block;margin-bottom:10px}
-  .etitle{font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px}
-  .esub{font-size:12px}
+  .ld{text-align:center;padding:32px;color:var(--muted);font-size:11px}
+  .ls{display:block;font-size:26px;animation:sp 1s linear infinite;margin-bottom:7px}
+  @keyframes sp{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+  .emp{text-align:center;padding:36px 14px;color:var(--muted)}
+  .ei{font-size:40px;display:block;margin-bottom:8px}
+  .et{font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px}
+  .es{font-size:11px}
 
   /* SAKURA */
-  .sakura{position:fixed;top:-20px;animation:fall linear forwards;pointer-events:none;z-index:999;opacity:.7}
-  @keyframes fall{0%{transform:translateY(0) rotate(0);opacity:.7}100%{transform:translateY(110vh) rotate(360deg);opacity:0}}
+  .sk{position:fixed;top:-20px;animation:fl linear forwards;pointer-events:none;z-index:999;opacity:.7}
+  @keyframes fl{0%{transform:translateY(0) rotate(0);opacity:.7}100%{transform:translateY(110vh) rotate(360deg);opacity:0}}
 
-  /* DIVIDER */
-  .div{height:1px;background:var(--border);margin:12px 0}
-  .mb8{margin-bottom:8px}
-  .mb12{margin-bottom:12px}
+  .div{height:1px;background:var(--border);margin:10px 0}
+  .mb8{margin-bottom:8px} .mb12{margin-bottom:12px} .mt8{margin-top:8px} .mt12{margin-top:12px}
+  .row{display:flex;gap:7px}
+  .row .btn{flex:1}
 </style>
 </head>
 <body>
 
-<div class="header">
-  <div class="header-title">🌸 UC Shop — Nezuko</div>
-  <div class="header-sub">PUBG Mobile Store</div>
-  <div class="header-deco">🎋 ❤️ 🎋</div>
+<div class="hdr">
+  <div class="hdr-title">🌸 UC Shop — Nezuko</div>
+  <div class="hdr-sub">PUBG Mobile Store</div>
+  <div class="hdr-deco">🎋 ❤️ 🎋</div>
 </div>
 
-<!-- ===== SHOP ===== -->
-<div class="screen active" id="screen-shop">
+<!-- ═══════════════ МАГАЗИН ═══════════════ -->
+<div class="screen active" id="sc-shop">
 
-  <!-- Step: Category -->
-  <div id="step-category">
+  <div id="sp-cat">
     <div class="hero">
-      <span class="hero-emoji">💰</span>
+      <span class="hero-em">💰</span>
       <h2>Поповнення UC</h2>
-      <p>Вибери категорію та отримай UC на акаунт швидко і надійно</p>
-      <div class="bamboo-deco">🎋<br>🎋<br>🎋</div>
+      <p>Вибери категорію та отримай UC швидко і надійно</p>
+      <div class="bdeco">🎋<br>🎋<br>🎋</div>
     </div>
-    <div class="sdots"><div class="sdot active"></div><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div></div>
-    <div class="stitle">🌸 Категорія</div>
-    <div class="cat-grid">
-      <div class="cat-card" onclick="selectCat('uc',this)"><span class="cat-icon">💎</span><div class="cat-name">UC</div><div class="cat-sub">30–81000 UC</div></div>
-      <div class="cat-card" onclick="selectCat('prime',this)"><span class="cat-icon">👑</span><div class="cat-name">Prime</div><div class="cat-sub">1–12 міс.</div></div>
-      <div class="cat-card" onclick="selectCat('prime_plus',this)"><span class="cat-icon">💫</span><div class="cat-name">Prime+</div><div class="cat-sub">1–12 міс.</div></div>
+    <div class="dots"><div class="dot a"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+    <div class="st">🌸 Категорія</div>
+    <div class="cg">
+      <div class="cc" onclick="selCat('uc',this)"><span class="cc-ic">💎</span><div class="cc-n">UC</div><div class="cc-s">30–81000 UC</div></div>
+      <div class="cc" onclick="selCat('prime',this)"><span class="cc-ic">👑</span><div class="cc-n">Prime</div><div class="cc-s">1–12 міс.</div></div>
+      <div class="cc" onclick="selCat('prime_plus',this)"><span class="cc-ic">💫</span><div class="cc-n">Prime+</div><div class="cc-s">1–12 міс.</div></div>
     </div>
   </div>
 
-  <!-- Step: Products -->
-  <div id="step-product" style="display:none">
-    <div class="sdots"><div class="sdot done"></div><div class="sdot active"></div><div class="sdot"></div><div class="sdot"></div></div>
-    <div class="stitle">🛍 Оберіть пакет</div>
-    <div class="plist" id="product-list"></div>
-    <button class="btn btn-secondary" onclick="showStep('category')">← Назад</button>
+  <div id="sp-prod" style="display:none">
+    <div class="dots"><div class="dot d"></div><div class="dot a"></div><div class="dot"></div><div class="dot"></div></div>
+    <div class="st">🛍 Оберіть пакет</div>
+    <div class="pl" id="prod-list"></div>
+    <button class="btn btn-s" onclick="sStep('cat')">← Назад</button>
   </div>
 
-  <!-- Step: Player ID -->
-  <div id="step-playerid" style="display:none">
-    <div class="sdots"><div class="sdot done"></div><div class="sdot done"></div><div class="sdot active"></div><div class="sdot"></div></div>
-    <div class="stitle">🎮 Ігровий ID</div>
-    <div class="cbox">
-      <div class="crow"><span class="lbl">Пакет</span><span class="val" id="cp-pack">—</span></div>
-      <div class="crow"><span class="lbl">Сума</span><span class="val price" id="cp-price">—</span></div>
+  <div id="sp-pid" style="display:none">
+    <div class="dots"><div class="dot d"></div><div class="dot d"></div><div class="dot a"></div><div class="dot"></div></div>
+    <div class="st">🎮 Ігровий ID</div>
+    <div class="cb">
+      <div class="cr"><span class="lb">Пакет</span><span class="vl" id="cp-pk">—</span></div>
+      <div class="cr"><span class="lb">Сума</span><span class="vl pr" id="cp-pr">—</span></div>
     </div>
-    <div class="fgroup">
-      <label class="flabel">Твій ігровий ID в PUBG Mobile</label>
-      <input class="finput" id="player-id" type="number" placeholder="Наприклад: 5123456789" inputmode="numeric">
+    <div class="fg">
+      <label class="fl">Твій ігровий ID в PUBG Mobile</label>
+      <input class="fi" id="pl-id" type="number" placeholder="Наприклад: 5123456789" inputmode="numeric">
     </div>
-    <button class="btn btn-primary" onclick="goConfirm()">Далі →</button>
-    <button class="btn btn-secondary" onclick="showStep('product')">← Назад</button>
+    <button class="btn btn-p" onclick="goConf()">Далі →</button>
+    <button class="btn btn-s" onclick="sStep('prod')">← Назад</button>
   </div>
 
-  <!-- Step: Confirm + Pay -->
-  <div id="step-confirm" style="display:none">
-    <div class="sdots"><div class="sdot done"></div><div class="sdot done"></div><div class="sdot done"></div><div class="sdot active"></div></div>
-    <div class="stitle">💳 Оплата</div>
-    <div class="cbox">
-      <div class="crow"><span class="lbl">Пакет</span><span class="val" id="cf-pack">—</span></div>
-      <div class="crow"><span class="lbl">Ігровий ID</span><span class="val" id="cf-id">—</span></div>
-      <div class="crow"><span class="lbl">До сплати</span><span class="val price" id="cf-price">—</span></div>
+  <div id="sp-pay" style="display:none">
+    <div class="dots"><div class="dot d"></div><div class="dot d"></div><div class="dot d"></div><div class="dot a"></div></div>
+    <div class="st">💳 Оплата</div>
+    <div class="cb">
+      <div class="cr"><span class="lb">Пакет</span><span class="vl" id="cf-pk">—</span></div>
+      <div class="cr"><span class="lb">Ігровий ID</span><span class="vl" id="cf-id">—</span></div>
+      <div class="cr"><span class="lb">До сплати</span><span class="vl pr" id="cf-pr">—</span></div>
     </div>
-    <div class="pay-card">
-      <div style="font-size:11px;color:rgba(255,255,255,.5);letter-spacing:2px;text-transform:uppercase;">Картка для оплати</div>
-      <div class="card-num" onclick="copyCard()">4874 0700 2036 7247</div>
-      <div class="copy-hint">👆 Натисніть щоб скопіювати</div>
+    <div class="pc">
+      <div style="font-size:10px;color:rgba(255,255,255,.5);letter-spacing:2px;text-transform:uppercase">Картка для оплати</div>
+      <div class="cn" onclick="cpCard()">4874 0700 2036 7247</div>
+      <div class="ch">👆 Натисніть щоб скопіювати</div>
     </div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;text-align:center;line-height:1.5;">Після оплати натисни кнопку нижче.<br>Адмін підтвердить і нарахує UC.</div>
-    <button class="btn btn-green" id="paid-btn" onclick="confirmPay()">✅ Я оплатив!</button>
-    <button class="btn btn-secondary" onclick="showStep('playerid')">← Назад</button>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;text-align:center;line-height:1.5">Після оплати натисни кнопку нижче.<br>Адмін підтвердить і нарахує UC.</div>
+    <button class="btn btn-g" id="paid-btn" onclick="doPay()">✅ Я оплатив!</button>
+    <button class="btn btn-s" onclick="sStep('pid')">← Назад</button>
   </div>
 
-  <!-- Success -->
-  <div class="success-s" id="step-success">
-    <span class="sicon">🌸</span>
-    <div class="stitle2">Дякуємо!</div>
-    <div class="ssub">Твоє замовлення прийнято!<br>Адмін підтвердить та нарахує UC.<br><br>Слідкуй за статусом у розділі <strong>Замовлення</strong> 📋</div>
-    <button class="btn btn-primary" style="margin-top:22px" onclick="resetShop()">🛍 Нове замовлення</button>
+  <div class="succ" id="sp-ok">
+    <span class="si">🌸</span>
+    <div class="st2">Дякуємо!</div>
+    <div class="ss">Твоє замовлення прийнято!<br>Адмін підтвердить та нарахує UC.<br><br>Слідкуй у розділі <strong>Замовлення</strong> 📋</div>
+    <button class="btn btn-p" style="margin-top:20px" onclick="rstShop()">🛍 Нове замовлення</button>
   </div>
 
 </div>
 
-<!-- ===== ORDERS ===== -->
-<div class="screen" id="screen-orders">
+<!-- ═══════════════ ЗАМОВЛЕННЯ ═══════════════ -->
+<div class="screen" id="sc-orders">
   <div class="hero">
-    <span class="hero-emoji">📋</span>
+    <span class="hero-em">📋</span>
     <h2>Мої замовлення</h2>
     <p>Слідкуй за статусом своїх покупок</p>
   </div>
-  <div class="stitle">📦 Останні замовлення</div>
-  <div id="orders-list"><div class="loader"><span class="lspin">🌸</span>Завантаження...</div></div>
+  <div class="st">📦 Останні замовлення</div>
+  <div id="ord-list"><div class="ld"><span class="ls">🌸</span>Завантаження...</div></div>
 </div>
 
-<!-- ===== PROMO ===== -->
-<div class="screen" id="screen-promo">
-  <div class="hero">
-    <span class="hero-emoji">🎁</span>
-    <h2>Промокод</h2>
-    <p>Введи промокод щоб отримати знижку або бонус</p>
+<!-- ═══════════════ СЕРВІСИ ═══════════════ -->
+<div class="screen" id="sc-serv">
+  <div class="stabs">
+    <button class="stab active" id="sv-bonus" onclick="sTab('bonus')">🎁 Бонуси</button>
+    <button class="stab" id="sv-ref" onclick="sTab('ref')">👥 Реферал</button>
+    <button class="stab" id="sv-rev" onclick="sTab('rev')">🌟 Відгуки</button>
+    <button class="stab" id="sv-supp" onclick="sTab('supp')">🆘 Підтримка</button>
+    <button class="stab" id="sv-pol" onclick="sTab('pol')">📄 Політика</button>
+    <button class="stab" id="sv-help" onclick="sTab('help')">ℹ️ Допомога</button>
   </div>
-  <div class="cbox mb12">
-    <div class="fgroup" style="margin-bottom:10px">
-      <label class="flabel">Твій промокод</label>
-      <input class="finput" id="promo-input" type="text" placeholder="NEZUKO10" style="text-transform:uppercase;letter-spacing:2px;text-align:center;font-size:17px;font-weight:900">
+
+  <!-- Бонуси -->
+  <div id="sv-p-bonus">
+    <div class="hero">
+      <span class="hero-em">🎁</span>
+      <h2>Промокод та бонуси</h2>
+      <p>Активуй промокод або отримай бонус</p>
     </div>
-    <button class="btn btn-primary" onclick="activatePromo()">🎁 Активувати</button>
+    <div class="cb mb12">
+      <div class="fg" style="margin-bottom:9px">
+        <label class="fl">Твій промокод</label>
+        <input class="fi" id="promo-in" type="text" placeholder="NEZUKO10" style="text-transform:uppercase;letter-spacing:2px;text-align:center;font-size:16px;font-weight:900">
+      </div>
+      <button class="btn btn-p" onclick="actPromo()">🎁 Активувати</button>
+    </div>
+    <div class="st">✨ Мої активні бонуси</div>
+    <div id="bon-list"><div class="ld"><span class="ls">🌸</span>Завантаження...</div></div>
   </div>
 
-  <div class="stitle">🌸 Мої бонуси</div>
-  <div id="bonuses-list"><div class="loader"><span class="lspin">🌸</span>Завантаження...</div></div>
-
-  <div class="div"></div>
-  <div class="stitle">👥 Реферальна програма</div>
-  <div class="ref-box">
-    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Твоє реферальне посилання:</div>
-    <div class="ref-link" id="ref-link" onclick="copyRef()">Завантаження...</div>
-    <div style="font-size:10px;color:var(--muted)">👆 Натисніть щоб скопіювати</div>
-    <button class="btn btn-primary" style="margin-top:12px" onclick="shareRef()">📤 Поділитися</button>
+  <!-- Реферал -->
+  <div id="sv-p-ref" style="display:none">
+    <div class="hero">
+      <span class="hero-em">👥</span>
+      <h2>Реферальна програма</h2>
+      <p>Запрошуй друзів і заробляй знижки</p>
+    </div>
+    <div class="rb">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:5px">Твоє реферальне посилання:</div>
+      <div class="rl" id="ref-lnk" onclick="cpRef()">Завантаження...</div>
+      <div style="font-size:9px;color:var(--muted)">👆 Натисни щоб скопіювати</div>
+      <div class="rs" id="ref-stats">
+        <div class="rsc"><div class="rsv" id="rs-inv">—</div><div class="rsl">Запрошено</div></div>
+        <div class="rsc"><div class="rsv" id="rs-disc">—</div><div class="rsl">Знижки 1%</div></div>
+      </div>
+      <button class="btn btn-p mt12" onclick="shrRef()">📤 Поділитися</button>
+    </div>
+    <div class="ib">
+      <h3>🎋 Як це працює</h3>
+      <p>1. Поділись посиланням з другом<br>2. Друг реєструється через твоє посилання<br>3. Коли друг робить першу покупку — ти отримуєш знижку 1%<br>4. Знижки накопичуються і застосовуються автоматично!</p>
+    </div>
   </div>
-  <div class="isec">
-    <h3>🎋 Як це працює</h3>
-    <p>1. Поділись посиланням з другом<br>2. Друг реєструється через твоє посилання<br>3. Коли друг робить першу покупку — ти отримуєш знижку 1%<br>4. Знижки накопичуються і застосовуються автоматично!</p>
+
+  <!-- Відгуки -->
+  <div id="sv-p-rev" style="display:none">
+    <div class="hero">
+      <span class="hero-em">🌟</span>
+      <h2>Відгуки</h2>
+      <p>Читай відгуки та залишай свій</p>
+    </div>
+    <div class="cb mb12">
+      <div class="fg" style="margin-bottom:8px">
+        <label class="fl">Твій відгук</label>
+        <textarea class="fi" id="rev-txt" placeholder="Напиши що думаєш про магазин..."></textarea>
+      </div>
+      <button class="btn btn-p" onclick="sbmRev()">✍️ Відправити відгук</button>
+    </div>
+    <div class="st">🌟 Останні відгуки</div>
+    <div id="rev-list"><div class="ld"><span class="ls">🌸</span>Завантаження...</div></div>
+  </div>
+
+  <!-- Підтримка -->
+  <div id="sv-p-supp" style="display:none">
+    <div class="hero green">
+      <span class="hero-em">🆘</span>
+      <h2>Підтримка</h2>
+      <p>Наш менеджер завжди готовий допомогти</p>
+    </div>
+    <div class="ib">
+      <h3>👨‍💻 Менеджер</h3>
+      <p>Зв'яжись з менеджером у Telegram:<br><a href="https://t.me/Manager_Nezuko" target="_blank">@Manager_Nezuko</a></p>
+    </div>
+    <div class="ib">
+      <h3>⏰ Час роботи</h3>
+      <p>Ми відповідаємо з 9:00 до 22:00 щодня.<br>Намагаємося відповідати якнайшвидше.</p>
+    </div>
+    <div class="ib">
+      <h3>📝 Важливо</h3>
+      <p>Перед зверненням перевір статус замовлення в розділі «Замовлення». Якщо пройшло більше 10 хвилин після оплати — сміливо пиши менеджеру.</p>
+    </div>
+    <a href="https://t.me/Manager_Nezuko" target="_blank">
+      <button class="btn btn-g" style="text-decoration:none">💬 Написати менеджеру</button>
+    </a>
+  </div>
+
+  <!-- Політика -->
+  <div id="sv-p-pol" style="display:none">
+    <div class="hero blue">
+      <span class="hero-em">📄</span>
+      <h2>Політика магазину</h2>
+      <p>Правила та умови обслуговування</p>
+    </div>
+    <div class="pol">
+      <h4>1. Оформлення замовлення</h4>
+      Клієнт самостійно обирає потрібний пакет UC та вказує свій ігровий ID. Перед оплатою необхідно уважно перевірити правильність введених даних.
+      <h4>2. Оплата</h4>
+      Замовлення передається в обробку тільки після підтвердження оплати. Якщо оплата не була здійснена або не підтверджена, замовлення не виконується.
+      <h4>3. Виконання замовлення</h4>
+      Після оплати UC нараховуються на вказаний клієнтом ігровий ID. Час виконання може залежати від навантаження та доступності сервісу.
+      <h4>4. Відповідальність клієнта</h4>
+      Магазин не несе відповідальності за помилки у введеному ігровому ID. Якщо клієнт вказав неправильний ID, повернення коштів або повторне нарахування не гарантується.
+      <h4>5. Повернення коштів</h4>
+      Повернення коштів можливе лише у випадку, якщо замовлення ще не було виконано. Після успішного нарахування UC повернення коштів не здійснюється.
+      <h4>6. Підтримка</h4>
+      Якщо виникли питання або проблеми із замовленням, клієнт може звернутися до підтримки магазину. Ми намагаємося допомогти кожному клієнту якнайшвидше.
+      <h4>7. Зміна правил</h4>
+      Магазин залишає за собою право змінювати ці правила. Актуальна політика діє на момент оформлення замовлення.
+      <h4>8. Флуд у особисті повідомлення</h4>
+      Якщо клієнт після оформлення замовлення починає надсилати повідомлення на кшталт «Де мої UC?» — магазин має право відмовити в обслуговуванні. Писати нагадування допустимо лише якщо пройшло більше 10 хвилин.
+    </div>
+  </div>
+
+  <!-- Допомога -->
+  <div id="sv-p-help" style="display:none">
+    <div class="hero">
+      <span class="hero-em">ℹ️</span>
+      <h2>Як користуватися</h2>
+      <p>Покроковий гайд по магазину</p>
+    </div>
+    <div class="ib">
+      <h3>🛍 Як зробити замовлення</h3>
+      <p>1. Перейди у вкладку «Магазин»<br>2. Оберіть категорію: UC, Prime або Prime+<br>3. Оберіть потрібний пакет<br>4. Введіть свій ігровий ID у PUBG Mobile<br>5. Скопіюй номер картки та оплати<br>6. Натисни «✅ Я оплатив!»<br>7. Очікуй підтвердження адміна</p>
+    </div>
+    <div class="ib">
+      <h3>🎁 Як отримати знижку</h3>
+      <p>• Активуй промокод у вкладці «Сервіси → Бонуси»<br>• Запроси друга через реферальне посилання<br>• Знижка застосовується автоматично при наступній покупці</p>
+    </div>
+    <div class="ib">
+      <h3>📋 Як перевірити статус</h3>
+      <p>Перейди у вкладку «Замовлення» — там відображаються всі твої замовлення і їх статус:<br>• ⏳ Очікує — замовлення прийнято<br>• ✅ Виконано — UC нараховано<br>• ❌ Відхилено — зверніться до підтримки</p>
+    </div>
+    <div class="ib">
+      <h3>🆘 Є питання?</h3>
+      <p>Перейди у вкладку «Підтримка» або напиши менеджеру: <a href="https://t.me/Manager_Nezuko">@Manager_Nezuko</a></p>
+    </div>
   </div>
 </div>
 
-<!-- ===== ТОП ===== -->
-<div class="screen" id="screen-top">
-  <div class="hero" style="background:linear-gradient(135deg,#1a1a0a,#2d2a0a)">
-    <span class="hero-emoji">🏆</span>
+<!-- ═══════════════ ТОП ═══════════════ -->
+<div class="screen" id="sc-top">
+  <div class="hero gold">
+    <span class="hero-em">🏆</span>
     <h2>Топ донатерів</h2>
     <p>Найкращі гравці нашого магазину</p>
-    <div class="bamboo-deco">🌟<br>⭐<br>🌟</div>
+    <div class="bdeco">🌟<br>⭐<br>🌟</div>
   </div>
-  <div class="stitle">👑 Рейтинг</div>
-  <div id="top-list"><div class="loader"><span class="lspin">🌸</span>Завантаження...</div></div>
+  <div class="st">👑 Рейтинг</div>
+  <div id="top-list"><div class="ld"><span class="ls">🌸</span>Завантаження...</div></div>
 </div>
 
-<!-- ===== АДМІН ===== -->
-<div class="screen" id="screen-admin">
+<!-- ═══════════════ АДМІН ═══════════════ -->
+<div class="screen" id="sc-admin">
 
-  <!-- Password gate -->
-  <div id="admin-auth" class="pwd-screen">
-    <span class="pwd-icon">🔐</span>
-    <div class="pwd-title">Адмін-панель</div>
-    <div class="pwd-sub">Введи пароль для доступу</div>
-    <div class="fgroup">
-      <input class="finput" id="admin-pwd" type="password" placeholder="Пароль" style="text-align:center;font-size:18px;letter-spacing:4px">
+  <div id="adm-gate" class="pwg">
+    <span class="pwi">🔐</span>
+    <div class="pwt">Адмін-панель</div>
+    <div class="pws">Введи пароль для доступу</div>
+    <div class="fg">
+      <input class="fi" id="adm-pwd" type="password" placeholder="Пароль" style="text-align:center;font-size:17px;letter-spacing:3px">
     </div>
-    <button class="btn btn-purple" onclick="authAdmin()">🔓 Увійти</button>
-    <div id="auth-err" style="color:#ff6b6b;font-size:12px;margin-top:10px;text-align:center;display:none">❌ Невірний пароль</div>
+    <button class="btn btn-u" onclick="admAuth()">🔓 Увійти</button>
+    <div id="adm-err" style="color:#ff6b6b;font-size:11px;margin-top:9px;text-align:center;display:none">❌ Невірний пароль</div>
   </div>
 
-  <!-- Admin panel -->
-  <div id="admin-panel" style="display:none">
-    <div class="hero" style="background:linear-gradient(135deg,#0d0a1a,#1a1030)">
-      <span class="hero-emoji">⚙️</span>
+  <div id="adm-panel" style="display:none">
+    <div class="hero purple">
+      <span class="hero-em">⚙️</span>
       <h2 style="color:var(--purple)">Адмін-панель</h2>
-      <p>Керуй замовленнями та користувачами</p>
+      <p>Керуй замовленнями та магазином</p>
     </div>
 
-    <!-- Admin sub-tabs -->
-    <div class="atabs" style="flex-wrap:wrap;gap:4px">
-      <button class="atab active" id="at-orders" onclick="aTab('orders')" style="font-size:10px">📦 Замовлення</button>
-      <button class="atab" id="at-stats" onclick="aTab('stats')" style="font-size:10px">📊 Статистика</button>
-      <button class="atab" id="at-admins" onclick="aTab('admins')" style="font-size:10px">👤 Адміни</button>
-      <button class="atab" id="at-promos" onclick="aTab('promos')" style="font-size:10px">🎁 Промокоди</button>
+    <div class="stabs">
+      <button class="stab active" id="at-ord" onclick="aTab('ord')" style="font-size:10px">📦 Замовлення</button>
+      <button class="stab" id="at-stat" onclick="aTab('stat')" style="font-size:10px">📊 Статистика</button>
+      <button class="stab" id="at-adm" onclick="aTab('adm')" style="font-size:10px">👤 Адміни</button>
+      <button class="stab" id="at-prom" onclick="aTab('prom')" style="font-size:10px">🎁 Промокоди</button>
+      <button class="stab" id="at-rev" onclick="aTab('rev')" style="font-size:10px">🌟 Відгуки</button>
+      <button class="stab" id="at-find" onclick="aTab('find')" style="font-size:10px">🔍 Знайти</button>
+      <button class="stab" id="at-bc" onclick="aTab('bc')" style="font-size:10px">📢 Розсилка</button>
     </div>
 
-    <!-- Admin: Orders -->
-    <div id="apanel-orders">
-      <div class="stitle">⏳ Очікують виконання</div>
-      <div id="admin-orders-list"><div class="loader"><span class="lspin">⚙️</span>Завантаження...</div></div>
+    <!-- Замовлення -->
+    <div id="ap-ord">
+      <div class="st">⏳ Очікують виконання</div>
+      <div id="ao-list"><div class="ld"><span class="ls">⚙️</span>Завантаження...</div></div>
     </div>
 
-    <!-- Admin: Stats -->
-    <div id="apanel-stats" style="display:none">
-      <div class="stitle">📊 Статистика магазину</div>
-      <div id="admin-stats-content"><div class="loader"><span class="lspin">⚙️</span>Завантаження...</div></div>
+    <!-- Статистика -->
+    <div id="ap-stat" style="display:none">
+      <div class="st">📊 Статистика магазину</div>
+      <div id="as-con"><div class="ld"><span class="ls">⚙️</span>Завантаження...</div></div>
     </div>
 
-    <!-- Admin: Admins -->
-    <div id="apanel-admins" style="display:none">
-      <div class="stitle">👤 Управління адмінами</div>
-      <div class="cbox mb12">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Введи Telegram ID користувача:</div>
-        <div class="fgroup" style="margin-bottom:8px">
-          <input class="finput" id="admin-userid" type="number" placeholder="Telegram ID (наприклад: 123456789)" inputmode="numeric">
+    <!-- Адміни -->
+    <div id="ap-adm" style="display:none">
+      <div class="st">👤 Управління адмінами</div>
+      <div class="cb mb12">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Telegram ID користувача:</div>
+        <div class="fg" style="margin-bottom:7px">
+          <input class="fi" id="adm-uid" type="number" placeholder="123456789" inputmode="numeric">
         </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-green btn-sm" style="flex:1" onclick="toggleAdmin('add')">✅ Видати адмінку</button>
-          <button class="btn btn-red btn-sm" style="flex:1" onclick="toggleAdmin('remove')">❌ Забрати адмінку</button>
+        <div class="row">
+          <button class="btn btn-g" onclick="tglAdm('add')">✅ Видати</button>
+          <button class="btn btn-r" onclick="tglAdm('remove')">❌ Забрати</button>
         </div>
       </div>
-      <div class="stitle">📋 Поточні адміни</div>
-      <div id="admin-admins-list"><div class="loader"><span class="lspin">⚙️</span>Завантаження...</div></div>
-      <button class="btn btn-secondary" style="margin-top:8px" onclick="loadAdmins()">🔄 Оновити список</button>
+      <div class="st">📋 Поточні адміни</div>
+      <div id="aa-list"><div class="ld"><span class="ls">⚙️</span>Завантаження...</div></div>
+      <button class="btn btn-s mt8" onclick="ldAdmins()">🔄 Оновити</button>
     </div>
 
-    <!-- Admin: Promos -->
-    <div id="apanel-promos" style="display:none">
-      <div class="stitle">🎁 Створити промокод</div>
-      <div class="cbox mb12">
-        <div class="fgroup" style="margin-bottom:8px">
-          <label class="flabel">Назва промокоду</label>
-          <input class="finput" id="new-promo-code" type="text" placeholder="NEZUKO10" style="text-transform:uppercase;letter-spacing:2px;text-align:center;font-size:15px;font-weight:900">
+    <!-- Промокоди -->
+    <div id="ap-prom" style="display:none">
+      <div class="st">🎁 Створити промокод</div>
+      <div class="cb mb12">
+        <div class="fg" style="margin-bottom:7px">
+          <label class="fl">Назва промокоду</label>
+          <input class="fi" id="np-code" type="text" placeholder="NEZUKO10" style="text-transform:uppercase;letter-spacing:2px;text-align:center;font-size:14px;font-weight:900">
         </div>
-        <div class="fgroup" style="margin-bottom:8px">
-          <label class="flabel">Тип бонусу</label>
-          <select class="finput" id="new-promo-type">
+        <div class="fg" style="margin-bottom:7px">
+          <label class="fl">Тип бонусу</label>
+          <select class="fi" id="np-type">
             <option value="">— Оберіть бонус —</option>
             <option value="discount_small_5">Знижка 5% (малі UC паки)</option>
             <option value="discount_small_4">Знижка 4% (малі UC паки)</option>
@@ -407,437 +536,558 @@
             <option value="free_uc_60">🎁 60 UC безкоштовно</option>
           </select>
         </div>
-        <div class="fgroup" style="margin-bottom:10px">
-          <label class="flabel">Кількість використань</label>
-          <input class="finput" id="new-promo-uses" type="number" placeholder="-1 = безліміт" inputmode="numeric" value="-1">
+        <div class="fg" style="margin-bottom:9px">
+          <label class="fl">Кількість використань (-1 = ∞)</label>
+          <input class="fi" id="np-uses" type="number" placeholder="-1 = безліміт" value="-1" inputmode="numeric">
         </div>
-        <button class="btn btn-purple" onclick="createPromo()">✨ Створити промокод</button>
+        <button class="btn btn-u" onclick="crPromo()">✨ Створити</button>
       </div>
+      <div class="st">📋 Активні промокоди</div>
+      <div id="ap-list"><div class="ld"><span class="ls">⚙️</span>Завантаження...</div></div>
+      <button class="btn btn-s mt8" onclick="ldPromos()">🔄 Оновити</button>
+    </div>
 
-      <div class="stitle">📋 Активні промокоди</div>
-      <div id="admin-promos-list"><div class="loader"><span class="lspin">⚙️</span>Завантаження...</div></div>
-      <button class="btn btn-secondary" style="margin-top:8px" onclick="loadPromos()">🔄 Оновити список</button>
+    <!-- Відгуки (адмін) -->
+    <div id="ap-rev" style="display:none">
+      <div class="st">🌟 Відгуки користувачів</div>
+      <div id="ar-list"><div class="ld"><span class="ls">⚙️</span>Завантаження...</div></div>
+      <button class="btn btn-s mt8" onclick="ldARev()">🔄 Оновити</button>
+    </div>
+
+    <!-- Знайти замовлення -->
+    <div id="ap-find" style="display:none">
+      <div class="st">🔍 Знайти замовлення</div>
+      <div class="cb mb12">
+        <div class="fg" style="margin-bottom:9px">
+          <label class="fl">ID замовлення</label>
+          <input class="fi" id="find-id" type="text" placeholder="Наприклад: A1B2C3D4" style="text-transform:uppercase;letter-spacing:2px;text-align:center;font-size:15px;font-weight:700">
+        </div>
+        <button class="btn btn-b" onclick="findOrd()">🔍 Знайти</button>
+      </div>
+      <div id="find-res"></div>
+    </div>
+
+    <!-- Розсилка -->
+    <div id="ap-bc" style="display:none">
+      <div class="st">📢 Розсилка повідомлень</div>
+      <div class="cb mb12">
+        <div class="fg" style="margin-bottom:7px">
+          <label class="fl">Текст повідомлення</label>
+          <textarea class="fi" id="bc-txt" placeholder="Введи текст для розсилки всім користувачам..." style="min-height:100px"></textarea>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:9px">⚠️ Повідомлення отримають усі, хто коли-небудь робив замовлення.</div>
+        <button class="btn btn-o" onclick="doBC()">📢 Надіслати розсилку</button>
+      </div>
     </div>
 
     <div class="div"></div>
-    <button class="btn btn-secondary" onclick="logoutAdmin()">🚪 Вийти з адмінки</button>
+    <button class="btn btn-s" onclick="admOut()">🚪 Вийти з адмінки</button>
   </div>
 
 </div>
 
-<!-- ===== TABS ===== -->
+<!-- ═══════════════ TABS ═══════════════ -->
 <div class="tabs">
-  <button class="tab active" id="tab-shop" onclick="switchTab('shop')"><span class="ti">🛍</span><span class="tl">Магазин</span></button>
-  <button class="tab" id="tab-orders" onclick="switchTab('orders')"><span class="ti">📋</span><span class="tl">Замовлення</span></button>
-  <button class="tab" id="tab-promo" onclick="switchTab('promo')"><span class="ti">🎁</span><span class="tl">Бонуси</span></button>
-  <button class="tab" id="tab-top" onclick="switchTab('top')"><span class="ti">🏆</span><span class="tl">Топ</span></button>
-  <button class="tab admin-tab" id="tab-admin" onclick="switchTab('admin')"><span class="ti">⚙️</span><span class="tl">Адмін</span></button>
+  <button class="tab active" id="tb-shop" onclick="swTab('shop')"><span class="ti">🛍</span><span class="tl">Магазин</span></button>
+  <button class="tab" id="tb-orders" onclick="swTab('orders')"><span class="ti">📋</span><span class="tl">Замовлення</span></button>
+  <button class="tab" id="tb-serv" onclick="swTab('serv')"><span class="ti">🎁</span><span class="tl">Сервіси</span></button>
+  <button class="tab" id="tb-top" onclick="swTab('top')"><span class="ti">🏆</span><span class="tl">Топ</span></button>
+  <button class="tab at" id="tb-admin" onclick="swTab('admin')"><span class="ti">⚙️</span><span class="tl">Адмін</span></button>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
 const tg = window.Telegram?.WebApp;
-if (tg) { tg.ready(); tg.expand(); }
-const USER_ID = tg?.initDataUnsafe?.user?.id || 0;
-const USERNAME = tg?.initDataUnsafe?.user?.username || '';
+if(tg){tg.ready();tg.expand();}
+const UID = tg?.initDataUnsafe?.user?.id||0;
+const UNAME = tg?.initDataUnsafe?.user?.username||'';
 
-const PRODUCTS = {
+const PRODS = {
   uc:[
-    {name:"30 UC",price:19,full:"30 UC - 19 грн"},
-    {name:"60 UC",price:40,full:"60 UC - 40 грн"},
-    {name:"120 UC",price:78,full:"120 UC - 78 грн"},
-    {name:"180 UC",price:111,full:"180 UC - 113 грн"},
-    {name:"325 UC",price:195,full:"325 UC - 195 грн"},
-    {name:"660 UC",price:389,full:"660 UC - 389 грн"},
-    {name:"1800 UC",price:960,full:"1800 UC - 960 грн"},
-    {name:"3800 UC",price:1909,full:"3800 UC - 1909 грн"},
-    {name:"8100 UC",price:3840,full:"8100 UC - 3840 грн"},
-    {name:"16200 UC",price:7599,full:"16200 UC - 7599 грн"},
-    {name:"24300 UC",price:11399,full:"24300 UC - 11399 грн"},
-    {name:"32400 UC",price:15399,full:"32400 UC - 15399 грн"},
-    {name:"40500 UC",price:18999,full:"40500 UC - 18999 грн"},
-    {name:"81000 UC",price:37900,full:"81000 UC - 37900 грн"},
+    {n:"30 UC",p:19,f:"30 UC - 19 грн"},
+    {n:"60 UC",p:40,f:"60 UC - 40 грн"},
+    {n:"120 UC",p:78,f:"120 UC - 78 грн"},
+    {n:"180 UC",p:111,f:"180 UC - 113 грн"},
+    {n:"325 UC",p:195,f:"325 UC - 195 грн"},
+    {n:"660 UC",p:389,f:"660 UC - 389 грн"},
+    {n:"1800 UC",p:960,f:"1800 UC - 960 грн"},
+    {n:"3800 UC",p:1909,f:"3800 UC - 1909 грн"},
+    {n:"8100 UC",p:3840,f:"8100 UC - 3840 грн"},
+    {n:"16200 UC",p:7599,f:"16200 UC - 7599 грн"},
+    {n:"24300 UC",p:11399,f:"24300 UC - 11399 грн"},
+    {n:"32400 UC",p:15399,f:"32400 UC - 15399 грн"},
+    {n:"40500 UC",p:18999,f:"40500 UC - 18999 грн"},
+    {n:"81000 UC",p:37900,f:"81000 UC - 37900 грн"},
   ],
   prime:[
-    {name:"Prime 1 Місяць",price:45,full:"👑 Prime 1 Місяць - 45 грн"},
-    {name:"Prime 3 Місяці",price:130,full:"👑 Prime 3 Місяця - 130 грн"},
-    {name:"Prime 6 Місяців",price:250,full:"👑 Prime 6 Місяців - 250 грн"},
-    {name:"Prime 12 Місяців",price:500,full:"👑 Prime 12 Місяців - 500 грн"},
+    {n:"Prime 1 Місяць",p:45,f:"👑 Prime 1 Місяць - 45 грн"},
+    {n:"Prime 3 Місяці",p:130,f:"👑 Prime 3 Місяця - 130 грн"},
+    {n:"Prime 6 Місяців",p:250,f:"👑 Prime 6 Місяців - 250 грн"},
+    {n:"Prime 12 Місяців",p:500,f:"👑 Prime 12 Місяців - 500 грн"},
   ],
   prime_plus:[
-    {name:"Prime Plus 1 Місяць",price:410,full:"👑 Prime Plus 1 Місяць - 410 грн"},
-    {name:"Prime Plus 3 Місяці",price:1200,full:"👑 Prime Plus 3 Місяці - 1200 грн"},
-    {name:"Prime Plus 6 Місяців",price:2400,full:"👑 Prime Plus 6 Місяців - 2400 грн"},
-    {name:"Prime Plus 12 Місяців",price:4730,full:"👑 Prime Plus 12 Місяців - 4730 грн"},
+    {n:"Prime Plus 1 Місяць",p:410,f:"👑 Prime Plus 1 Місяць - 410 грн"},
+    {n:"Prime Plus 3 Місяці",p:1200,f:"👑 Prime Plus 3 Місяці - 1200 грн"},
+    {n:"Prime Plus 6 Місяців",p:2400,f:"👑 Prime Plus 6 Місяців - 2400 грн"},
+    {n:"Prime Plus 12 Місяців",p:4730,f:"👑 Prime Plus 12 Місяців - 4730 грн"},
   ]
 };
+let cat=null,prod=null,admPwd=null;
 
-let selCat=null, selProd=null, adminPwd=null;
-
-// ---- TABS ----
-function switchTab(tab){
+// ── TAB SWITCH ──────────────────────────────────────────────────────────────
+function swTab(t){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-  document.getElementById('screen-'+tab).classList.add('active');
-  document.getElementById('tab-'+tab).classList.add('active');
-  if(tab==='orders') loadOrders();
-  if(tab==='promo'){loadBonuses();loadRefLink();}
-  if(tab==='top') loadTop();
-  if(tab==='admin' && adminPwd) loadAdminOrders();
+  document.querySelectorAll('.tab').forEach(tb=>tb.classList.remove('active'));
+  document.getElementById('sc-'+t).classList.add('active');
+  document.getElementById('tb-'+t).classList.add('active');
+  if(t==='orders') ldOrds();
+  if(t==='serv'){ldBons();ldRefStats();ldRevs();}
+  if(t==='top') ldTop();
+  if(t==='admin' && admPwd) ldAOrd();
 }
 
-// ---- SHOP ----
-function showStep(step){
-  ['category','product','playerid','confirm','success'].forEach(s=>{
-    const el=document.getElementById('step-'+s);
+// ── SERVICE SUB-TABS ────────────────────────────────────────────────────────
+const SV_TABS=['bonus','ref','rev','supp','pol','help'];
+function sTab(t){
+  SV_TABS.forEach(s=>{
+    document.getElementById('sv-p-'+s).style.display='none';
+    document.getElementById('sv-'+s).classList.remove('active');
+  });
+  document.getElementById('sv-p-'+t).style.display='block';
+  document.getElementById('sv-'+t).classList.add('active');
+  if(t==='bonus') ldBons();
+  if(t==='ref') ldRefStats();
+  if(t==='rev') ldRevs();
+}
+
+// ── ADMIN TABS ──────────────────────────────────────────────────────────────
+const AT=['ord','stat','adm','prom','rev','find','bc'];
+function aTab(t){
+  AT.forEach(s=>{
+    document.getElementById('ap-'+s).style.display='none';
+    document.getElementById('at-'+s).classList.remove('active');
+  });
+  document.getElementById('ap-'+t).style.display='block';
+  document.getElementById('at-'+t).classList.add('active');
+  if(t==='ord') ldAOrd();
+  if(t==='stat') ldAStat();
+  if(t==='adm') ldAdmins();
+  if(t==='prom') ldPromos();
+  if(t==='rev') ldARev();
+}
+
+// ── SHOP ────────────────────────────────────────────────────────────────────
+function sStep(s){
+  ['cat','prod','pid','pay'].forEach(x=>{
+    const el=document.getElementById('sp-'+x);
     if(el) el.style.display='none';
-    if(el && el.classList) el.classList.remove('active');
   });
-  const target=document.getElementById('step-'+step);
-  if(target){
-    if(target.classList.contains('success-s')) target.classList.add('active');
-    else target.style.display='block';
-  }
+  document.getElementById('sp-ok').classList.remove('a');
+  const t=document.getElementById('sp-'+s);
+  if(t) t.style.display='block';
 }
-
-function selectCat(cat, el){
-  selCat=cat;
-  document.querySelectorAll('.cat-card').forEach(c=>c.classList.remove('selected'));
-  el.classList.add('selected');
-  const list=document.getElementById('product-list');
-  list.innerHTML='';
-  PRODUCTS[cat].forEach((p,i)=>{
-    list.innerHTML+=`<div class="pitem" id="prod-${i}" onclick="selectProd(${i})">
-      <div class="pname">${p.name}</div>
-      <div class="pprice">${p.price} грн</div>
-    </div>`;
-  });
-  setTimeout(()=>showStep('product'),120);
+function selCat(c,el){
+  cat=c;
+  document.querySelectorAll('.cc').forEach(x=>x.classList.remove('sel'));
+  el.classList.add('sel');
+  const l=document.getElementById('prod-list');
+  l.innerHTML=PRODS[c].map((p,i)=>`<div class="pi" id="pr-${i}" onclick="selProd(${i})"><div class="pi-n">${p.n}</div><div class="pi-p">${p.p} грн</div></div>`).join('');
+  setTimeout(()=>sStep('prod'),100);
 }
-
-function selectProd(idx){
-  selProd=PRODUCTS[selCat][idx];
-  document.querySelectorAll('.pitem').forEach(el=>el.classList.remove('selected'));
-  document.getElementById('prod-'+idx).classList.add('selected');
-  document.getElementById('cp-pack').textContent=selProd.name;
-  document.getElementById('cp-price').textContent=selProd.price+' грн';
-  setTimeout(()=>showStep('playerid'),120);
+function selProd(i){
+  prod=PRODS[cat][i];
+  document.querySelectorAll('.pi').forEach(x=>x.classList.remove('sel'));
+  document.getElementById('pr-'+i).classList.add('sel');
+  document.getElementById('cp-pk').textContent=prod.n;
+  document.getElementById('cp-pr').textContent=prod.p+' грн';
+  setTimeout(()=>sStep('pid'),100);
 }
-
-function goConfirm(){
-  const pid=document.getElementById('player-id').value.trim();
-  if(!pid||pid.length<5){showToast('Введи правильний ігровий ID',true);return;}
-  document.getElementById('cf-pack').textContent=selProd.name;
+function goConf(){
+  const pid=document.getElementById('pl-id').value.trim();
+  if(!pid||pid.length<5){toast('Введи правильний ігровий ID',1);return;}
+  document.getElementById('cf-pk').textContent=prod.n;
   document.getElementById('cf-id').textContent=pid;
-  document.getElementById('cf-price').textContent=selProd.price+' грн';
-  showStep('confirm');
+  document.getElementById('cf-pr').textContent=prod.p+' грн';
+  sStep('pay');
 }
-
-async function confirmPay(){
-  const pid=document.getElementById('player-id').value.trim();
+async function doPay(){
+  const pid=document.getElementById('pl-id').value.trim();
   const btn=document.getElementById('paid-btn');
-  btn.disabled=true; btn.textContent='⏳ Надсилаємо...';
+  btn.disabled=true;btn.textContent='⏳ Надсилаємо...';
   try{
     const r=await fetch('/api/submit-order',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({user_id:USER_ID,username:USERNAME,pack:selProd.full,player_id:pid,amount:selProd.price})});
+      body:JSON.stringify({user_id:UID,username:UNAME,pack:prod.f,player_id:pid,amount:prod.p})});
     const d=await r.json();
-    if(d.ok){spawnSakura();showStep('success');}
-    else{showToast(d.error||'Помилка. Спробуй ще раз',true);btn.disabled=false;btn.textContent='✅ Я оплатив!';}
-  }catch{showToast('Помилка з\'єднання',true);btn.disabled=false;btn.textContent='✅ Я оплатив!';}
+    if(d.ok){spawnS();document.getElementById('sp-pay').style.display='none';document.getElementById('sp-ok').classList.add('a');}
+    else{toast(d.error||'Помилка',1);btn.disabled=false;btn.textContent='✅ Я оплатив!';}
+  }catch{toast('Помилка з\'єднання',1);btn.disabled=false;btn.textContent='✅ Я оплатив!';}
 }
+function cpCard(){navigator.clipboard?.writeText('4874070020367247').then(()=>toast('✅ Картку скопійовано!')).catch(()=>toast('4874070020367247'));}
+function rstShop(){cat=null;prod=null;document.getElementById('pl-id').value='';sStep('cat');}
 
-function copyCard(){
-  navigator.clipboard?.writeText('4874070020367247').then(()=>showToast('✅ Картку скопійовано!')).catch(()=>showToast('4874 0700 2036 7247'));
-}
-
-function resetShop(){
-  selCat=null;selProd=null;
-  document.getElementById('player-id').value='';
-  showStep('category');
-}
-
-// ---- ORDERS ----
-async function loadOrders(){
-  const el=document.getElementById('orders-list');
-  el.innerHTML='<div class="loader"><span class="lspin">🌸</span>Завантаження...</div>';
+// ── ORDERS ──────────────────────────────────────────────────────────────────
+async function ldOrds(){
+  const el=document.getElementById('ord-list');
+  el.innerHTML='<div class="ld"><span class="ls">🌸</span>Завантаження...</div>';
   try{
-    const r=await fetch('/api/orders?user_id='+USER_ID);
+    const r=await fetch('/api/orders?user_id='+UID);
     const d=await r.json();
-    if(!d.orders||!d.orders.length){el.innerHTML='<div class="empty"><span class="eicon">📭</span><div class="etitle">Замовлень ще немає</div><div class="esub">Зроби перше замовлення!</div></div>';return;}
+    if(!d.orders?.length){el.innerHTML='<div class="emp"><span class="ei">📭</span><div class="et">Замовлень ще немає</div><div class="es">Зроби перше замовлення!</div></div>';return;}
     el.innerHTML=d.orders.map(o=>{
-      const b=o.status==='done'?'<span class="badge badge-d">✅ Виконано</span>':o.status==='canceled'?'<span class="badge badge-c">❌ Відхилено</span>':'<span class="badge badge-p">⏳ Очікує</span>';
-      return`<div class="ocard"><div class="ohead"><div><div class="opack">${o.pack}</div><div class="oid">ID: ${o.id}</div></div>${b}</div><div class="ometa">🎮 ${o.player_id||'—'} | ${o.created_at||''}</div></div>`;
+      const b=o.status==='done'?'<span class="badge bd">✅ Виконано</span>':o.status==='canceled'?'<span class="badge bc">❌ Відхилено</span>':'<span class="badge bp">⏳ Очікує</span>';
+      return`<div class="oc"><div class="oh"><div><div class="on">${o.pack}</div><div class="oid">ID: ${o.id}</div></div>${b}</div><div class="om">🎮 ${o.player_id||'—'} · ${(o.created_at||'').slice(0,16)}</div></div>`;
     }).join('');
-  }catch{el.innerHTML='<div class="empty"><span class="eicon">⚠️</span><div class="etitle">Помилка завантаження</div></div>';}
+  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span><div class="et">Помилка</div></div>';}
 }
 
-// ---- PROMO ----
-async function loadBonuses(){
-  const el=document.getElementById('bonuses-list');
-  el.innerHTML='<div class="loader"><span class="lspin">🌸</span>Завантаження...</div>';
+// ── BONUSES ──────────────────────────────────────────────────────────────────
+async function ldBons(){
+  const el=document.getElementById('bon-list');
+  el.innerHTML='<div class="ld"><span class="ls">🌸</span>Завантаження...</div>';
   try{
-    const r=await fetch('/api/bonuses?user_id='+USER_ID);
+    const r=await fetch('/api/bonuses?user_id='+UID);
     const d=await r.json();
-    if(!d.bonuses||!d.bonuses.length){el.innerHTML='<div class="empty"><span class="eicon">🎁</span><div class="etitle">Бонусів немає</div><div class="esub">Активуй промокод або запроси друзів!</div></div>';return;}
-    el.innerHTML=d.bonuses.map(b=>`<div class="ocard"><div class="ohead"><div class="opack">${b.name}</div><span class="badge badge-d">✅ Активний</span></div><div class="ometa">Кількість: ${b.count} шт.</div></div>`).join('');
+    if(!d.bonuses?.length){el.innerHTML='<div class="emp"><span class="ei">🎁</span><div class="et">Бонусів немає</div><div class="es">Активуй промокод або запроси друзів!</div></div>';return;}
+    el.innerHTML=d.bonuses.map(b=>{
+      const isFree=b.name==='🎁 60 UC безкоштовно на акаунт';
+      const claimBtn=isFree?`<div class="mt8"><button class="btn btn-g" onclick="claimFreeUC()">🎁 Отримати 60 UC</button></div>`:'';
+      return`<div class="oc"><div class="oh"><div class="on">${b.name}</div><span class="badge bd">✅ ${b.count} шт.</span></div>${claimBtn}</div>`;
+    }).join('');
   }catch{el.innerHTML='';}
 }
-
-async function activatePromo(){
-  const code=document.getElementById('promo-input').value.trim().toUpperCase();
-  if(!code){showToast('Введи промокод',true);return;}
+async function actPromo(){
+  const code=document.getElementById('promo-in').value.trim().toUpperCase();
+  if(!code){toast('Введи промокод',1);return;}
   try{
-    const r=await fetch('/api/promo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:USER_ID,code})});
+    const r=await fetch('/api/promo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:UID,code})});
     const d=await r.json();
-    if(d.ok){showToast('🎉 '+(d.message||'Промокод активовано!'));document.getElementById('promo-input').value='';loadBonuses();}
-    else showToast(d.error||'Невірний промокод',true);
-  }catch{showToast('Помилка з\'єднання',true);}
+    if(d.ok){toast('🎉 '+(d.message||'Активовано!'));document.getElementById('promo-in').value='';ldBons();}
+    else toast(d.error||'Невірний промокод',1);
+  }catch{toast('Помилка з\'єднання',1);}
 }
 
-function loadRefLink(){
-  const link=`https://t.me/NezukoUCBot?start=ref_${USER_ID}`;
-  document.getElementById('ref-link').textContent=link;
+// Free UC claim
+let freeUCMode=false;
+async function claimFreeUC(){
+  const pid=prompt('Введи свій ігровий ID в PUBG Mobile:');
+  if(!pid||pid.trim().length<5){toast('Невірний ігровий ID',1);return;}
+  try{
+    const r=await fetch('/api/claim-free-uc',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({user_id:UID,username:UNAME,player_id:pid.trim()})});
+    const d=await r.json();
+    if(d.ok){spawnS();toast('✅ '+d.message);ldBons();}
+    else toast(d.error,1);
+  }catch{toast('Помилка з\'єднання',1);}
 }
 
-function copyRef(){
-  const link=document.getElementById('ref-link').textContent;
-  navigator.clipboard?.writeText(link).then(()=>showToast('✅ Посилання скопійовано!'));
+// ── REFERRAL ─────────────────────────────────────────────────────────────────
+function ldRefLink(){
+  const link=`https://t.me/NezukoUCBot?start=ref_${UID}`;
+  document.getElementById('ref-lnk').textContent=link;
+}
+async function ldRefStats(){
+  ldRefLink();
+  try{
+    const r=await fetch('/api/referral-stats?user_id='+UID);
+    const d=await r.json();
+    if(d.ok){
+      document.getElementById('rs-inv').textContent=d.invited;
+      document.getElementById('rs-disc').textContent=d.discounts;
+    }
+  }catch{}
+}
+function cpRef(){
+  const l=document.getElementById('ref-lnk').textContent;
+  navigator.clipboard?.writeText(l).then(()=>toast('✅ Посилання скопійовано!'));
+}
+function shrRef(){
+  const l=document.getElementById('ref-lnk').textContent;
+  if(tg) tg.switchInlineQuery(`🌸 Купуй UC для PUBG Mobile!\n${l}`); else cpRef();
 }
 
-function shareRef(){
-  const link=document.getElementById('ref-link').textContent;
-  const text=`🌸 Купуй UC для PUBG Mobile у магазині Nezuko!\n${link}`;
-  if(tg) tg.switchInlineQuery(text); else copyRef();
+// ── REVIEWS (USER) ───────────────────────────────────────────────────────────
+async function ldRevs(){
+  const el=document.getElementById('rev-list');
+  el.innerHTML='<div class="ld"><span class="ls">🌸</span>Завантаження...</div>';
+  try{
+    const r=await fetch('/api/reviews');
+    const d=await r.json();
+    if(!d.reviews?.length){el.innerHTML='<div class="emp"><span class="ei">🌟</span><div class="et">Відгуків ще немає</div><div class="es">Стань першим!</div></div>';return;}
+    el.innerHTML=d.reviews.map(v=>`<div class="rv"><div class="rv-u">👤 ${v.user}</div><div class="rv-t">${v.text}</div></div>`).join('');
+  }catch{el.innerHTML='';}
+}
+async function sbmRev(){
+  const txt=document.getElementById('rev-txt').value.trim();
+  if(!txt||txt.length<3){toast('Відгук занадто короткий',1);return;}
+  try{
+    const r=await fetch('/api/submit-review',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({user_id:UID,username:UNAME,text:txt})});
+    const d=await r.json();
+    if(d.ok){toast('✅ Відгук збережено!');document.getElementById('rev-txt').value='';ldRevs();}
+    else toast(d.error||'Помилка',1);
+  }catch{toast('Помилка з\'єднання',1);}
 }
 
-// ---- TOP ----
-async function loadTop(){
+// ── TOP ──────────────────────────────────────────────────────────────────────
+async function ldTop(){
   const el=document.getElementById('top-list');
-  el.innerHTML='<div class="loader"><span class="lspin">🌸</span>Завантаження...</div>';
+  el.innerHTML='<div class="ld"><span class="ls">🌸</span>Завантаження...</div>';
   try{
     const r=await fetch('/api/top');
     const d=await r.json();
-    if(!d.top||!d.top.length){el.innerHTML='<div class="empty"><span class="eicon">🏆</span><div class="etitle">Рейтинг порожній</div><div class="esub">Будь першим донатером!</div></div>';return;}
-    const medals=['🥇','🥈','🥉'];
+    if(!d.top?.length){el.innerHTML='<div class="emp"><span class="ei">🏆</span><div class="et">Рейтинг порожній</div><div class="es">Будь першим!</div></div>';return;}
+    const m=['🥇','🥈','🥉'];
     el.innerHTML=d.top.map((t,i)=>{
       const cls=i===0?'r1':i===1?'r2':i===2?'r3':'';
-      const icon=i<3?medals[i]:`#${t.rank}`;
-      return`<div class="top-item"><div class="top-rank ${cls}">${icon}</div><div class="top-name">${t.name}</div><div class="top-sum">${t.total} грн</div></div>`;
+      return`<div class="ti2"><div class="tr ${cls}">${i<3?m[i]:'#'+t.rank}</div><div class="tn">${t.name}</div><div class="ts">${t.total} грн</div></div>`;
     }).join('');
-  }catch{el.innerHTML='<div class="empty"><span class="eicon">⚠️</span><div class="etitle">Помилка</div></div>';}
+  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span><div class="et">Помилка</div></div>';}
 }
 
-// ---- ADMIN AUTH ----
-async function authAdmin(){
-  const pwd=document.getElementById('admin-pwd').value;
-  if(!pwd){return;}
+// ── ADMIN AUTH ────────────────────────────────────────────────────────────────
+async function admAuth(){
+  const pwd=document.getElementById('adm-pwd').value;
+  if(!pwd) return;
   try{
     const r=await fetch('/api/admin/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd})});
     const d=await r.json();
     if(d.ok){
-      adminPwd=pwd;
-      document.getElementById('admin-auth').style.display='none';
-      document.getElementById('admin-panel').style.display='block';
-      document.getElementById('auth-err').style.display='none';
-      loadAdminOrders();
+      admPwd=pwd;
+      document.getElementById('adm-gate').style.display='none';
+      document.getElementById('adm-panel').style.display='block';
+      document.getElementById('adm-err').style.display='none';
+      ldAOrd();
     } else {
-      document.getElementById('auth-err').style.display='block';
-      document.getElementById('admin-pwd').value='';
+      document.getElementById('adm-err').style.display='block';
+      document.getElementById('adm-pwd').value='';
     }
-  }catch{showToast('Помилка з\'єднання',true);}
+  }catch{toast('Помилка з\'єднання',1);}
+}
+function admOut(){
+  admPwd=null;
+  document.getElementById('adm-pwd').value='';
+  document.getElementById('adm-gate').style.display='block';
+  document.getElementById('adm-panel').style.display='none';
+  document.getElementById('adm-err').style.display='none';
 }
 
-function logoutAdmin(){
-  adminPwd=null;
-  document.getElementById('admin-pwd').value='';
-  document.getElementById('admin-auth').style.display='block';
-  document.getElementById('admin-panel').style.display='none';
-  document.getElementById('auth-err').style.display='none';
-}
-
-// ---- ADMIN TABS ----
-function aTab(tab){
-  ['orders','stats','admins','promos'].forEach(t=>{
-    document.getElementById('apanel-'+t).style.display='none';
-    document.getElementById('at-'+t).classList.remove('active');
-  });
-  document.getElementById('apanel-'+tab).style.display='block';
-  document.getElementById('at-'+tab).classList.add('active');
-  if(tab==='orders') loadAdminOrders();
-  if(tab==='stats') loadAdminStats();
-  if(tab==='admins') loadAdmins();
-  if(tab==='promos') loadPromos();
-}
-
-// ---- ADMIN ORDERS ----
-async function loadAdminOrders(){
-  const el=document.getElementById('admin-orders-list');
-  el.innerHTML='<div class="loader"><span class="lspin">⚙️</span>Завантаження...</div>';
+// ── ADMIN ORDERS ──────────────────────────────────────────────────────────────
+async function ldAOrd(){
+  const el=document.getElementById('ao-list');
+  el.innerHTML='<div class="ld"><span class="ls">⚙️</span>Завантаження...</div>';
   try{
-    const r=await fetch('/api/admin/orders?password='+encodeURIComponent(adminPwd));
+    const r=await fetch('/api/admin/orders?password='+encodeURIComponent(admPwd));
     const d=await r.json();
-    if(!d.ok){showToast(d.error,true);return;}
-    if(!d.orders.length){el.innerHTML='<div class="empty"><span class="eicon">📭</span><div class="etitle">Нових замовлень немає</div></div>';return;}
+    if(!d.ok){toast(d.error,1);return;}
+    if(!d.orders.length){el.innerHTML='<div class="emp"><span class="ei">📭</span><div class="et">Нових замовлень немає</div></div>';return;}
     el.innerHTML=d.orders.map(o=>`
-      <div class="aocard" id="ao-${o.id}">
-        <div class="aohead">${o.pack}</div>
-        <div class="aometa">👤 ${o.user}<br>🎮 ID: ${o.player_id}<br>💵 ${o.amount} грн | 🕐 ${o.created_at}<br>🆔 ${o.id}</div>
-        <div class="aobtns">
-          <button class="btn btn-green btn-sm" style="flex:1" onclick="doAction('${o.id}','ok')">✅ Виконано</button>
-          <button class="btn btn-red btn-sm" style="flex:1" onclick="doAction('${o.id}','no')">❌ Відхилити</button>
+      <div class="oc" id="ao-${o.id}">
+        <div class="oh"><div class="on">${o.pack}</div><span class="badge bp">⏳ ${o.amount} грн</span></div>
+        <div class="om">👤 ${o.user} · 🎮 ${o.player_id}<br>🆔 ${o.id} · 📅 ${o.created_at}</div>
+        <div class="row mt8">
+          <button class="btn btn-g" onclick="doAct('${o.id}','ok')">✅ Виконано</button>
+          <button class="btn btn-r" onclick="doAct('${o.id}','no')">❌ Відхилити</button>
         </div>
       </div>`).join('');
-  }catch{el.innerHTML='<div class="empty"><span class="eicon">⚠️</span><div class="etitle">Помилка</div></div>';}
+  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span><div class="et">Помилка</div></div>';}
 }
-
-async function doAction(orderId, action){
+async function doAct(id,act){
   try{
     const r=await fetch('/api/admin/action',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({password:adminPwd,order_id:orderId,action})});
+      body:JSON.stringify({password:admPwd,order_id:id,action:act})});
     const d=await r.json();
     if(d.ok){
-      showToast(action==='ok'?'✅ Замовлення виконано!':'❌ Замовлення відхилено');
-      const card=document.getElementById('ao-'+orderId);
-      if(card) card.style.display='none';
-    } else showToast(d.error||'Помилка',true);
-  }catch{showToast('Помилка з\'єднання',true);}
+      toast(act==='ok'?'✅ Виконано!':'❌ Відхилено');
+      const el=document.getElementById('ao-'+id);
+      if(el) el.remove();
+    } else toast(d.error||'Помилка',1);
+  }catch{toast('Помилка',1);}
 }
 
-// ---- ADMIN STATS ----
-async function loadAdminStats(){
-  const el=document.getElementById('admin-stats-content');
-  el.innerHTML='<div class="loader"><span class="lspin">⚙️</span>Завантаження...</div>';
+// ── ADMIN STATS ───────────────────────────────────────────────────────────────
+async function ldAStat(){
+  const el=document.getElementById('as-con');
+  el.innerHTML='<div class="ld"><span class="ls">⚙️</span>Завантаження...</div>';
   try{
-    const r=await fetch('/api/admin/stats?password='+encodeURIComponent(adminPwd));
+    const r=await fetch('/api/admin/stats?password='+encodeURIComponent(admPwd));
     const d=await r.json();
-    if(!d.ok){showToast(d.error,true);return;}
+    if(!d.ok){toast(d.error,1);return;}
     el.innerHTML=`
-      <div class="stat-grid">
-        <div class="stat-card green"><div class="stat-val">${d.done}</div><div class="stat-lbl">✅ Виконано</div></div>
-        <div class="stat-card red"><div class="stat-val">${d.canceled}</div><div class="stat-lbl">❌ Відхилено</div></div>
-        <div class="stat-card gold"><div class="stat-val">${d.today_sum}</div><div class="stat-lbl">💰 Сьогодні (грн)</div></div>
-        <div class="stat-card blue"><div class="stat-val">${d.total_sum}</div><div class="stat-lbl">📊 Всього (грн)</div></div>
+      <div class="sg">
+        <div class="sc g"><div class="sv">${d.done}</div><div class="sl">✅ Виконано</div></div>
+        <div class="sc r"><div class="sv">${d.canceled}</div><div class="sl">❌ Відхилено</div></div>
+        <div class="sc go"><div class="sv">${d.today_sum}</div><div class="sl">💰 Сьогодні грн</div></div>
+        <div class="sc b"><div class="sv">${d.total_sum}</div><div class="sl">📊 Всього грн</div></div>
       </div>
-      <div class="ocard"><div class="ohead"><div class="opack">⏳ Очікують підтвердження</div><span class="badge badge-p">${d.pending}</span></div></div>
-      <button class="btn btn-secondary" onclick="loadAdminStats()">🔄 Оновити</button>`;
-  }catch{el.innerHTML='<div class="empty"><span class="eicon">⚠️</span><div class="etitle">Помилка</div></div>';}
+      <div class="oc"><div class="oh"><div class="on">⏳ Очікують</div><span class="badge bp">${d.pending}</span></div></div>
+      <button class="btn btn-s mt8" onclick="ldAStat()">🔄 Оновити</button>`;
+  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span></div>';}
 }
 
-// ---- ADMIN ADMINS ----
-async function loadAdmins(){
-  const el=document.getElementById('admin-admins-list');
-  el.innerHTML='<div class="loader"><span class="lspin">⚙️</span>Завантаження...</div>';
+// ── ADMIN ADMINS ──────────────────────────────────────────────────────────────
+async function ldAdmins(){
+  const el=document.getElementById('aa-list');
+  el.innerHTML='<div class="ld"><span class="ls">⚙️</span>Завантаження...</div>';
   try{
-    const r=await fetch('/api/admin/admins?password='+encodeURIComponent(adminPwd));
+    const r=await fetch('/api/admin/admins?password='+encodeURIComponent(admPwd));
     const d=await r.json();
-    if(!d.ok){showToast(d.error,true);return;}
-    if(!d.admins.length){el.innerHTML='<div class="empty"><span class="eicon">👤</span><div class="etitle">Додаткових адмінів немає</div></div>';return;}
-    el.innerHTML=`<div class="ocard mb8"><div class="ohead"><div class="opack">👑 Власник</div><span class="badge badge-d">${d.owner_id}</span></div></div>`+
-      d.admins.map(a=>`
-        <div class="ocard mb8">
-          <div class="ohead">
-            <div class="opack">⚙️ Адмін ID: ${a.id}</div>
-            <button class="btn btn-red btn-sm" onclick="toggleAdmin('remove','${a.id}')">❌ Забрати</button>
-          </div>
-        </div>`).join('');
-  }catch{el.innerHTML='<div class="empty"><span class="eicon">⚠️</span><div class="etitle">Помилка</div></div>';}
+    if(!d.ok){toast(d.error,1);return;}
+    let h=`<div class="oc mb8"><div class="oh"><div class="on">👑 Власник</div><span class="badge bd">${d.owner_id}</span></div></div>`;
+    if(!d.admins.length) h+='<div class="emp"><span class="ei">👤</span><div class="et">Додаткових адмінів немає</div></div>';
+    else h+=d.admins.map(a=>`<div class="oc mb8"><div class="oh"><div class="on">⚙️ ID: ${a.id}</div><button class="btn btn-r btn-sm" onclick="tglAdm('remove','${a.id}')">❌</button></div></div>`).join('');
+    el.innerHTML=h;
+  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span></div>';}
 }
-
-async function toggleAdmin(action, prefilledId=null){
-  const uid=prefilledId||document.getElementById('admin-userid').value.trim();
-  if(!uid){showToast('Введи Telegram ID',true);return;}
+async function tglAdm(act,pre=null){
+  const uid=pre||document.getElementById('adm-uid').value.trim();
+  if(!uid){toast('Введи Telegram ID',1);return;}
   try{
     const r=await fetch('/api/admin/toggle-admin',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({password:adminPwd,user_id:parseInt(uid),action})});
+      body:JSON.stringify({password:admPwd,user_id:parseInt(uid),action:act})});
     const d=await r.json();
-    if(d.ok){showToast(d.message);document.getElementById('admin-userid').value='';loadAdmins();}
-    else showToast(d.error||'Помилка',true);
-  }catch{showToast('Помилка з\'єднання',true);}
+    if(d.ok){toast(d.message);document.getElementById('adm-uid').value='';ldAdmins();}
+    else toast(d.error||'Помилка',1);
+  }catch{toast('Помилка',1);}
 }
 
-// ---- ADMIN PROMOS ----
-async function loadPromos(){
-  const el=document.getElementById('admin-promos-list');
-  el.innerHTML='<div class="loader"><span class="lspin">⚙️</span>Завантаження...</div>';
+// ── ADMIN PROMOS ──────────────────────────────────────────────────────────────
+async function ldPromos(){
+  const el=document.getElementById('ap-list');
+  el.innerHTML='<div class="ld"><span class="ls">⚙️</span>Завантаження...</div>';
   try{
-    const r=await fetch('/api/admin/promos?password='+encodeURIComponent(adminPwd));
+    const r=await fetch('/api/admin/promos?password='+encodeURIComponent(admPwd));
     const d=await r.json();
-    if(!d.ok){showToast(d.error,true);return;}
-    if(!d.promos.length){el.innerHTML='<div class="empty"><span class="eicon">🎁</span><div class="etitle">Промокодів немає</div><div class="esub">Створи перший!</div></div>';return;}
+    if(!d.ok){toast(d.error,1);return;}
+    if(!d.promos.length){el.innerHTML='<div class="emp"><span class="ei">🎁</span><div class="et">Промокодів немає</div><div class="es">Створи перший!</div></div>';return;}
     el.innerHTML=d.promos.map(p=>{
-      const uses=p.uses_left===-1||p.uses_left===null?'∞':p.uses_left;
-      return`<div class="aocard" id="pc-${p.code}">
-        <div class="aohead" style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold)">${p.code}</span>
-          <span class="badge badge-p">🔢 ${uses} використ.</span>
-        </div>
-        <div class="aometa" style="margin-bottom:8px">${p.bonus_label}<br><span style="font-size:10px">📅 ${p.created_at}</span></div>
-        <button class="btn btn-red btn-sm" style="width:100%" onclick="deletePromo('${p.code}')">🗑 Видалити</button>
+      const u=p.uses_left===-1||p.uses_left===null?'∞':p.uses_left;
+      return`<div class="oc mb8" id="pc-${p.code}">
+        <div class="oh"><span style="font-size:14px;font-weight:900;letter-spacing:2px;color:var(--gold)">${p.code}</span><span class="badge bp">🔢 ${u}</span></div>
+        <div class="om">${p.bonus_label} · ${p.created_at}</div>
+        <button class="btn btn-r mt8" onclick="delPromo('${p.code}')">🗑 Видалити</button>
       </div>`;
     }).join('');
-  }catch{el.innerHTML='<div class="empty"><span class="eicon">⚠️</span><div class="etitle">Помилка</div></div>';}
+  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span></div>';}
 }
-
-async function createPromo(){
-  const code=document.getElementById('new-promo-code').value.trim().toUpperCase();
-  const bonus_type=document.getElementById('new-promo-type').value;
-  const uses=parseInt(document.getElementById('new-promo-uses').value)||(-1);
-  if(!code){showToast('Введи назву промокоду',true);return;}
-  if(!bonus_type){showToast('Оберіть тип бонусу',true);return;}
-  if(!/^[A-Z0-9_]{2,20}$/.test(code)){showToast('Код: тільки латиниця та цифри (2-20 символів)',true);return;}
+async function crPromo(){
+  const code=document.getElementById('np-code').value.trim().toUpperCase();
+  const bt=document.getElementById('np-type').value;
+  const uses=parseInt(document.getElementById('np-uses').value)||(-1);
+  if(!code){toast('Введи назву промокоду',1);return;}
+  if(!bt){toast('Оберіть тип бонусу',1);return;}
+  if(!/^[A-Z0-9_]{2,20}$/.test(code)){toast('Код: латиниця/цифри, 2-20 символів',1);return;}
   try{
     const r=await fetch('/api/admin/create-promo',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({password:adminPwd,code,bonus_type,uses})});
+      body:JSON.stringify({password:admPwd,code,bonus_type:bt,uses})});
     const d=await r.json();
-    if(d.ok){
-      showToast('✅ '+d.message);
-      document.getElementById('new-promo-code').value='';
-      document.getElementById('new-promo-type').value='';
-      document.getElementById('new-promo-uses').value='-1';
-      loadPromos();
-    } else showToast(d.error||'Помилка',true);
-  }catch{showToast('Помилка з\'єднання',true);}
+    if(d.ok){toast('✅ '+d.message);document.getElementById('np-code').value='';document.getElementById('np-type').value='';document.getElementById('np-uses').value='-1';ldPromos();}
+    else toast(d.error||'Помилка',1);
+  }catch{toast('Помилка',1);}
 }
-
-async function deletePromo(code){
+async function delPromo(code){
   try{
     const r=await fetch('/api/admin/delete-promo',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({password:adminPwd,code})});
+      body:JSON.stringify({password:admPwd,code})});
     const d=await r.json();
-    if(d.ok){
-      showToast('🗑 '+d.message);
-      const el=document.getElementById('pc-'+code);
-      if(el) el.remove();
-    } else showToast(d.error||'Помилка',true);
-  }catch{showToast('Помилка з\'єднання',true);}
+    if(d.ok){toast('🗑 '+d.message);document.getElementById('pc-'+code)?.remove();}
+    else toast(d.error||'Помилка',1);
+  }catch{toast('Помилка',1);}
 }
 
-// ---- HELPERS ----
-function showToast(msg,isErr=false){
+// ── ADMIN REVIEWS ─────────────────────────────────────────────────────────────
+async function ldARev(){
+  const el=document.getElementById('ar-list');
+  el.innerHTML='<div class="ld"><span class="ls">⚙️</span>Завантаження...</div>';
+  try{
+    const r=await fetch('/api/admin/reviews?password='+encodeURIComponent(admPwd));
+    const d=await r.json();
+    if(!d.ok){toast(d.error,1);return;}
+    if(!d.reviews.length){el.innerHTML='<div class="emp"><span class="ei">🌟</span><div class="et">Відгуків немає</div></div>';return;}
+    el.innerHTML=d.reviews.map(v=>`
+      <div class="rv" id="rv-${v.id}">
+        <div class="oh"><div class="rv-u">👤 ${v.user}</div><button class="btn btn-r btn-sm" onclick="delRev(${v.id})">🗑</button></div>
+        <div class="rv-t">${v.text}</div>
+      </div>`).join('');
+  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span></div>';}
+}
+async function delRev(id){
+  try{
+    const r=await fetch('/api/admin/delete-review',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({password:admPwd,review_id:id})});
+    const d=await r.json();
+    if(d.ok){toast('🗑 Відгук видалено');document.getElementById('rv-'+id)?.remove();}
+    else toast(d.error||'Помилка',1);
+  }catch{toast('Помилка',1);}
+}
+
+// ── ADMIN FIND ────────────────────────────────────────────────────────────────
+async function findOrd(){
+  const id=document.getElementById('find-id').value.trim().toUpperCase();
+  if(!id){toast('Введи ID замовлення',1);return;}
+  const el=document.getElementById('find-res');
+  el.innerHTML='<div class="ld"><span class="ls">⚙️</span>Пошук...</div>';
+  try{
+    const r=await fetch('/api/admin/find?password='+encodeURIComponent(admPwd)+'&order_id='+encodeURIComponent(id));
+    const d=await r.json();
+    if(!d.ok){el.innerHTML=`<div class="emp"><span class="ei">🔍</span><div class="et">${d.error}</div></div>`;return;}
+    const o=d.order;
+    const st=o.status==='done'?'<span class="badge bd">✅ Виконано</span>':o.status==='canceled'?'<span class="badge bc">❌ Відхилено</span>':'<span class="badge bp">⏳ Очікує</span>';
+    el.innerHTML=`<div class="fr">
+      <div class="frl"><span class="frk">🆔 ID</span><span class="frv">${o.id}</span></div>
+      <div class="frl"><span class="frk">👤 Користувач</span><span class="frv">${o.user}</span></div>
+      <div class="frl"><span class="frk">🎁 Пакет</span><span class="frv">${o.pack}</span></div>
+      <div class="frl"><span class="frk">🎮 Ігровий ID</span><span class="frv">${o.player_id||'—'}</span></div>
+      <div class="frl"><span class="frk">💵 Сума</span><span class="frv">${o.amount} грн</span></div>
+      <div class="frl"><span class="frk">📌 Статус</span><span class="frv">${st}</span></div>
+      <div class="frl"><span class="frk">📅 Дата</span><span class="frv">${o.created_at}</span></div>
+      <div class="frl"><span class="frk">💬 Chat ID</span><span class="frv">${o.chat_id||'—'}</span></div>
+    </div>
+    ${o.status==='pending'?`<div class="row mt8">
+      <button class="btn btn-g" onclick="doAct('${o.id}','ok')">✅ Виконати</button>
+      <button class="btn btn-r" onclick="doAct('${o.id}','no')">❌ Відхилити</button>
+    </div>`:''}`;
+  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span><div class="et">Помилка</div></div>';}
+}
+
+// ── ADMIN BROADCAST ───────────────────────────────────────────────────────────
+async function doBC(){
+  const msg=document.getElementById('bc-txt').value.trim();
+  if(!msg){toast('Введи текст розсилки',1);return;}
+  if(!confirm('Надіслати розсилку всім користувачам?')) return;
+  try{
+    const r=await fetch('/api/admin/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({password:admPwd,message:msg})});
+    const d=await r.json();
+    if(d.ok){toast('📢 '+d.message);document.getElementById('bc-txt').value='';}
+    else toast(d.error||'Помилка',1);
+  }catch{toast('Помилка',1);}
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+function toast(msg,err=0){
   const t=document.getElementById('toast');
-  t.textContent=msg; t.className='toast'+(isErr?' err':'');
-  t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'),2500);
+  t.textContent=msg;t.className='toast'+(err?' err':'');
+  t.classList.add('on');
+  setTimeout(()=>t.classList.remove('on'),2500);
 }
-
-function spawnSakura(){
+function spawnS(){
   const p=['🌸','🌺','🌼','💮'];
   for(let i=0;i<12;i++) setTimeout(()=>{
     const el=document.createElement('div');
-    el.className='sakura';
+    el.className='sk';
     el.textContent=p[Math.floor(Math.random()*p.length)];
     el.style.left=Math.random()*100+'vw';
-    el.style.fontSize=(12+Math.random()*14)+'px';
+    el.style.fontSize=(12+Math.random()*12)+'px';
     el.style.animationDuration=(2+Math.random()*2)+'s';
     document.body.appendChild(el);
     setTimeout(()=>el.remove(),4000);
-  },i*140);
+  },i*130);
 }
 
 // init
-showStep('category');
-loadRefLink();
+sStep('cat');
+ldRefLink();
 </script>
 </body>
 </html>
