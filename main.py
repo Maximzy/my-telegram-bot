@@ -319,6 +319,16 @@ class PolicyHandler(BaseHTTPRequestHandler):
             admins = [{"id": r[0]} for r in rows]
             _json_response(self, {"ok": True, "admins": admins, "owner_id": MY_ID}); return
 
+        if path == "/api/admin/promos":
+            pwd = params.get("password", "")
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            rows = db_query("SELECT code, bonus_type, bonus_value, uses_left, total_uses, created_at FROM promo_codes ORDER BY rowid DESC")
+            promos = [{"code": r[0], "bonus_type": r[1], "bonus_label": BONUS_TYPES.get(r[1], r[1]),
+                       "bonus_value": r[2], "uses_left": r[3], "total_uses": r[4],
+                       "created_at": (r[5] or "")[:16]} for r in rows]
+            _json_response(self, {"ok": True, "promos": promos, "bonus_types": BONUS_TYPES}); return
+
         self.send_response(404); self.end_headers()
 
     def do_POST(self):
@@ -416,6 +426,36 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 db_exec("DELETE FROM admins WHERE id=?", (target_id,))
                 _json_response(self, {"ok": True, "message": f"Адмін {target_id} видалений"}); return
             _json_response(self, {"ok": False, "error": "Невідома дія"}); return
+
+        if path == "/api/admin/create-promo":
+            pwd = str(data.get("password", ""))
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            code = str(data.get("code", "")).strip().upper()
+            bonus_type = str(data.get("bonus_type", ""))
+            uses = int(data.get("uses", -1))
+            if not code or not bonus_type:
+                _json_response(self, {"ok": False, "error": "Заповни всі поля"}); return
+            if bonus_type not in BONUS_TYPES:
+                _json_response(self, {"ok": False, "error": "Невідомий тип бонусу"}); return
+            existing = db_query_one("SELECT 1 FROM promo_codes WHERE code=?", (code,))
+            if existing:
+                _json_response(self, {"ok": False, "error": "Промокод вже існує"}); return
+            db_exec(
+                "INSERT INTO promo_codes (code, bonus_type, bonus_value, uses_left, total_uses, created_at) VALUES (?,?,?,?,?,?)",
+                (code, bonus_type, 1, uses, uses, created_at_now())
+            )
+            _json_response(self, {"ok": True, "message": f"Промокод {code} створено"}); return
+
+        if path == "/api/admin/delete-promo":
+            pwd = str(data.get("password", ""))
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            code = str(data.get("code", "")).strip().upper()
+            if not code:
+                _json_response(self, {"ok": False, "error": "Вкажи код"}); return
+            db_exec("DELETE FROM promo_codes WHERE code=?", (code,))
+            _json_response(self, {"ok": True, "message": f"Промокод {code} видалено"}); return
 
         self.send_response(404); self.end_headers()
 

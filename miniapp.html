@@ -350,10 +350,11 @@
     </div>
 
     <!-- Admin sub-tabs -->
-    <div class="atabs">
-      <button class="atab active" id="at-orders" onclick="aTab('orders')">📦 Замовлення</button>
-      <button class="atab" id="at-stats" onclick="aTab('stats')">📊 Статистика</button>
-      <button class="atab" id="at-admins" onclick="aTab('admins')">👤 Адміни</button>
+    <div class="atabs" style="flex-wrap:wrap;gap:4px">
+      <button class="atab active" id="at-orders" onclick="aTab('orders')" style="font-size:10px">📦 Замовлення</button>
+      <button class="atab" id="at-stats" onclick="aTab('stats')" style="font-size:10px">📊 Статистика</button>
+      <button class="atab" id="at-admins" onclick="aTab('admins')" style="font-size:10px">👤 Адміни</button>
+      <button class="atab" id="at-promos" onclick="aTab('promos')" style="font-size:10px">🎁 Промокоди</button>
     </div>
 
     <!-- Admin: Orders -->
@@ -384,6 +385,38 @@
       <div class="stitle">📋 Поточні адміни</div>
       <div id="admin-admins-list"><div class="loader"><span class="lspin">⚙️</span>Завантаження...</div></div>
       <button class="btn btn-secondary" style="margin-top:8px" onclick="loadAdmins()">🔄 Оновити список</button>
+    </div>
+
+    <!-- Admin: Promos -->
+    <div id="apanel-promos" style="display:none">
+      <div class="stitle">🎁 Створити промокод</div>
+      <div class="cbox mb12">
+        <div class="fgroup" style="margin-bottom:8px">
+          <label class="flabel">Назва промокоду</label>
+          <input class="finput" id="new-promo-code" type="text" placeholder="NEZUKO10" style="text-transform:uppercase;letter-spacing:2px;text-align:center;font-size:15px;font-weight:900">
+        </div>
+        <div class="fgroup" style="margin-bottom:8px">
+          <label class="flabel">Тип бонусу</label>
+          <select class="finput" id="new-promo-type">
+            <option value="">— Оберіть бонус —</option>
+            <option value="discount_small_5">Знижка 5% (малі UC паки)</option>
+            <option value="discount_small_4">Знижка 4% (малі UC паки)</option>
+            <option value="discount_small_3">Знижка 3% (малі UC паки)</option>
+            <option value="discount_small_2">Знижка 2% (малі UC паки)</option>
+            <option value="discount_small_1">Знижка 1% (малі UC паки)</option>
+            <option value="free_uc_60">🎁 60 UC безкоштовно</option>
+          </select>
+        </div>
+        <div class="fgroup" style="margin-bottom:10px">
+          <label class="flabel">Кількість використань</label>
+          <input class="finput" id="new-promo-uses" type="number" placeholder="-1 = безліміт" inputmode="numeric" value="-1">
+        </div>
+        <button class="btn btn-purple" onclick="createPromo()">✨ Створити промокод</button>
+      </div>
+
+      <div class="stitle">📋 Активні промокоди</div>
+      <div id="admin-promos-list"><div class="loader"><span class="lspin">⚙️</span>Завантаження...</div></div>
+      <button class="btn btn-secondary" style="margin-top:8px" onclick="loadPromos()">🔄 Оновити список</button>
     </div>
 
     <div class="div"></div>
@@ -625,7 +658,7 @@ function logoutAdmin(){
 
 // ---- ADMIN TABS ----
 function aTab(tab){
-  ['orders','stats','admins'].forEach(t=>{
+  ['orders','stats','admins','promos'].forEach(t=>{
     document.getElementById('apanel-'+t).style.display='none';
     document.getElementById('at-'+t).classList.remove('active');
   });
@@ -634,6 +667,7 @@ function aTab(tab){
   if(tab==='orders') loadAdminOrders();
   if(tab==='stats') loadAdminStats();
   if(tab==='admins') loadAdmins();
+  if(tab==='promos') loadPromos();
 }
 
 // ---- ADMIN ORDERS ----
@@ -719,6 +753,63 @@ async function toggleAdmin(action, prefilledId=null){
     const d=await r.json();
     if(d.ok){showToast(d.message);document.getElementById('admin-userid').value='';loadAdmins();}
     else showToast(d.error||'Помилка',true);
+  }catch{showToast('Помилка з\'єднання',true);}
+}
+
+// ---- ADMIN PROMOS ----
+async function loadPromos(){
+  const el=document.getElementById('admin-promos-list');
+  el.innerHTML='<div class="loader"><span class="lspin">⚙️</span>Завантаження...</div>';
+  try{
+    const r=await fetch('/api/admin/promos?password='+encodeURIComponent(adminPwd));
+    const d=await r.json();
+    if(!d.ok){showToast(d.error,true);return;}
+    if(!d.promos.length){el.innerHTML='<div class="empty"><span class="eicon">🎁</span><div class="etitle">Промокодів немає</div><div class="esub">Створи перший!</div></div>';return;}
+    el.innerHTML=d.promos.map(p=>{
+      const uses=p.uses_left===-1||p.uses_left===null?'∞':p.uses_left;
+      return`<div class="aocard" id="pc-${p.code}">
+        <div class="aohead" style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:15px;font-weight:900;letter-spacing:2px;color:var(--gold)">${p.code}</span>
+          <span class="badge badge-p">🔢 ${uses} використ.</span>
+        </div>
+        <div class="aometa" style="margin-bottom:8px">${p.bonus_label}<br><span style="font-size:10px">📅 ${p.created_at}</span></div>
+        <button class="btn btn-red btn-sm" style="width:100%" onclick="deletePromo('${p.code}')">🗑 Видалити</button>
+      </div>`;
+    }).join('');
+  }catch{el.innerHTML='<div class="empty"><span class="eicon">⚠️</span><div class="etitle">Помилка</div></div>';}
+}
+
+async function createPromo(){
+  const code=document.getElementById('new-promo-code').value.trim().toUpperCase();
+  const bonus_type=document.getElementById('new-promo-type').value;
+  const uses=parseInt(document.getElementById('new-promo-uses').value)||(-1);
+  if(!code){showToast('Введи назву промокоду',true);return;}
+  if(!bonus_type){showToast('Оберіть тип бонусу',true);return;}
+  if(!/^[A-Z0-9_]{2,20}$/.test(code)){showToast('Код: тільки латиниця та цифри (2-20 символів)',true);return;}
+  try{
+    const r=await fetch('/api/admin/create-promo',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({password:adminPwd,code,bonus_type,uses})});
+    const d=await r.json();
+    if(d.ok){
+      showToast('✅ '+d.message);
+      document.getElementById('new-promo-code').value='';
+      document.getElementById('new-promo-type').value='';
+      document.getElementById('new-promo-uses').value='-1';
+      loadPromos();
+    } else showToast(d.error||'Помилка',true);
+  }catch{showToast('Помилка з\'єднання',true);}
+}
+
+async function deletePromo(code){
+  try{
+    const r=await fetch('/api/admin/delete-promo',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({password:adminPwd,code})});
+    const d=await r.json();
+    if(d.ok){
+      showToast('🗑 '+d.message);
+      const el=document.getElementById('pc-'+code);
+      if(el) el.remove();
+    } else showToast(d.error||'Помилка',true);
   }catch{showToast('Помилка з\'єднання',true);}
 }
 
