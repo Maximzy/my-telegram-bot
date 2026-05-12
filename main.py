@@ -1,4 +1,4 @@
-import sqlite3, uuid, logging, threading, os, re
+import sqlite3, uuid, logging, threading, os, re, json, urllib.request, urllib.parse
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
@@ -171,18 +171,157 @@ POLICY_HTML = """<!doctype html>
 </html>"""
 
 
+MINIAPP_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "miniapp.html")
+
+def _load_miniapp_html():
+    try:
+        with open(MINIAPP_HTML_PATH, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return "<h1>Mini App не знайдено</h1>"
+
+def _json_response(handler, data, status=200):
+    body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.end_headers()
+    handler.wfile.write(body)
+
+def _html_response(handler, html):
+    body = html.encode("utf-8")
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/html; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+def _notify_admin_order(order_id, pack, player_id, amount, user_id, username):
+    try:
+        user_label_str = f"@{username}" if username else str(user_id)
+        text = (f"💰 ОПЛАТА (Mini App)!\n"
+                f"🆔 {order_id}\n"
+                f"👤 {user_label_str}\n"
+                f"🎁 {pack}\n"
+                f"🎮 ID: {player_id}\n"
+                f"💵 Сума: {amount} грн")
+        ok_btn = json.dumps({"inline_keyboard": [[
+            {"text": "✅ Готово", "callback_data": f"ok_{order_id}"},
+            {"text": "❌ Відхилити", "callback_data": f"no_{order_id}"}
+        ]]})
+        params = urllib.parse.urlencode({
+            "chat_id": MY_ID,
+            "text": text,
+            "reply_markup": ok_btn
+        }).encode()
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            data=params
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        logging.warning(f"Не вдалося повідомити адміна: {e}")
+
+
 class PolicyHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == "/favicon.ico":
-            self.send_response(204); self.end_headers(); return
-        if self.path not in ("/", "/policy"):
-            self.send_response(404); self.end_headers(); return
-        body = POLICY_HTML.encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
-        self.wfile.write(body)
+
+    def do_GET(self):
+        path = self.path.split("?")[0]
+        query = self.path[len(path)+1:] if "?" in self.path else ""
+        params = dict(urllib.parse.parse_qsl(query))
+
+        if path == "/favicon.ico":
+            self.send_response(204); self.end_headers(); return
+
+        if path in ("/", "/policy"):
+            _html_response(self, POLICY_HTML); return
+
+        if path == "/app":
+            _html_response(self, _load_miniapp_html()); return
+
+        if path == "/api/orders":
+            user_id = int(params.get("user_id", 0))
+            if not user_id:
+                _json_response(self, {"orders": []}); return
+            rows = db_query(
+                "SELECT id, pack, status, player_id, created_at FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 10",
+                (user_id,)
+            )
+            orders = [{"id": r[0], "pack": r[1], "status": r[2], "player_id": r[3], "created_at": (r[4] or "")[:16]} for r in rows]
+            _json_response(self, {"orders": orders}); return
+
+        if path == "/api/bonuses":
+            user_id = int(params.get("user_id", 0))
+            bonuses_raw = db_query("SELECT bonus_type, bonus_value FROM user_bonuses WHERE user_id=? AND used=0", (user_id,))
+            ref_disc = db_query("SELECT id FROM ref_discounts WHERE user_id=?", (user_id,))
+            counts = {}
+            for bt, _ in bonuses_raw:
+                counts[bt] = counts.get(bt, 0) + 1
+            result = []
+            for bt, cnt in counts.items():
+                result.append({"name": BONUS_TYPES.get(bt, bt), "count": cnt})
+            if ref_disc:
+                result.append({"name": "Реферальна знижка 1%", "count": len(ref_disc)})
+            _json_response(self, {"bonuses": result}); return
+
+        self.send_response(404); self.end_headers()
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length)
+        try:
+            data = json.loads(body)
+        except Exception:
+            _json_response(self, {"ok": False, "error": "Bad JSON"}, 400); return
+
+        path = self.path.split("?")[0]
+
+        if path == "/api/submit-order":
+            user_id = int(data.get("user_id", 0))
+            username = str(data.get("username", ""))
+            pack = str(data.get("pack", ""))
+            player_id = str(data.get("player_id", ""))
+            amount = int(data.get("amount", 0))
+            if not pack or not player_id:
+                _json_response(self, {"ok": False, "error": "Відсутні дані"}); return
+            order_id = str(uuid.uuid4())[:8].upper()
+            db_exec(
+                "INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount) VALUES (?,?,?,?,?,?,?,?)",
+                (order_id, username, pack, "pending", user_id, player_id, created_at_now(), str(amount))
+            )
+            _notify_admin_order(order_id, pack, player_id, amount, user_id, username)
+            _json_response(self, {"ok": True, "order_id": order_id}); return
+
+        if path == "/api/promo":
+            user_id = int(data.get("user_id", 0))
+            code = str(data.get("code", "")).strip().upper()
+            if not code or not user_id:
+                _json_response(self, {"ok": False, "error": "Невірні дані"}); return
+            already = db_query_one("SELECT 1 FROM used_promo_codes WHERE user_id=? AND code=?", (user_id, code))
+            if already:
+                _json_response(self, {"ok": False, "error": "Промокод вже використано"}); return
+            promo = db_query_one("SELECT bonus_type, bonus_value, uses_left FROM promo_codes WHERE code=?", (code,))
+            if not promo:
+                _json_response(self, {"ok": False, "error": "Промокод не знайдено"}); return
+            bonus_type, bonus_value, uses_left = promo
+            if uses_left is not None and uses_left != -1 and uses_left <= 0:
+                _json_response(self, {"ok": False, "error": "Промокод вичерпано"}); return
+            db_exec("INSERT OR IGNORE INTO used_promo_codes (user_id, code) VALUES (?,?)", (user_id, code))
+            db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, created_at) VALUES (?,?,?,?)",
+                    (user_id, bonus_type, bonus_value, created_at_now()))
+            if uses_left is not None and uses_left != -1:
+                db_exec("UPDATE promo_codes SET uses_left=uses_left-1 WHERE code=?", (code,))
+            bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
+            _json_response(self, {"ok": True, "message": f"Бонус активовано: {bonus_name}"}); return
+
+        self.send_response(404); self.end_headers()
 
     def log_message(self, format, *args):
         return
@@ -249,6 +388,10 @@ def uses_left_label(uses_left, total_uses=None):
 
 
 # --- КОМАНДИ ---
+def get_miniapp_url():
+    domain = os.getenv("REPLIT_DEV_DOMAIN") or os.getenv("REPLIT_DOMAINS", "").split(",")[0]
+    return f"https://{domain}/app" if domain else "/app"
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user_states[uid] = None
@@ -260,7 +403,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if referrer_id != uid and not db_query_one("SELECT referred_id FROM referrals WHERE referred_id=?", (uid,)):
                     db_exec("INSERT OR IGNORE INTO referrals (referrer_id, referred_id, created_at) VALUES (?,?,?)", (referrer_id, uid, created_at_now()))
             except: pass
-    await update.message.reply_text("👋 Вітаємо!", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
+    webapp_url = get_miniapp_url()
+    mini_app_btn = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🌸 Відкрити Mini App", web_app={"url": webapp_url})
+    ]])
+    await update.message.reply_text(
+        "👋 Вітаємо у магазині UC!\n\n"
+        "🌸 Скористайся зручним міні-застосунком або звичайними кнопками нижче:",
+        reply_markup=mini_app_btn
+    )
+    await update.message.reply_text("⬇️ Або обери дію:", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
