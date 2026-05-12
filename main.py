@@ -5,7 +5,9 @@ from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKey
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 
 # --- НАЛАШТУВАННЯ ---
-TOKEN = "8036989406:AAFVrPB-41p5XLMgrndZHlAKqWOQMMB46E4"
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+if not TOKEN:
+    raise RuntimeError("TELEGRAM_BOT_TOKEN environment variable is not set!")
 ADMIN_PASSWORD = "NezukoAdmin"
 PAYMENT_CARD = "4874070020367247"
 MY_ID = 1440236609
