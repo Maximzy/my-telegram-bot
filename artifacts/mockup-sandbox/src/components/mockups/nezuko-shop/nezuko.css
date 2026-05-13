@@ -1,0 +1,336 @@
+/* ═══════════════════════════════════════════════
+   NEZUKO SHOP — Dark Anime Theme
+   Pink · Black · Green · Modern
+   ═══════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+.nezuko-root {
+  --pink:     #ff2d78;
+  --pink2:    #ff6ba8;
+  --green:    #4ade80;
+  --green2:   #22c55e;
+  --gold:     #ffd166;
+  --bg:       #070711;
+  --bg2:      #0e0e1c;
+  --bg3:      #15152a;
+  --border:   rgba(255,255,255,.08);
+  --text:     #f0f0ff;
+  --muted:    rgba(240,240,255,.45);
+  --card-r:   16px;
+
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  width: 390px;
+  min-height: 844px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── HEADER ───────────────────────────────────── */
+.nz-header {
+  position: relative;
+  background: linear-gradient(180deg, #0e0e22 0%, rgba(14,14,34,.9) 100%);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  z-index: 10;
+  flex-shrink: 0;
+}
+.nz-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 12px;
+  position: relative;
+  z-index: 2;
+}
+.nz-logo { display: flex; align-items: center; gap: 10px; }
+.nz-logo-icon { font-size: 28px; line-height: 1; }
+.nz-logo-title {
+  font-size: 18px;
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--pink), var(--pink2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: 1.1;
+}
+.nz-logo-sub { font-size: 10px; color: var(--muted); margin-top: 1px; }
+.nz-header-right { display: flex; align-items: center; gap: 10px; }
+.nz-online {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--green); font-weight: 600;
+}
+.nz-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green2);
+  animation: nz-pulse 2s ease-in-out infinite;
+}
+@keyframes nz-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.85)} }
+.nz-pts-chip {
+  display: flex; align-items: center; gap: 4px;
+  background: rgba(255,209,102,.1);
+  border: 1px solid rgba(255,209,102,.2);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+/* Sakura petals decoration */
+.nz-petals { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.nz-petal {
+  position: absolute; font-size: 10px; opacity: .18;
+  animation: nz-float 8s ease-in-out infinite;
+}
+.nz-petal-0 { top: 4px; left: 20px; animation-delay: 0s; }
+.nz-petal-1 { top: 8px; left: 80px; animation-delay: 1.2s; font-size: 8px; }
+.nz-petal-2 { top: 2px; left: 160px; animation-delay: 2.5s; font-size: 12px; }
+.nz-petal-3 { top: 10px; right: 80px; animation-delay: 0.8s; }
+.nz-petal-4 { top: 4px; right: 40px; animation-delay: 3s; font-size: 8px; }
+.nz-petal-5 { top: 12px; right: 120px; animation-delay: 1.8s; font-size: 9px; }
+@keyframes nz-float { 0%,100%{transform:translateY(0) rotate(0deg)} 50%{transform:translateY(4px) rotate(15deg)} }
+
+/* ── MAIN ─────────────────────────────────────── */
+.nz-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 14px 0;
+  scrollbar-width: none;
+}
+.nz-main::-webkit-scrollbar { display: none; }
+
+/* ── HERO ─────────────────────────────────────── */
+.nz-hero {
+  position: relative;
+  background: linear-gradient(135deg, #110022 0%, #1a0033 50%, #0a0a22 100%);
+  border: 1px solid rgba(255,45,120,.2);
+  border-radius: 20px;
+  padding: 22px 18px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 130px;
+}
+.nz-hero-glow {
+  position: absolute;
+  top: -40px; left: -40px;
+  width: 200px; height: 200px;
+  background: radial-gradient(circle, rgba(255,45,120,.25) 0%, transparent 70%);
+  pointer-events: none;
+}
+.nz-hero-content { position: relative; z-index: 2; }
+.nz-hero-label {
+  font-size: 10px; font-weight: 700; color: var(--pink);
+  text-transform: uppercase; letter-spacing: 2px;
+  margin-bottom: 6px;
+}
+.nz-hero-title {
+  font-size: 22px; font-weight: 900; line-height: 1.2;
+  margin-bottom: 6px; color: #fff;
+}
+.nz-accent {
+  background: linear-gradient(135deg, var(--pink), var(--pink2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.nz-hero-desc { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
+.nz-btn-hero {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: linear-gradient(135deg, var(--pink), #d4006a);
+  color: #fff; border: none; border-radius: 12px;
+  padding: 10px 18px; font-size: 13px; font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(255,45,120,.4);
+  transition: box-shadow .2s, opacity .2s;
+}
+.nz-btn-hero:active { opacity: .85; }
+.nz-hero-img {
+  font-size: 60px; line-height: 1;
+  position: relative; z-index: 2;
+  filter: drop-shadow(0 4px 16px rgba(255,45,120,.35));
+}
+
+/* ── SECTION LABELS ───────────────────────────── */
+.nz-section-label {
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 1.5px;
+  margin: 0 0 10px;
+  display: block;
+}
+.nz-section-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.nz-see-all {
+  display: flex; align-items: center; gap: 2px;
+  font-size: 11px; font-weight: 600; color: var(--pink);
+  background: none; border: none; cursor: pointer; padding: 0;
+}
+
+/* ── CATEGORY PILLS ───────────────────────────── */
+.nz-cats {
+  display: flex; gap: 8px; margin-bottom: 20px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.nz-cats::-webkit-scrollbar { display: none; }
+.nz-cat {
+  flex-shrink: 0;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 7px 18px;
+  font-size: 13px; font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.nz-cat-active {
+  background: linear-gradient(135deg, var(--pink), #d4006a);
+  border-color: var(--pink);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(255,45,120,.3);
+}
+
+/* ── PACKS GRID ───────────────────────────────── */
+.nz-packs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.nz-pack {
+  position: relative;
+  border: 1px solid;
+  border-radius: var(--card-r);
+  padding: 14px 12px;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: opacity .15s;
+}
+.nz-pack:active { opacity: .8; }
+.nz-pack::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,.03) 0%, transparent 60%);
+  pointer-events: none;
+}
+.nz-pack-badge {
+  position: absolute; top: 8px; right: 8px;
+  background: var(--pink);
+  color: #fff; font-size: 9px; font-weight: 800;
+  padding: 2px 7px; border-radius: 8px;
+  text-transform: uppercase; letter-spacing: .5px;
+}
+.nz-pack-hot {
+  position: absolute; top: 8px; left: 8px;
+  color: #ff6b35;
+  filter: drop-shadow(0 0 4px #ff6b35);
+}
+.nz-pack-icon { font-size: 26px; margin-top: 4px; }
+.nz-pack-name { font-size: 13px; font-weight: 800; color: #fff; }
+.nz-pack-price { font-size: 12px; font-weight: 700; }
+.nz-pack-btn {
+  width: 100%; margin-top: 4px;
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px;
+  padding: 7px 0;
+  font-size: 12px; font-weight: 700; color: #fff;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.nz-pack-btn:active { background: rgba(255,255,255,.14); }
+
+/* ── QUICK ACTIONS ────────────────────────────── */
+.nz-quick {
+  display: grid; grid-template-columns: repeat(3,1fr);
+  gap: 10px; margin-bottom: 20px;
+}
+.nz-quick-card {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 5px; padding: 14px 8px;
+  border-radius: var(--card-r);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 12px; font-weight: 700; color: #fff;
+  transition: opacity .15s;
+}
+.nz-quick-card:active { opacity: .7; }
+.nz-qc-sub { font-size: 9px; color: var(--muted); font-weight: 500; }
+.nz-qc-spin {
+  background: linear-gradient(135deg, #1a0035, #290050);
+  border-color: rgba(168,85,247,.35);
+  color: #c084fc;
+}
+.nz-qc-spin svg { color: #c084fc; filter: drop-shadow(0 0 6px #a855f7); }
+.nz-qc-orders {
+  background: linear-gradient(135deg, #001a10, #002818);
+  border-color: rgba(74,222,128,.25);
+  color: var(--green);
+}
+.nz-qc-orders svg { color: var(--green); filter: drop-shadow(0 0 6px var(--green2)); }
+.nz-qc-top {
+  background: linear-gradient(135deg, #1a1200, #251a00);
+  border-color: rgba(255,209,102,.25);
+  color: var(--gold);
+}
+.nz-qc-top svg { color: var(--gold); filter: drop-shadow(0 0 6px #d4a20a); }
+
+/* ── PROMO BANNER ─────────────────────────────── */
+.nz-promo {
+  background: linear-gradient(135deg, #0e1a2e, #152540);
+  border: 1px solid rgba(74,222,128,.2);
+  border-radius: 18px;
+  padding: 18px;
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 4px;
+}
+.nz-promo-title { font-size: 14px; font-weight: 800; margin-bottom: 4px; }
+.nz-promo-desc { font-size: 11px; color: var(--muted); margin-bottom: 12px; line-height: 1.4; }
+.nz-promo-btn {
+  background: linear-gradient(135deg, var(--green2), #16a34a);
+  color: #fff; border: none; border-radius: 10px;
+  padding: 8px 16px; font-size: 12px; font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 3px 12px rgba(34,197,94,.3);
+}
+.nz-promo-right { font-size: 42px; filter: drop-shadow(0 0 12px rgba(74,222,128,.4)); }
+
+/* ── BOTTOM NAV ───────────────────────────────── */
+.nz-nav {
+  position: sticky; bottom: 0;
+  display: flex;
+  background: rgba(10,10,24,.95);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border);
+  padding: 10px 0 14px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+.nz-nav-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 3px; padding: 4px 0;
+  background: none; border: none;
+  font-size: 9px; font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  position: relative;
+  transition: color .15s;
+}
+.nz-nav-active { color: var(--pink); }
+.nz-nav-active svg { filter: drop-shadow(0 0 8px rgba(255,45,120,.5)); }
+.nz-nav-pip {
+  position: absolute; bottom: -6px;
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--pink);
+  box-shadow: 0 0 8px var(--pink);
+}
