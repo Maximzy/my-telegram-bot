@@ -841,7 +841,7 @@ api('/api/prices').then(r => {
 function renderPopular() {
   const keys = Object.keys(prices).slice(0, 4);
   document.getElementById('popularList').innerHTML = keys.map(p =>
-    `<div class="pack-item" onclick="selectPack(${JSON.stringify(p)})">
+    `<div class="pack-item" onclick="selectPack(${JSON.stringify(p).replace(/"/g, '&quot;')})">
        <span class="pack-name">${esc(p)}</span>
        <span class="pack-price">${prices[p]} грн</span>
      </div>`).join('');
@@ -862,7 +862,7 @@ function showPacks(cat) {
   const packs = Object.keys(prices).filter(CAT_FILTER[cat]);
   document.getElementById('packTitle').textContent = CAT_LABEL[cat];
   document.getElementById('packList').innerHTML = packs.map(p =>
-    `<div class="pack-item" onclick="selectPack(${JSON.stringify(p)})">
+    `<div class="pack-item" onclick="selectPack(${JSON.stringify(p).replace(/"/g, '&quot;')})">
        <span class="pack-name">${esc(p)}</span>
        <span class="pack-price">${prices[p]} грн</span>
      </div>`).join('');
@@ -1033,7 +1033,7 @@ function copyRef() {
 }
 
 // ─── WHEEL ───────────────────────────────────────────────────────────────────
-const ITEM_W = 88; // width per wheel item (px)
+const ITEM_W = 84; // width per wheel item (px) — matches CSS .wheel-item{width:84px}, stride = ITEM_W+4 = 88px
 
 function prizeEmoji(p) {
   if (p.type === 'points') return p.value >= 500 ? '💰' : p.value >= 100 ? '🪙🪙' : '🪙';
