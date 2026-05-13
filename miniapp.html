@@ -190,7 +190,8 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 .promo-form{display:flex;flex-direction:column;gap:10px;margin-top:10px}
 
 /* ── HIDDEN ─────────────────────────────── */
-.hl{color:rgba(255,255,255,.07);font-size:7px;font-family:monospace;user-select:none;display:inline-block}
+.hl{color:var(--acc);font-size:15px;font-family:monospace;font-weight:900;user-select:none;display:inline-block;text-shadow:0 0 8px var(--acc),0 0 20px rgba(236,72,153,.5);animation:hlpulse 2.6s ease-in-out infinite;cursor:default;letter-spacing:.05em}
+@keyframes hlpulse{0%,100%{opacity:.6;transform:scale(1) rotate(0deg)}50%{opacity:1;transform:scale(1.18) rotate(2deg)}}
 
 /* ── SAKURA ─────────────────────────────── */
 .sakura{position:fixed;top:-10px;pointer-events:none;z-index:500;animation:sfade linear forwards}
@@ -249,8 +250,6 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 <!-- ═══ TAB: МАГАЗИН ═══ -->
 <div id="tab-shop" class="tab active">
   <div class="page" style="padding-top:12px">
-    <div style="text-align:right;margin-bottom:-6px"><span class="hl">N</span></div>
-
     <!-- Step 1 – Categories -->
     <div id="shopCats">
       <div class="section-title">Оберіть категорію</div>
@@ -263,9 +262,10 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
           <div class="category-icon">👑</div>
           <div class="category-label">Prime</div>
         </div>
-        <div class="category-card" style="grid-column:1/-1" onclick="showPacks('primeplus')">
+        <div class="category-card" style="grid-column:1/-1;position:relative" onclick="showPacks('primeplus')">
           <div class="category-icon">✨</div>
           <div class="category-label">Prime Plus</div>
+          <span class="hl" style="position:absolute;bottom:5px;right:10px;font-size:12px;transform:rotate(8deg)">N</span>
         </div>
       </div>
       <div class="section-title">Популярне</div>
@@ -326,12 +326,12 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 <!-- ═══ TAB: ЗАМОВЛЕННЯ ═══ -->
 <div id="tab-orders" class="tab">
   <div class="page" style="padding-top:12px">
-    <div style="text-align:right;margin-bottom:-6px"><span class="hl">E</span></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
       <div class="section-title" style="margin:0">Всі замовлення</div>
       <button class="btn-ghost btn btn-sm" onclick="loadOrders()">↻ Оновити</button>
     </div>
     <div id="ordersList"><div class="empty"><div class="spinner"></div></div></div>
+    <div style="margin-top:10px;padding-left:2px"><span class="hl" style="font-size:13px;transform:rotate(-10deg)">E</span></div>
   </div>
 </div>
 
@@ -352,10 +352,10 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
     <!-- Bonus -->
     <div class="svc" id="svc-bonus">
-      <div style="text-align:right"><span class="hl">Z</span></div>
       <div class="section-title">Активувати промокод</div>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;align-items:center">
         <input type="text" id="promoCode" placeholder="Введіть промокод" style="text-transform:uppercase;flex:1" oninput="this.value=this.value.toUpperCase()">
+        <span class="hl" style="font-size:11px;transform:rotate(-5deg);flex-shrink:0">Z</span>
         <button class="btn btn-sm" onclick="activatePromo()">→</button>
       </div>
       <div class="section-title">Активні бонуси</div>
@@ -365,7 +365,6 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
     <!-- Referral -->
     <div class="svc" id="svc-referral" style="display:none">
-      <div style="text-align:right"><span class="hl">K</span></div>
       <div class="section-title">Ваше реферальне посилання</div>
       <div class="card" style="cursor:pointer" onclick="copyRef()">
         <div style="font-size:11px;color:var(--muted);margin-bottom:5px">📋 Натисніть щоб скопіювати</div>
@@ -375,16 +374,15 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div class="stat-box"><div class="stat-val" id="refInv">—</div><div class="stat-lbl">Запрошено</div></div>
         <div class="stat-box"><div class="stat-val" id="refDisc">—</div><div class="stat-lbl">Знижок</div></div>
       </div>
-      <div class="card mt-12">
+      <div class="card mt-12" style="position:relative">
         <div style="font-size:13px;font-weight:600;margin-bottom:6px">Як це працює?</div>
         <div style="font-size:12px;color:var(--muted);line-height:1.6">Запроси друга за своїм посиланням. Коли він зробить покупку — ти отримаєш знижку 1% на наступне замовлення!</div>
+        <span class="hl" style="position:absolute;bottom:8px;right:10px;font-size:12px;transform:rotate(-6deg)">K</span>
       </div>
     </div>
 
     <!-- Wheel -->
     <div class="svc" id="svc-wheel" style="display:none">
-      <div style="text-align:right"><span class="hl">O</span></div>
-
       <div class="section-title">🎰 Безкоштовна рулетка</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Раз на 24 години — безкоштовно!</div>
 
@@ -398,7 +396,9 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <button class="spin-btn" id="freeSpinBtn" onclick="doFreeSpin()">🎰 Крутити (безкоштовно)</button>
       <div class="cooldown-text" id="freeCooldown"></div>
 
-      <div class="divider" style="margin:20px 0"></div>
+      <div class="divider" style="margin:20px 0;position:relative">
+        <span class="hl" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-3deg);font-size:16px;background:var(--card)">O</span>
+      </div>
 
       <div class="section-title">💎 Платна рулетка</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px">40 грн — Адмін особисто крутить після оплати!</div>
@@ -419,17 +419,19 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
     <!-- Top -->
     <div class="svc" id="svc-top" style="display:none">
-      <div style="text-align:right"><span class="hl">U</span></div>
       <div class="section-title">🏆 Топ-10 Донатерів</div>
       <div id="topList"><div class="empty"><div class="spinner"></div></div></div>
+      <div style="text-align:center;margin-top:8px"><span class="hl" style="font-size:14px;transform:rotate(4deg)">U</span></div>
     </div>
 
     <!-- Reviews -->
     <div class="svc" id="svc-reviews" style="display:none">
-      <div style="text-align:right"><span class="hl">O</span></div>
       <div class="section-title">Написати відгук</div>
       <textarea id="reviewTxt" rows="3" placeholder="Напишіть відгук..." style="resize:none"></textarea>
-      <button class="btn mt-8" onclick="sendReview()">Надіслати</button>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+        <button class="btn" style="flex:1" onclick="sendReview()">Надіслати</button>
+        <span class="hl" style="font-size:13px;transform:rotate(12deg)">O</span>
+      </div>
       <div class="section-title">Останні відгуки</div>
       <div id="reviewsList"><div class="empty"><div class="spinner"></div></div></div>
     </div>
@@ -488,7 +490,6 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
     <!-- Help -->
     <div class="svc" id="svc-help" style="display:none">
-      <div style="text-align:right"><span class="hl">P</span></div>
       <div class="card">
         <div style="font-size:16px;font-weight:800;margin-bottom:12px">ℹ️ Як купити UC</div>
         <div style="font-size:13px;line-height:2">
@@ -503,9 +504,10 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div style="font-size:13px;font-weight:600;margin-bottom:5px">🎁 Промокоди та бонуси</div>
         <div style="font-size:12px;color:var(--muted)">Активуй промокоди в розділі «Бонуси». Знижки застосовуються автоматично при покупці. Збирай бали та обмінюй на призи!</div>
       </div>
-      <div class="card">
+      <div class="card" style="position:relative">
         <div style="font-size:13px;font-weight:600;margin-bottom:5px">🏅 Досягнення</div>
         <div style="font-size:12px;color:var(--muted)">Виконуй різні дії, щоб отримувати унікальні нагороди. Деякі досягнення секретні — спробуй знайти!</div>
+        <span class="hl" style="position:absolute;bottom:8px;right:12px;font-size:13px;transform:rotate(6deg)">P</span>
       </div>
     </div>
   </div>
@@ -514,9 +516,8 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 <!-- ═══ TAB: ПРОФІЛЬ ═══ -->
 <div id="tab-profile" class="tab">
   <div class="page" style="padding-top:12px">
-    <div style="text-align:right;margin-bottom:-6px"><span class="hl">T</span></div>
-
-    <div class="profile-banner">
+    <div class="profile-banner" style="position:relative">
+      <span class="hl" style="position:absolute;top:10px;left:12px;font-size:13px;transform:rotate(-8deg)">T</span>
       <div class="profile-avatar">🌸</div>
       <div class="profile-name" id="pName">Гравець</div>
       <div class="profile-mini" id="pId">ID: —</div>
