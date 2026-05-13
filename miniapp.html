@@ -15,13 +15,13 @@
   --epic-bg:#0d1630;--epic-b:#60a5fa;
   --leg-bg:#2b1a00;--leg-b:#ffd166;
 }
-body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow-x:hidden;min-height:100vh;padding-bottom:74px}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow-x:hidden;min-height:100vh;padding-bottom:74px;padding-top:46px}
 a{color:var(--acc);text-decoration:none}
 input,textarea,select{background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;width:100%;outline:none;transition:border .2s}
 input:focus,textarea:focus,select:focus{border-color:var(--acc)}
-button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:600;padding:11px 20px;transition:all .18s}
+button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:600;padding:11px 20px;transition:background .18s,opacity .18s,border-color .18s}
 .btn{background:var(--acc);color:#fff;width:100%;padding:13px;display:block}
-.btn:active{opacity:.82;transform:scale(.97)}
+.btn:active{opacity:.75}
 .btn-ghost{background:var(--card2);color:var(--text);border:1px solid var(--border)}
 .btn-sm{padding:7px 14px;font-size:13px;width:auto;display:inline-block}
 .btn-danger{background:#c0392b;color:#fff}
@@ -30,8 +30,8 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 .section-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin:18px 0 10px}
 
 /* Header */
-.header{position:sticky;top:0;z-index:50;background:var(--bg);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;justify-content:space-between}
-.header-logo{font-size:17px;font-weight:800;background:linear-gradient(135deg,var(--acc),var(--acc2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header{position:fixed;top:0;left:0;right:0;z-index:50;background:var(--bg);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;justify-content:space-between}
+.header-logo{font-size:17px;font-weight:800;color:var(--acc)}
 .online-badge{font-size:11px;color:var(--success);display:flex;align-items:center;gap:5px}
 .online-dot{width:6px;height:6px;border-radius:50%;background:var(--success);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
@@ -54,8 +54,8 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 
 /* Shop */
 .category-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.category-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px 12px;text-align:center;cursor:pointer;transition:all .18s}
-.category-card:active{transform:scale(.94);border-color:var(--acc)}
+.category-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px 12px;text-align:center;cursor:pointer;transition:background .18s,border-color .18s}
+.category-card:active{background:var(--card2);border-color:var(--acc)}
 .category-icon{font-size:34px;margin-bottom:8px}
 .category-label{font-size:13px;font-weight:700}
 .pack-item{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:all .18s;margin-bottom:8px}
@@ -80,7 +80,7 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 .wheel-ptr{position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:10;pointer-events:none;display:flex;flex-direction:column;align-items:center}
 .wheel-ptr::before{content:'';display:block;width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-top:14px solid var(--acc)}
 .wheel-ptr-b{position:absolute;bottom:0;left:50%;transform:translateX(-50%);z-index:10;width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:14px solid var(--acc);pointer-events:none}
-.wheel-tape{display:flex;gap:4px;padding:0 4px;position:absolute;left:0;top:0;height:100%;align-items:center;will-change:transform}
+.wheel-tape{display:flex;gap:4px;padding:0 4px;position:absolute;left:0;top:0;height:100%;align-items:center}
 .wheel-item{flex-shrink:0;width:84px;height:118px;border-radius:12px;border:2px solid;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px}
 .ri-common{background:#1a1a1a;border-color:#444}
 .ri-rare{background:var(--rare-bg);border-color:var(--rare-b)}
@@ -1085,12 +1085,15 @@ function renderTape(tapeEl, items) {
 function animateToPosition(tapeEl, winnerIdx, containerW) {
   const startX = containerW / 2 - ITEM_W / 2;
   const endX = -(winnerIdx * (ITEM_W + 4) - containerW / 2 + (ITEM_W + 4) / 2);
+  tapeEl.style.willChange = 'transform';
   tapeEl.style.transition = 'none';
   tapeEl.style.transform = `translateX(${startX}px)`;
   void tapeEl.offsetWidth;
   setTimeout(() => {
     tapeEl.style.transition = 'transform 5.8s cubic-bezier(0.06, 0.85, 0.15, 1.0)';
     tapeEl.style.transform = `translateX(${endX}px)`;
+    // Clear will-change after animation to free GPU layer
+    setTimeout(() => { tapeEl.style.willChange = 'auto'; }, 6000);
   }, 50);
 }
 
@@ -1548,40 +1551,35 @@ async function approveWheel(spinId) {
 if (adminPass) showAdminPanel();
 
 // ─── ВІДНОВЛЕННЯ ПІСЛЯ ПОВЕРНЕННЯ В МІНІ-АПП ────────────────────────────────
-function resetAppState() {
-  // 1. Розблокувати рулетку якщо анімація зависла
-  spinning = false;
-  const fBtn = document.getElementById('freeSpinBtn');
-  if (fBtn && fBtn.textContent.includes('Крутимо')) {
-    fBtn.textContent = '🎰 Крутити (безкоштовно)';
-    fBtn.disabled = false;
+function fixRenderingArtifacts() {
+  // Force a GPU repaint to clear any stuck textures/layers
+  requestAnimationFrame(() => {
+    document.body.style.transform = 'translateZ(0)';
+    requestAnimationFrame(() => {
+      document.body.style.transform = '';
+    });
+  });
+
+  // Unblock spin button if animation got interrupted
+  if (spinning) {
+    spinning = false;
+    const fBtn = document.getElementById('freeSpinBtn');
+    if (fBtn) {
+      fBtn.disabled = false;
+      fBtn.textContent = '🎰 Крутити (безкоштовно)';
+    }
   }
-  // Скинути трансформації стрічок рулетки щоб не залишалось артефактів
+
+  // Clear any stuck will-change on wheel tapes
   ['fwTape', 'pwTape'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) { el.style.transition = 'none'; }
+    if (el) { el.style.willChange = 'auto'; el.style.transition = 'none'; }
   });
-  // Переініціалізувати колесо якщо вкладка активна
-  if (document.getElementById('svc-wheel')?.style.display !== 'none') {
-    lazyLoaded['svc_wheel'] = false;
-    initWheel();
-  }
 
-  // 2. Закрити всі відкриті модальні вікна
+  // Close stuck modals
   document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
 
-  // 3. Скинути магазин на початковий крок
-  ['shopPacks','shopId','shopPay','shopDone'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
-  });
-  const shopCats = document.getElementById('shopCats');
-  if (shopCats) shopCats.style.display = '';
-  curCat = null; curPack = null;
-  const gid = document.getElementById('gameIdInput');
-  if (gid) gid.value = '';
-
-  // 4. Повторно розгорнути WebApp та застосувати кольори
+  // Re-expand and apply colors
   if (tg) {
     tg.expand();
     tg.setHeaderColor?.('#0c0c14');
@@ -1589,14 +1587,13 @@ function resetAppState() {
   }
 }
 
-// Спрацьовує коли користувач повертається до мінізастосунку
+// Fire on Telegram activation (user returns to mini app)
 if (tg) {
-  tg.onEvent('activated', resetAppState);
+  tg.onEvent('activated', fixRenderingArtifacts);
+  tg.onEvent('viewportChanged', () => {
+    requestAnimationFrame(fixRenderingArtifacts);
+  });
 }
-// Резервний варіант через стандартний браузерний API видимості
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') resetAppState();
-});
 </script>
 </body>
 </html>
