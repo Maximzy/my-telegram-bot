@@ -1,7 +1,7 @@
 import sqlite3, uuid, logging, threading, os, re, json, urllib.request, urllib.parse, random
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 
 # --- НАЛАШТУВАННЯ ---
@@ -200,7 +200,18 @@ def get_main_kb(uid):
     if db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type='free_uc_30' AND used=0 LIMIT 1", (uid,)):
         extras.append("🎁 30 UC Free")
     if extras:
-        return [extras] + kb
+        kb = [extras] + kb
+    # Додаємо кнопку Mini App якщо домен відомий
+    _domain = (
+        os.getenv("BOT_DOMAIN") or
+        os.getenv("REPLIT_DEV_DOMAIN") or
+        (os.getenv("REPLIT_DOMAINS", "").split(",")[0].strip() or None) or
+        os.getenv("RAILWAY_PUBLIC_DOMAIN") or
+        os.getenv("RAILWAY_STATIC_URL", "").replace("https://","").replace("http://","").strip("/") or
+        ""
+    )
+    if _domain:
+        kb = [[KeyboardButton("🌸 Відкрити Mini App", web_app=WebAppInfo(url=f"https://{_domain}/app"))]] + kb
     return kb
 
 SHOP_KB = ReplyKeyboardMarkup(
@@ -1404,6 +1415,34 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today_sum = get_done_sum(today_only=True)
     await update.message.reply_text(f"📊 Статистика:\n✅ Виконано: {done_count}\n❌ Відхилено: {canceled_count}\n💰 Загальна сума: {total_sum} грн\n📅 Сьогодні: {today_sum} грн")
 
+async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        await update.message.reply_text("⛔ Тільки для адміна."); return
+    await update.message.reply_text("⏳ Створюю резервну копію бази даних...")
+    try:
+        import shutil, tempfile
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        with db_lock:
+            src = sqlite3.connect(DB_PATH)
+            dst = sqlite3.connect(tmp.name)
+            src.backup(dst)
+            dst.close()
+            src.close()
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M")
+        with open(tmp.name, "rb") as f:
+            await context.bot.send_document(
+                chat_id=uid,
+                document=f,
+                filename=f"bot_backup_{ts}.db",
+                caption=f"🗄 Резервна копія бази даних\n📅 {ts}\n📦 Файл: bot_backup_{ts}.db"
+            )
+        os.remove(tmp.name)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Помилка бекапу: {e}")
+
+
 async def setprice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid):
@@ -1851,6 +1890,7 @@ def main():
     app.add_handler(CommandHandler("achievements", achievements_command))
     app.add_handler(CommandHandler("profile", profile_command))
     app.add_handler(CommandHandler("setprice", setprice_command))
+    app.add_handler(CommandHandler("backup", backup_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(callback))
     logging.info("Бот запущено!")
