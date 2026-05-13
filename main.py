@@ -1,7 +1,7 @@
 import sqlite3, uuid, logging, threading, os, re, json, urllib.request, urllib.parse, random
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 
 # --- НАЛАШТУВАННЯ ---
@@ -14,7 +14,13 @@ MY_ID = 1440236609
 
 logging.basicConfig(level=logging.INFO)
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.db")
+# Если задана DATA_DIR (например, Railway Volume /data), база хранится там
+_data_dir = os.environ.get("DATA_DIR", "")
+if _data_dir:
+    os.makedirs(_data_dir, exist_ok=True)
+    DB_PATH = os.path.join(_data_dir, "bot.db")
+else:
+    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.db")
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 db_lock = threading.Lock()
 conn.execute("PRAGMA journal_mode=WAL")
@@ -1087,14 +1093,57 @@ def start_policy_server():
     logging.info(f"Веб-сервер запущено на порту {port}")
 
 
+def _db_backup_worker():
+    """Кожні 30 хв робить резервну копію бази у backup/ поряд із DB_PATH."""
+    backup_dir = os.path.join(os.path.dirname(DB_PATH), "backup")
+    os.makedirs(backup_dir, exist_ok=True)
+    while True:
+        try:
+            import shutil
+            ts = datetime.now().strftime("%Y%m%d_%H%M")
+            dst = os.path.join(backup_dir, f"bot_{ts}.db")
+            with db_lock:
+                src_conn = sqlite3.connect(DB_PATH)
+                bck_conn = sqlite3.connect(dst)
+                src_conn.backup(bck_conn)
+                bck_conn.close()
+                src_conn.close()
+            # Лишаємо лише 48 останніх файлів (1 доба)
+            files = sorted(
+                [f for f in os.listdir(backup_dir) if f.endswith(".db")],
+                reverse=True
+            )
+            for old in files[48:]:
+                try: os.remove(os.path.join(backup_dir, old))
+                except: pass
+            logging.info(f"DB backup: {dst}")
+        except Exception as e:
+            logging.warning(f"DB backup error: {e}")
+        import time; time.sleep(1800)
+
+
+def start_db_backup():
+    threading.Thread(target=_db_backup_worker, daemon=True).start()
+    logging.info("Автобекап БД запущено (кожні 30 хв)")
+
+
 # --- ПОМІЧНИКИ ---
 def is_admin(uid):
     if uid == MY_ID: return True
     return bool(db_query_one("SELECT id FROM admins WHERE id=?", (uid,)))
 
+def _get_domain():
+    return (
+        os.getenv("BOT_DOMAIN") or
+        os.getenv("REPLIT_DEV_DOMAIN") or
+        (os.getenv("REPLIT_DOMAINS", "").split(",")[0].strip() or None) or
+        os.getenv("RAILWAY_PUBLIC_DOMAIN") or
+        os.getenv("RAILWAY_STATIC_URL", "").replace("https://", "").replace("http://", "").strip("/") or
+        ""
+    )
+
 def get_policy_url():
-    domain = (os.getenv("REPLIT_DEV_DOMAIN") or os.getenv("REPLIT_DOMAINS", "").split(",")[0]
-              or os.getenv("RAILWAY_PUBLIC_DOMAIN", ""))
+    domain = _get_domain()
     return f"https://{domain}/policy" if domain else "/policy"
 
 def get_pack_price(pack):
@@ -1148,9 +1197,11 @@ def uses_left_label(uses_left, total_uses=None):
 
 # --- КОМАНДИ ---
 def get_miniapp_url():
-    domain = (os.getenv("REPLIT_DEV_DOMAIN") or os.getenv("REPLIT_DOMAINS", "").split(",")[0]
-              or os.getenv("RAILWAY_PUBLIC_DOMAIN", ""))
-    return f"https://{domain}/app" if domain else "/app"
+    domain = _get_domain()
+    if domain:
+        return f"https://{domain}/app"
+    logging.warning("BOT_DOMAIN не задан — кнопка Mini App не буде працювати! Встанови змінну BOT_DOMAIN.")
+    return ""
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -1165,9 +1216,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     db_exec("INSERT OR IGNORE INTO referrals (referrer_id, referred_id, created_at) VALUES (?,?,?)", (referrer_id, uid, created_at_now()))
             except: pass
     webapp_url = get_miniapp_url()
-    mini_app_btn = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🌸 Відкрити Mini App", web_app={"url": webapp_url})
-    ]])
+    if webapp_url:
+        mini_app_btn = InlineKeyboardMarkup([[
+            InlineKeyboardButton("🌸 Відкрити Mini App", web_app=WebAppInfo(url=webapp_url))
+        ]])
+    else:
+        mini_app_btn = None
     # Hidden letter N in the welcome message
     await update.message.reply_text(
         "👋 Вітаємо у магазині UC від Nezuko! 🌸\n\n"
@@ -1777,6 +1831,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- MAIN ---
 def main():
     start_policy_server()
+    start_db_backup()
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("shop", shop_command))
