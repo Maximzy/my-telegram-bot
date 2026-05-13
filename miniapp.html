@@ -48,6 +48,23 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 .online-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green2);animation:pulse 2s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
 
+/* ── SAKURA PETALS ──────────────────────── */
+#sakura-container{position:fixed;top:0;left:0;width:100%;height:100vh;pointer-events:none;z-index:200;overflow:hidden}
+.sakura-petal{position:absolute;top:-30px;width:12px;height:10px;border-radius:50% 0 50% 0;opacity:0;animation:sakura-fall linear forwards}
+@keyframes sakura-fall{
+  0%  {transform:translateY(0) rotate(0deg) scale(1);opacity:0}
+  5%  {opacity:.9}
+  85% {opacity:.75}
+  100%{transform:translateY(105vh) rotate(720deg) scale(.6);opacity:0}
+}
+@keyframes sakura-sway{
+  0%  {margin-left:0}
+  25% {margin-left:22px}
+  50% {margin-left:-18px}
+  75% {margin-left:16px}
+  100%{margin-left:0}
+}
+
 /* ── BOTTOM NAV ─────────────────────────── */
 .bottom-nav{position:fixed;bottom:0;left:0;right:0;background:rgba(10,10,24,.95);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--border);display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom,0px)}
 .nav-item{flex:1;display:flex;flex-direction:column;align-items:center;padding:9px 2px 7px;cursor:pointer;color:var(--muted);font-size:10px;font-weight:600;gap:3px;transition:color .15s;position:relative}
@@ -192,6 +209,9 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 </style>
 </head>
 <body>
+
+<!-- Sakura petals overlay -->
+<div id="sakura-container"></div>
 
 <!-- Header -->
 <div class="header">
@@ -1594,6 +1614,47 @@ if (tg) tg.onEvent('activated', onAppReactivated);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') onAppReactivated();
 });
+
+// ── SAKURA PETALS ──────────────────────────────────────────────
+(function spawnSakura() {
+  const container = document.getElementById('sakura-container');
+  if (!container) return;
+
+  const colors = ['#ff2d78','#ff6ba8','#ffadd4','#ff4d8f','#e91e8c','#ffcce0'];
+  const count = 22;
+
+  function makePetal(i) {
+    const el = document.createElement('div');
+    el.className = 'sakura-petal';
+
+    const size   = 8 + Math.random() * 10;
+    const left   = Math.random() * 100;
+    const delay  = i * 0.28 + Math.random() * 0.4;
+    const dur    = 3.5 + Math.random() * 3;
+    const color  = colors[Math.floor(Math.random() * colors.length)];
+    const rotate = Math.random() > .5 ? '50% 0 50% 0' : '0 50% 0 50%';
+
+    el.style.cssText = [
+      `left:${left}%`,
+      `width:${size}px`,
+      `height:${size * .82}px`,
+      `background:${color}`,
+      `border-radius:${rotate}`,
+      `box-shadow:0 0 6px ${color}88`,
+      `animation:sakura-fall ${dur}s ${delay}s linear forwards,`+
+               `sakura-sway ${dur * .6}s ${delay}s ease-in-out infinite`,
+      `opacity:0`,
+    ].join(';');
+
+    container.appendChild(el);
+
+    setTimeout(() => { el.remove(); }, (delay + dur + 0.5) * 1000);
+  }
+
+  for (let i = 0; i < count; i++) makePetal(i);
+
+  setTimeout(() => { container.remove(); }, (count * 0.28 + 7.5) * 1000);
+})();
 </script>
 </body>
 </html>
