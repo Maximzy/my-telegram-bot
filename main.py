@@ -80,6 +80,7 @@ _c.execute("CREATE TABLE IF NOT EXISTS wheel_data (user_id INTEGER PRIMARY KEY, 
 _c.execute("CREATE TABLE IF NOT EXISTS pending_wheel_spins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, created_at TEXT, status TEXT DEFAULT 'pending', prize_id TEXT)")
 _c.execute("CREATE TABLE IF NOT EXISTS user_profile (user_id INTEGER PRIMARY KEY, first_seen TEXT, last_seen TEXT, consecutive_days INTEGER DEFAULT 0, last_login_date TEXT)")
 _c.execute("CREATE TABLE IF NOT EXISTS price_overrides (pack_name TEXT PRIMARY KEY, price INTEGER, updated_at TEXT)")
+_c.execute("CREATE TABLE IF NOT EXISTS banned_users (user_id INTEGER PRIMARY KEY, reason TEXT, banned_at TEXT)")
 conn.commit()
 del _c, _oc, _pc_cols
 
@@ -1143,6 +1144,9 @@ def is_admin(uid):
     if uid == MY_ID: return True
     return bool(db_query_one("SELECT id FROM admins WHERE id=?", (uid,)))
 
+def is_banned(uid):
+    return bool(db_query_one("SELECT user_id FROM banned_users WHERE user_id=?", (uid,)))
+
 def _get_domain():
     return (
         os.getenv("BOT_DOMAIN") or
@@ -1443,6 +1447,84 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Помилка бекапу: {e}")
 
 
+async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Хендлер для медіа-повідомлень під час очікування розсилки (фото, відео, стікер тощо)."""
+    uid = update.effective_user.id
+    if not is_admin(uid): return
+    if is_banned(uid): return
+    if user_states.get(uid) == "WAIT_BROADCAST":
+        user_states[uid] = "ADMIN_MODE"
+        await send_broadcast(update, context, update.message)
+
+
+async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        await update.message.reply_text("⛔ Тільки для адміна."); return
+    if not context.args:
+        await update.message.reply_text(
+            "Використання: /ban <user_id> [причина]\n\n"
+            "Приклад: /ban 123456789 спам\n\n"
+            "User ID можна знайти командою /find або з повідомлення."
+        ); return
+    try:
+        target_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ User ID має бути числом."); return
+    if target_id == MY_ID or is_admin(target_id):
+        await update.message.reply_text("❌ Не можна забанити адміна."); return
+    reason = " ".join(context.args[1:]) or "без причини"
+    db_exec(
+        "INSERT OR REPLACE INTO banned_users (user_id, reason, banned_at) VALUES (?,?,?)",
+        (target_id, reason, created_at_now())
+    )
+    await update.message.reply_text(
+        f"🚫 Користувача {target_id} заблоковано.\n"
+        f"📝 Причина: {reason}\n\n"
+        f"Для розблокування: /unban {target_id}"
+    )
+    # Повідомляємо забаненого
+    try:
+        await context.bot.send_message(
+            target_id,
+            "🚫 Вас заблоковано в боті UC Shop · Nezuko.\n"
+            f"📝 Причина: {reason}\n\n"
+            "Для оскарження зверніться до підтримки."
+        )
+    except: pass
+
+
+async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        await update.message.reply_text("⛔ Тільки для адміна."); return
+    if not context.args:
+        # Показати список заблокованих
+        rows = db_query("SELECT user_id, reason, banned_at FROM banned_users ORDER BY banned_at DESC")
+        if not rows:
+            await update.message.reply_text("✅ Немає заблокованих користувачів."); return
+        lines = ["🚫 Заблоковані користувачі:\n"]
+        for r in rows:
+            lines.append(f"• ID {r[0]} — {r[1]} ({(r[2] or '')[:10]})")
+        lines.append(f"\nДля розблокування: /unban <user_id>")
+        await update.message.reply_text("\n".join(lines)); return
+    try:
+        target_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ User ID має бути числом."); return
+    existed = db_query_one("SELECT user_id FROM banned_users WHERE user_id=?", (target_id,))
+    if not existed:
+        await update.message.reply_text(f"ℹ️ Користувач {target_id} не заблокований."); return
+    db_exec("DELETE FROM banned_users WHERE user_id=?", (target_id,))
+    await update.message.reply_text(f"✅ Користувача {target_id} розблоковано.")
+    try:
+        await context.bot.send_message(
+            target_id,
+            "✅ Вас розблоковано в боті UC Shop · Nezuko. Ласкаво просимо знову! 🌸"
+        )
+    except: pass
+
+
 async def setprice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid):
@@ -1477,38 +1559,42 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid):
         await update.message.reply_text("⛔ Тільки для адміна."); return
-    message = " ".join(context.args)
-    if not message:
-        user_states[uid] = "WAIT_BROADCAST"
-        await update.message.reply_text("✉️ Напишіть текст розсилки:"); return
-    await send_broadcast(update, context, message)
+    user_states[uid] = "WAIT_BROADCAST"
+    await update.message.reply_text(
+        "📣 Надішли повідомлення для розсилки.\n\n"
+        "Підтримуються: текст, фото, відео, GIF, стікер, голосове, документ.\n"
+        "Форматування Markdown/HTML — теж працює."
+    )
 
-async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, message):
-    # Збираємо всіх користувачів з усіх таблиць
+def _collect_broadcast_uids():
     uids = set()
-    for r in db_query("SELECT DISTINCT user_id FROM user_profile"):
-        uids.add(r[0])
-    for r in db_query("SELECT DISTINCT chat_id FROM orders WHERE chat_id IS NOT NULL"):
-        uids.add(r[0])
-    for r in db_query("SELECT DISTINCT referrer_id FROM referrals"):
-        uids.add(r[0])
-    for r in db_query("SELECT DISTINCT referred_id FROM referrals"):
-        uids.add(r[0])
-    for r in db_query("SELECT DISTINCT user_id FROM user_bonuses"):
-        uids.add(r[0])
-    for r in db_query("SELECT DISTINCT user_id FROM user_achievements"):
-        uids.add(r[0])
-    for r in db_query("SELECT DISTINCT user_id FROM user_points"):
-        uids.add(r[0])
+    for tbl, col in [
+        ("user_profile", "user_id"), ("orders", "chat_id"),
+        ("referrals", "referrer_id"), ("referrals", "referred_id"),
+        ("user_bonuses", "user_id"), ("user_achievements", "user_id"),
+        ("user_points", "user_id"),
+    ]:
+        try:
+            for r in db_query(f"SELECT DISTINCT {col} FROM {tbl} WHERE {col} IS NOT NULL"):
+                if r[0]: uids.add(r[0])
+        except: pass
+    # Виключаємо заблокованих
+    for r in db_query("SELECT user_id FROM banned_users"):
+        uids.discard(r[0])
+    return uids
 
+async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, src_message):
+    uids = _collect_broadcast_uids()
     total = len(uids)
     status_msg = await update.message.reply_text(f"📤 Розсилка почалась...\n👥 Всього одержувачів: {total}")
 
     sent = 0
     failed = 0
+    from_chat = src_message.chat_id
+    msg_id = src_message.message_id
     for chat_id in uids:
         try:
-            await context.bot.send_message(chat_id, message)
+            await context.bot.copy_message(chat_id=chat_id, from_chat_id=from_chat, message_id=msg_id)
             sent += 1
         except Exception:
             failed += 1
@@ -1526,7 +1612,11 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, mes
 # --- ГОЛОВНИЙ ОБРОБНИК ПОВІДОМЛЕНЬ ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if not update.message or not update.message.text: return
+    if not update.message: return
+    # Перевірка бану — заблоковані мовчки ігноруються
+    if is_banned(uid) and not is_admin(uid):
+        return
+    if not update.message.text: return
     text = update.message.text
     state = user_states.get(uid)
 
@@ -1546,7 +1636,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if state == "WAIT_BROADCAST" and is_admin(uid):
         user_states[uid] = "ADMIN_MODE"
-        await send_broadcast(update, context, text)
+        await send_broadcast(update, context, update.message)
         return
 
     if state == "WAIT_PROMO_CODE":
@@ -1917,7 +2007,14 @@ def main():
     app.add_handler(CommandHandler("profile", profile_command))
     app.add_handler(CommandHandler("setprice", setprice_command))
     app.add_handler(CommandHandler("backup", backup_command))
+    app.add_handler(CommandHandler("ban", ban_command))
+    app.add_handler(CommandHandler("unban", unban_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(
+        (filters.PHOTO | filters.VIDEO | filters.Document.ALL |
+         filters.Sticker.ALL | filters.VOICE | filters.ANIMATION) & ~filters.COMMAND,
+        handle_broadcast_media
+    ))
     app.add_handler(CallbackQueryHandler(callback))
     logging.info("Бот запущено!")
     app.run_polling(drop_pending_updates=True)
