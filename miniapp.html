@@ -1,1093 +1,1538 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>UC Shop — Nezuko</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>UC Shop • Nezuko</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap');
-  :root{
-    --bg:#0d0608;--bg2:#180b0f;--card:#2a1220;--card2:#331828;
-    --pink:#ff6b9d;--pink2:#ff4081;--red:#c9184a;--gold:#ffd166;
-    --text:#f5e0e8;--muted:#9b7585;--border:#4a2035;--green:#52d68a;
-    --blue:#60a5fa;--purple:#a78bfa;--orange:#fb923c;--radius:16px;
-  }
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-  body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;padding-bottom:82px}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#0c0c14;--card:#181824;--card2:#1f1f2e;--acc:#e91e8c;--acc2:#ff4db8;
+  --text:#e8e8f0;--muted:#8888a0;--success:#4caf50;--err:#f44336;--warn:#ff9800;
+  --pts:#ffd166;--border:#2a2a3e;
+  --rare-bg:#0d2b14;--rare-b:#52d68a;
+  --epic-bg:#0d1630;--epic-b:#60a5fa;
+  --leg-bg:#2b1a00;--leg-b:#ffd166;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow-x:hidden;min-height:100vh;padding-bottom:74px}
+a{color:var(--acc);text-decoration:none}
+input,textarea,select{background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;width:100%;outline:none;transition:border .2s}
+input:focus,textarea:focus,select:focus{border-color:var(--acc)}
+button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:600;padding:11px 20px;transition:all .18s}
+.btn{background:var(--acc);color:#fff;width:100%;padding:13px;display:block}
+.btn:active{opacity:.82;transform:scale(.97)}
+.btn-ghost{background:var(--card2);color:var(--text);border:1px solid var(--border)}
+.btn-sm{padding:7px 14px;font-size:13px;width:auto;display:inline-block}
+.btn-danger{background:#c0392b;color:#fff}
+.btn-purple{background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;width:100%;padding:13px;display:block}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px}
+.section-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin:18px 0 10px}
 
-  /* HEADER */
-  .hdr{background:linear-gradient(135deg,#1a0510,#2d0a1a,#1a0510);padding:13px 20px 11px;text-align:center;position:sticky;top:0;z-index:100;border-bottom:1px solid var(--border);box-shadow:0 4px 20px rgba(201,24,74,.25)}
-  .hdr-title{font-size:19px;font-weight:900;background:linear-gradient(90deg,var(--pink),var(--gold),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:1px}
-  .hdr-sub{font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
-  .hdr-deco{font-size:11px;margin-top:3px}
+/* Header */
+.header{position:sticky;top:0;z-index:50;background:var(--bg);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;justify-content:space-between}
+.header-logo{font-size:17px;font-weight:800;background:linear-gradient(135deg,var(--acc),var(--acc2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.online-badge{font-size:11px;color:var(--success);display:flex;align-items:center;gap:5px}
+.online-dot{width:6px;height:6px;border-radius:50%;background:var(--success);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 
-  /* BOTTOM TABS */
-  .tabs{position:fixed;bottom:0;left:0;right:0;background:#130810;border-top:1px solid var(--border);display:flex;padding:5px 2px env(safe-area-inset-bottom);z-index:100}
-  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 1px;cursor:pointer;border-radius:8px;border:none;background:none;color:var(--muted);font-family:'Nunito',sans-serif;transition:color .2s}
-  .tab.active{color:var(--pink)}
-  .tab.at{color:#a78bfa}
-  .tab.at.active{color:#c4b5fd}
-  .tab .ti{font-size:18px}
-  .tab .tl{font-size:9px;font-weight:700;letter-spacing:.3px}
+/* Bottom nav */
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--border);display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom,0px)}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 2px 6px;cursor:pointer;color:var(--muted);font-size:10px;gap:2px;transition:color .18s}
+.nav-item.active{color:var(--acc)}
+.nav-icon{font-size:20px;line-height:1}
 
-  /* SCREENS */
-  .screen{display:none;padding:13px}
-  .screen.active{display:block}
+/* Tabs */
+.tab{display:none}.tab.active{display:block}
+.page{padding:0 14px}
 
-  /* HERO */
-  .hero{background:linear-gradient(135deg,#2d0a1a,#1a0510);border:1px solid var(--border);border-radius:20px;padding:16px;margin-bottom:12px;text-align:center;position:relative;overflow:hidden}
-  .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 30% 50%,rgba(255,107,157,.12),transparent 60%),radial-gradient(circle at 70% 50%,rgba(201,24,74,.1),transparent 60%);pointer-events:none}
-  .hero-em{font-size:38px;display:block;margin-bottom:5px}
-  .hero h2{font-size:16px;font-weight:900;margin-bottom:2px}
-  .hero p{font-size:11px;color:var(--muted);line-height:1.4}
-  .hero.blue{background:linear-gradient(135deg,#0a1a2d,#102040)}
-  .hero.gold{background:linear-gradient(135deg,#1a1a0a,#2d2a0a)}
-  .hero.purple{background:linear-gradient(135deg,#0d0a1a,#1a1030)}
-  .hero.green{background:linear-gradient(135deg,#0a1a10,#102918)}
-  .bdeco{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:22px;opacity:.18;line-height:1.2}
+/* Sub-tabs */
+.sub-tabs{display:flex;gap:6px;overflow-x:auto;padding:10px 0 4px;scrollbar-width:none;-ms-overflow-style:none}
+.sub-tabs::-webkit-scrollbar{display:none}
+.sub-tab{flex-shrink:0;background:var(--card2);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);white-space:nowrap;transition:all .18s}
+.sub-tab.active{background:var(--acc);color:#fff;border-color:var(--acc)}
 
-  /* SUB-TABS */
-  .stabs{display:flex;gap:5px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
-  .stabs::-webkit-scrollbar{display:none}
-  .stab{flex-shrink:0;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-family:'Nunito',sans-serif;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .2s}
-  .stab.active{background:linear-gradient(135deg,#3d1525,#2a1220);border-color:var(--purple);color:var(--purple)}
+/* Shop */
+.category-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.category-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px 12px;text-align:center;cursor:pointer;transition:all .18s}
+.category-card:active{transform:scale(.94);border-color:var(--acc)}
+.category-icon{font-size:34px;margin-bottom:8px}
+.category-label{font-size:13px;font-weight:700}
+.pack-item{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:all .18s;margin-bottom:8px}
+.pack-item:active{border-color:var(--acc);background:var(--card2)}
+.pack-name{font-size:14px;font-weight:600}
+.pack-price{font-size:13px;color:var(--acc);font-weight:700}
+.back-btn{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;cursor:pointer;padding:10px 0 6px}
 
-  /* SECTION TITLE */
-  .st{font-size:10px;font-weight:800;color:var(--pink);letter-spacing:2px;text-transform:uppercase;margin-bottom:7px;display:flex;align-items:center;gap:5px}
-  .st::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent)}
+/* Orders */
+.order-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px}
+.order-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.order-id{font-size:12px;font-family:monospace;color:var(--muted)}
+.status-badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px}
+.s-pending{background:#2a2000;color:#ffd166}
+.s-done{background:#0d2b14;color:#52d68a}
+.s-canceled{background:#2b0d0d;color:#f88}
+.order-pack{font-size:14px;font-weight:600;margin-bottom:4px}
+.order-meta{font-size:11px;color:var(--muted);line-height:1.5}
 
-  /* CATEGORY GRID */
-  .cg{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:14px}
-  .cc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:13px 5px;text-align:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
-  .cc:active{transform:scale(.95)}
-  .cc.sel{border-color:var(--pink);background:linear-gradient(135deg,#3d1525,#2a1220);box-shadow:0 0 16px rgba(255,107,157,.2)}
-  .cc-ic{font-size:24px;display:block;margin-bottom:4px}
-  .cc-n{font-size:11px;font-weight:700}
-  .cc-s{font-size:9px;color:var(--muted);margin-top:1px}
+/* Wheel */
+.wheel-wrap{position:relative;overflow:hidden;height:138px;background:var(--card2);border-radius:16px;border:1px solid var(--border);margin:10px 0}
+.wheel-ptr{position:absolute;top:0;left:50%;transform:translateX(-50%);z-index:10;pointer-events:none;display:flex;flex-direction:column;align-items:center}
+.wheel-ptr::before{content:'';display:block;width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-top:14px solid var(--acc)}
+.wheel-ptr-b{position:absolute;bottom:0;left:50%;transform:translateX(-50%);z-index:10;width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:14px solid var(--acc);pointer-events:none}
+.wheel-tape{display:flex;gap:4px;padding:0 4px;position:absolute;left:0;top:0;height:100%;align-items:center;will-change:transform}
+.wheel-item{flex-shrink:0;width:84px;height:118px;border-radius:12px;border:2px solid;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px}
+.ri-common{background:#1a1a1a;border-color:#444}
+.ri-rare{background:var(--rare-bg);border-color:var(--rare-b)}
+.ri-epic{background:var(--epic-bg);border-color:var(--epic-b)}
+.ri-legendary{background:var(--leg-bg);border-color:var(--leg-b)}
+.wheel-item-icon{font-size:28px;line-height:1}
+.wheel-item-name{font-size:9px;font-weight:700;text-align:center;padding:0 4px;line-height:1.3}
+.wheel-center-line{position:absolute;top:0;bottom:0;left:calc(50% - 42px);width:84px;border-left:1px solid rgba(233,30,140,.25);border-right:1px solid rgba(233,30,140,.25);pointer-events:none;z-index:5}
+.spin-btn{width:100%;padding:14px;font-size:14px;font-weight:700;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;border-radius:14px;border:none;cursor:pointer;margin-top:8px}
+.spin-btn:disabled{opacity:.45;cursor:not-allowed}
+.cooldown-text{text-align:center;font-size:12px;color:var(--muted);margin-top:6px;min-height:18px}
+.prizes-legend{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}
+.prize-chip{font-size:10px;font-weight:600;padding:3px 8px;border-radius:8px;border:1px solid}
 
-  /* PRODUCT LIST */
-  .pl{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
-  .pi{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:11px 13px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:all .2s}
-  .pi:active{transform:scale(.98)}
-  .pi.sel{border-color:var(--pink);background:linear-gradient(135deg,#3d1525,#2a1220);box-shadow:0 0 12px rgba(255,107,157,.2)}
-  .pi-n{font-size:13px;font-weight:700}
-  .pi-p{font-size:14px;font-weight:900;color:var(--gold);white-space:nowrap}
+/* Achievements */
+.ach-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ach-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px;cursor:pointer;transition:all .18s;position:relative}
+.ach-card.earned{border-color:rgba(233,30,140,.45);background:rgba(233,30,140,.05)}
+.ach-card.locked{opacity:.5}
+.ach-emoji{font-size:26px;margin-bottom:5px}
+.ach-name{font-size:12px;font-weight:700;margin-bottom:3px}
+.ach-hint{font-size:10px;color:var(--muted);line-height:1.4}
+.ach-badge{position:absolute;top:8px;right:8px;font-size:12px}
+.ach-pct{font-size:9px;color:var(--muted);margin-top:3px}
 
-  /* FORM */
-  .fg{margin-bottom:11px}
-  .fl{font-size:10px;font-weight:800;color:var(--pink);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;display:block}
-  .fi{width:100%;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 13px;color:var(--text);font-family:'Nunito',sans-serif;font-size:14px;font-weight:600;outline:none;transition:border-color .2s}
-  .fi:focus{border-color:var(--pink)}
-  .fi::placeholder{color:var(--muted)}
-  select.fi{appearance:none;cursor:pointer}
-  textarea.fi{resize:vertical;min-height:80px;line-height:1.4}
+/* Profile */
+.profile-banner{background:linear-gradient(135deg,#1a0025,#0a0040);border-radius:18px;padding:22px 18px;text-align:center;margin-bottom:14px}
+.profile-avatar{width:68px;height:68px;background:linear-gradient(135deg,var(--acc),var(--acc2));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 10px}
+.profile-name{font-size:18px;font-weight:800}
+.profile-mini{font-size:11px;color:rgba(255,255,255,.45);margin-top:3px}
+.profile-stats-row{display:flex;justify-content:center;gap:20px;margin-top:14px}
+.pstat{text-align:center}
+.pstat-val{font-size:18px;font-weight:800}
+.pstat-lbl{font-size:9px;color:rgba(255,255,255,.45);margin-top:2px}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.stat-box{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px;text-align:center}
+.stat-val{font-size:20px;font-weight:800;color:var(--acc)}
+.stat-lbl{font-size:11px;color:var(--muted);margin-top:3px}
 
-  /* BUTTONS */
-  .btn{width:100%;padding:13px;border-radius:13px;border:none;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;cursor:pointer;transition:all .2s;letter-spacing:.4px;display:block}
-  .btn:active{transform:scale(.97)}
-  .btn:disabled{opacity:.5;pointer-events:none}
-  .btn-p{background:linear-gradient(135deg,var(--red),var(--pink2));color:#fff;box-shadow:0 4px 16px rgba(201,24,74,.4)}
-  .btn-s{background:var(--card2);color:var(--text);border:1px solid var(--border);margin-top:7px}
-  .btn-g{background:linear-gradient(135deg,#2d8a5e,#52d68a);color:#fff;box-shadow:0 4px 14px rgba(82,214,138,.3)}
-  .btn-r{background:linear-gradient(135deg,#7f1d1d,#ef4444);color:#fff}
-  .btn-u{background:linear-gradient(135deg,#4c1d95,#8b5cf6);color:#fff;box-shadow:0 4px 14px rgba(139,92,246,.3)}
-  .btn-b{background:linear-gradient(135deg,#0c4a6e,#0284c7);color:#fff}
-  .btn-o{background:linear-gradient(135deg,#7c2d12,#ea580c);color:#fff}
-  .btn-sm{padding:7px 12px;font-size:11px;border-radius:9px;width:auto;display:inline-block}
+/* Points */
+.pts-balance{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center;margin-bottom:14px}
+.pts-bal-val{font-size:34px;font-weight:900;color:var(--pts)}
+.pts-bal-lbl{font-size:12px;color:var(--muted);margin-top:2px}
+.pts-item{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:13px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+.pts-item-name{font-size:13px;font-weight:600}
+.pts-item-cost{font-size:12px;color:var(--pts);margin-top:2px}
 
-  /* STEP DOTS */
-  .dots{display:flex;justify-content:center;gap:5px;margin-bottom:12px}
-  .dot{width:7px;height:7px;border-radius:50%;background:var(--border);transition:all .3s}
-  .dot.a{background:var(--pink);width:18px;border-radius:4px}
-  .dot.d{background:var(--green)}
+/* Top */
+.top-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.top-medal{font-size:20px;width:28px;text-align:center}
+.top-name{font-size:14px;font-weight:600;flex:1}
+.top-sum{font-size:12px;color:var(--pts);font-weight:700}
 
-  /* CONFIRM BOX */
-  .cb{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px;margin-bottom:12px}
-  .cr{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
-  .cr:last-child{border-bottom:none}
-  .cr .lb{font-size:11px;color:var(--muted)}
-  .cr .vl{font-size:13px;font-weight:700}
-  .cr .vl.pr{color:var(--gold);font-size:16px;font-weight:900}
+/* Toast */
+.toast{position:fixed;top:18px;left:50%;transform:translateX(-50%) translateY(-120px);background:var(--card);border:1px solid var(--border);border-radius:14px;padding:11px 20px;font-size:13px;font-weight:600;z-index:999;transition:transform .28s;white-space:nowrap;max-width:90vw;text-align:center;pointer-events:none}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast.success{border-color:var(--success);color:var(--success)}
+.toast.error{border-color:var(--err);color:var(--err)}
+.toast.info{border-color:var(--acc);color:var(--acc)}
 
-  /* PAY CARD */
-  .pc{background:linear-gradient(135deg,#1a0a3d,#2d1a5e);border:1px solid #4a3080;border-radius:18px;padding:18px;text-align:center;margin-bottom:12px}
-  .cn{font-size:17px;font-weight:900;letter-spacing:3px;color:#fff;margin:9px 0;cursor:pointer;background:rgba(255,255,255,.1);padding:9px;border-radius:9px;transition:background .2s}
-  .cn:active{background:rgba(255,255,255,.2)}
-  .ch{font-size:10px;color:rgba(255,255,255,.4)}
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;display:flex;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .25s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--card);border-radius:24px 24px 0 0;padding:24px 18px 48px;width:100%;transform:translateY(100%);transition:transform .28s;position:relative}
+.modal-overlay.open .modal{transform:translateY(0)}
+.modal-close{position:absolute;top:14px;right:16px;font-size:22px;cursor:pointer;color:var(--muted);background:none;border:none;padding:0}
+.prize-big{text-align:center;padding:16px 0 8px}
+.prize-big-icon{font-size:60px;margin-bottom:12px}
+.prize-big-name{font-size:22px;font-weight:800;margin-bottom:6px}
+.prize-big-desc{font-size:13px;color:var(--muted)}
 
-  /* CARDS */
-  .oc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:11px 13px;margin-bottom:7px}
-  .oh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px}
-  .on{font-size:12px;font-weight:700}
-  .oid{font-size:10px;color:var(--muted);margin-top:1px}
-  .om{font-size:10px;color:var(--muted)}
-  .badge{padding:3px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap}
-  .bp{background:rgba(255,214,0,.15);color:var(--gold)}
-  .bd{background:rgba(82,214,138,.15);color:var(--green)}
-  .bc{background:rgba(255,107,107,.15);color:#ff6b6b}
+/* Admin */
+.admin-login-box{max-width:300px;margin:60px auto;text-align:center}
+.order-acts{display:flex;gap:8px;margin-top:10px}
+.promo-form{display:flex;flex-direction:column;gap:10px;margin-top:10px}
 
-  /* TOP */
-  .ti2{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:11px 13px;margin-bottom:7px;display:flex;align-items:center;gap:11px}
-  .tr{font-size:19px;font-weight:900;min-width:34px;text-align:center}
-  .tr.r1{color:var(--gold)} .tr.r2{color:#c0c0c0} .tr.r3{color:#cd7f32}
-  .tn{font-size:12px;font-weight:700;flex:1}
-  .ts{font-size:13px;font-weight:900;color:var(--gold)}
+/* Hidden letters – barely visible, attentive users discover them */
+.hl{color:rgba(255,255,255,.07);font-size:7px;font-family:monospace;user-select:none;display:inline-block}
 
-  /* STAT GRID */
-  .sg{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px}
-  .sc{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:13px;text-align:center}
-  .sv{font-size:21px;font-weight:900;margin-bottom:2px}
-  .sl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
-  .sc.g .sv{color:var(--green)} .sc.go .sv{color:var(--gold)} .sc.b .sv{color:var(--blue)} .sc.r .sv{color:#ff6b6b} .sc.o .sv{color:var(--orange)}
+/* Sakura particles */
+.sakura{position:fixed;top:-10px;pointer-events:none;z-index:500;animation:sfade linear forwards}
+@keyframes sfade{to{transform:translateY(110vh) rotate(540deg);opacity:0}}
 
-  /* INFO BLOCK */
-  .ib{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px;margin-bottom:9px}
-  .ib h3{font-size:13px;font-weight:800;color:var(--pink);margin-bottom:5px;display:flex;align-items:center;gap:5px}
-  .ib p{font-size:11px;color:var(--muted);line-height:1.6}
-  .ib a{color:var(--blue);text-decoration:none;font-weight:700}
-
-  /* REF BOX */
-  .rb{background:linear-gradient(135deg,#1a0510,#2d1525);border:1px solid var(--border);border-radius:18px;padding:14px;margin-bottom:12px;text-align:center}
-  .rl{background:var(--card2);border:1px solid var(--border);border-radius:9px;padding:9px;font-size:11px;color:var(--pink);word-break:break-all;margin:8px 0;cursor:pointer;font-weight:700}
-  .rs{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}
-  .rsc{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:11px;text-align:center}
-  .rsv{font-size:20px;font-weight:900;color:var(--pink)}
-  .rsl{font-size:10px;color:var(--muted)}
-
-  /* REVIEW */
-  .rv{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:11px 13px;margin-bottom:7px}
-  .rv-u{font-size:11px;font-weight:700;color:var(--pink);margin-bottom:3px}
-  .rv-t{font-size:12px;color:var(--text);line-height:1.5}
-
-  /* POLICY */
-  .pol{font-size:11px;color:var(--muted);line-height:1.7;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px;margin-bottom:9px}
-  .pol h4{font-size:12px;font-weight:800;color:var(--text);margin-bottom:3px;margin-top:10px}
-  .pol h4:first-child{margin-top:0}
-
-  /* SUCCESS */
-  .succ{text-align:center;padding:36px 14px;display:none}
-  .succ.a{display:block}
-  .si{font-size:56px;display:block;margin-bottom:12px}
-  .st2{font-size:19px;font-weight:900;color:var(--green);margin-bottom:5px}
-  .ss{font-size:12px;color:var(--muted);line-height:1.5}
-
-  /* PWD GATE */
-  .pwg{text-align:center;padding:28px 0}
-  .pwi{font-size:50px;display:block;margin-bottom:10px}
-  .pwt{font-size:17px;font-weight:900;margin-bottom:3px;color:var(--purple)}
-  .pws{font-size:11px;color:var(--muted);margin-bottom:18px}
-
-  /* FIND RESULT */
-  .fr{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:13px;margin-top:10px}
-  .frl{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px}
-  .frl:last-child{border-bottom:none}
-  .frk{color:var(--muted)}
-  .frv{font-weight:700;text-align:right;max-width:60%}
-
-  /* TOAST */
-  .toast{position:fixed;bottom:94px;left:50%;transform:translateX(-50%) translateY(14px);background:#1a2a1a;border:1px solid var(--green);color:var(--green);padding:9px 18px;border-radius:30px;font-weight:700;font-size:12px;opacity:0;transition:all .3s;white-space:nowrap;z-index:300;max-width:88vw;text-align:center}
-  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
-  .toast.err{background:#2a1a1a;border-color:#ff6b6b;color:#ff6b6b}
-
-  /* LOADER / EMPTY */
-  .ld{text-align:center;padding:32px;color:var(--muted);font-size:11px}
-  .ls{display:block;font-size:26px;animation:sp 1s linear infinite;margin-bottom:7px}
-  @keyframes sp{from{transform:rotate(0)}to{transform:rotate(360deg)}}
-  .emp{text-align:center;padding:36px 14px;color:var(--muted)}
-  .ei{font-size:40px;display:block;margin-bottom:8px}
-  .et{font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px}
-  .es{font-size:11px}
-
-  /* SAKURA */
-  .sk{position:fixed;top:-20px;animation:fl linear forwards;pointer-events:none;z-index:999;opacity:.7}
-  @keyframes fl{0%{transform:translateY(0) rotate(0);opacity:.7}100%{transform:translateY(110vh) rotate(360deg);opacity:0}}
-
-  .div{height:1px;background:var(--border);margin:10px 0}
-  .mb8{margin-bottom:8px} .mb12{margin-bottom:12px} .mt8{margin-top:8px} .mt12{margin-top:12px}
-  .row{display:flex;gap:7px}
-  .row .btn{flex:1}
+/* Utils */
+.divider{height:1px;background:var(--border);margin:12px 0}
+.empty{text-align:center;padding:36px 16px;color:var(--muted);font-size:13px}
+.empty-icon{font-size:42px;margin-bottom:10px}
+.mt-8{margin-top:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}
+.flex{display:flex}.gap-8{gap:8px}.gap-10{gap:10px}
+.spinner{display:inline-block;width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--acc);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+input[type=number]{-moz-appearance:textfield}
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 </style>
 </head>
 <body>
 
-<div class="hdr">
-  <div class="hdr-title">🌸 UC Shop — Nezuko</div>
-  <div class="hdr-sub">PUBG Mobile Store</div>
-  <div class="hdr-deco">🎋 ❤️ 🎋</div>
-</div>
-
-<!-- ═══════════════ МАГАЗИН ═══════════════ -->
-<div class="screen active" id="sc-shop">
-
-  <div id="sp-cat">
-    <div class="hero">
-      <span class="hero-em">💰</span>
-      <h2>Поповнення UC</h2>
-      <p>Вибери категорію та отримай UC швидко і надійно</p>
-      <div class="bdeco">🎋<br>🎋<br>🎋</div>
-    </div>
-    <div class="dots"><div class="dot a"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-    <div class="st">🌸 Категорія</div>
-    <div class="cg">
-      <div class="cc" onclick="selCat('uc',this)"><span class="cc-ic">💎</span><div class="cc-n">UC</div><div class="cc-s">30–81000 UC</div></div>
-      <div class="cc" onclick="selCat('prime',this)"><span class="cc-ic">👑</span><div class="cc-n">Prime</div><div class="cc-s">1–12 міс.</div></div>
-      <div class="cc" onclick="selCat('prime_plus',this)"><span class="cc-ic">💫</span><div class="cc-n">Prime+</div><div class="cc-s">1–12 міс.</div></div>
-    </div>
-  </div>
-
-  <div id="sp-prod" style="display:none">
-    <div class="dots"><div class="dot d"></div><div class="dot a"></div><div class="dot"></div><div class="dot"></div></div>
-    <div class="st">🛍 Оберіть пакет</div>
-    <div class="pl" id="prod-list"></div>
-    <button class="btn btn-s" onclick="sStep('cat')">← Назад</button>
-  </div>
-
-  <div id="sp-pid" style="display:none">
-    <div class="dots"><div class="dot d"></div><div class="dot d"></div><div class="dot a"></div><div class="dot"></div></div>
-    <div class="st">🎮 Ігровий ID</div>
-    <div class="cb">
-      <div class="cr"><span class="lb">Пакет</span><span class="vl" id="cp-pk">—</span></div>
-      <div class="cr"><span class="lb">Сума</span><span class="vl pr" id="cp-pr">—</span></div>
-    </div>
-    <div class="fg">
-      <label class="fl">Твій ігровий ID в PUBG Mobile</label>
-      <input class="fi" id="pl-id" type="number" placeholder="Наприклад: 5123456789" inputmode="numeric">
-    </div>
-    <button class="btn btn-p" onclick="goConf()">Далі →</button>
-    <button class="btn btn-s" onclick="sStep('prod')">← Назад</button>
-  </div>
-
-  <div id="sp-pay" style="display:none">
-    <div class="dots"><div class="dot d"></div><div class="dot d"></div><div class="dot d"></div><div class="dot a"></div></div>
-    <div class="st">💳 Оплата</div>
-    <div class="cb">
-      <div class="cr"><span class="lb">Пакет</span><span class="vl" id="cf-pk">—</span></div>
-      <div class="cr"><span class="lb">Ігровий ID</span><span class="vl" id="cf-id">—</span></div>
-      <div class="cr"><span class="lb">До сплати</span><span class="vl pr" id="cf-pr">—</span></div>
-    </div>
-    <div class="pc">
-      <div style="font-size:10px;color:rgba(255,255,255,.5);letter-spacing:2px;text-transform:uppercase">Картка для оплати</div>
-      <div class="cn" onclick="cpCard()">4874 0700 2036 7247</div>
-      <div class="ch">👆 Натисніть щоб скопіювати</div>
-    </div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;text-align:center;line-height:1.5">Після оплати натисни кнопку нижче.<br>Адмін підтвердить і нарахує UC.</div>
-    <button class="btn btn-g" id="paid-btn" onclick="doPay()">✅ Я оплатив!</button>
-    <button class="btn btn-s" onclick="sStep('pid')">← Назад</button>
-  </div>
-
-  <div class="succ" id="sp-ok">
-    <span class="si">🌸</span>
-    <div class="st2">Дякуємо!</div>
-    <div class="ss">Твоє замовлення прийнято!<br>Адмін підтвердить та нарахує UC.<br><br>Слідкуй у розділі <strong>Замовлення</strong> 📋</div>
-    <button class="btn btn-p" style="margin-top:20px" onclick="rstShop()">🛍 Нове замовлення</button>
-  </div>
-
-</div>
-
-<!-- ═══════════════ ЗАМОВЛЕННЯ ═══════════════ -->
-<div class="screen" id="sc-orders">
-  <div class="hero">
-    <span class="hero-em">📋</span>
-    <h2>Мої замовлення</h2>
-    <p>Слідкуй за статусом своїх покупок</p>
-  </div>
-  <div class="st">📦 Останні замовлення</div>
-  <div id="ord-list"><div class="ld"><span class="ls">🌸</span>Завантаження...</div></div>
-</div>
-
-<!-- ═══════════════ СЕРВІСИ ═══════════════ -->
-<div class="screen" id="sc-serv">
-  <div class="stabs">
-    <button class="stab active" id="sv-bonus" onclick="sTab('bonus')">🎁 Бонуси</button>
-    <button class="stab" id="sv-ref" onclick="sTab('ref')">👥 Реферал</button>
-    <button class="stab" id="sv-rev" onclick="sTab('rev')">🌟 Відгуки</button>
-    <button class="stab" id="sv-supp" onclick="sTab('supp')">🆘 Підтримка</button>
-    <button class="stab" id="sv-pol" onclick="sTab('pol')">📄 Політика</button>
-    <button class="stab" id="sv-help" onclick="sTab('help')">ℹ️ Допомога</button>
-  </div>
-
-  <!-- Бонуси -->
-  <div id="sv-p-bonus">
-    <div class="hero">
-      <span class="hero-em">🎁</span>
-      <h2>Промокод та бонуси</h2>
-      <p>Активуй промокод або отримай бонус</p>
-    </div>
-    <div class="cb mb12">
-      <div class="fg" style="margin-bottom:9px">
-        <label class="fl">Твій промокод</label>
-        <input class="fi" id="promo-in" type="text" placeholder="NEZUKO10" style="text-transform:uppercase;letter-spacing:2px;text-align:center;font-size:16px;font-weight:900">
-      </div>
-      <button class="btn btn-p" onclick="actPromo()">🎁 Активувати</button>
-    </div>
-    <div class="st">✨ Мої активні бонуси</div>
-    <div id="bon-list"><div class="ld"><span class="ls">🌸</span>Завантаження...</div></div>
-  </div>
-
-  <!-- Реферал -->
-  <div id="sv-p-ref" style="display:none">
-    <div class="hero">
-      <span class="hero-em">👥</span>
-      <h2>Реферальна програма</h2>
-      <p>Запрошуй друзів і заробляй знижки</p>
-    </div>
-    <div class="rb">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:5px">Твоє реферальне посилання:</div>
-      <div class="rl" id="ref-lnk" onclick="cpRef()">Завантаження...</div>
-      <div style="font-size:9px;color:var(--muted)">👆 Натисни щоб скопіювати</div>
-      <div class="rs" id="ref-stats">
-        <div class="rsc"><div class="rsv" id="rs-inv">—</div><div class="rsl">Запрошено</div></div>
-        <div class="rsc"><div class="rsv" id="rs-disc">—</div><div class="rsl">Знижки 1%</div></div>
-      </div>
-      <button class="btn btn-p mt12" onclick="shrRef()">📤 Поділитися</button>
-    </div>
-    <div class="ib">
-      <h3>🎋 Як це працює</h3>
-      <p>1. Поділись посиланням з другом<br>2. Друг реєструється через твоє посилання<br>3. Коли друг робить першу покупку — ти отримуєш знижку 1%<br>4. Знижки накопичуються і застосовуються автоматично!</p>
-    </div>
-  </div>
-
-  <!-- Відгуки -->
-  <div id="sv-p-rev" style="display:none">
-    <div class="hero">
-      <span class="hero-em">🌟</span>
-      <h2>Відгуки</h2>
-      <p>Читай відгуки та залишай свій</p>
-    </div>
-    <div class="cb mb12">
-      <div class="fg" style="margin-bottom:8px">
-        <label class="fl">Твій відгук</label>
-        <textarea class="fi" id="rev-txt" placeholder="Напиши що думаєш про магазин..."></textarea>
-      </div>
-      <button class="btn btn-p" onclick="sbmRev()">✍️ Відправити відгук</button>
-    </div>
-    <div class="st">🌟 Останні відгуки</div>
-    <div id="rev-list"><div class="ld"><span class="ls">🌸</span>Завантаження...</div></div>
-  </div>
-
-  <!-- Підтримка -->
-  <div id="sv-p-supp" style="display:none">
-    <div class="hero green">
-      <span class="hero-em">🆘</span>
-      <h2>Підтримка</h2>
-      <p>Наш менеджер завжди готовий допомогти</p>
-    </div>
-    <div class="ib">
-      <h3>👨‍💻 Менеджер</h3>
-      <p>Зв'яжись з менеджером у Telegram:<br><a href="https://t.me/Manager_Nezuko" target="_blank">@Manager_Nezuko</a></p>
-    </div>
-    <div class="ib">
-      <h3>⏰ Час роботи</h3>
-      <p>Ми відповідаємо з 9:00 до 22:00 щодня.<br>Намагаємося відповідати якнайшвидше.</p>
-    </div>
-    <div class="ib">
-      <h3>📝 Важливо</h3>
-      <p>Перед зверненням перевір статус замовлення в розділі «Замовлення». Якщо пройшло більше 10 хвилин після оплати — сміливо пиши менеджеру.</p>
-    </div>
-    <a href="https://t.me/Manager_Nezuko" target="_blank">
-      <button class="btn btn-g" style="text-decoration:none">💬 Написати менеджеру</button>
-    </a>
-  </div>
-
-  <!-- Політика -->
-  <div id="sv-p-pol" style="display:none">
-    <div class="hero blue">
-      <span class="hero-em">📄</span>
-      <h2>Політика магазину</h2>
-      <p>Правила та умови обслуговування</p>
-    </div>
-    <div class="pol">
-      <h4>1. Оформлення замовлення</h4>
-      Клієнт самостійно обирає потрібний пакет UC та вказує свій ігровий ID. Перед оплатою необхідно уважно перевірити правильність введених даних.
-      <h4>2. Оплата</h4>
-      Замовлення передається в обробку тільки після підтвердження оплати. Якщо оплата не була здійснена або не підтверджена, замовлення не виконується.
-      <h4>3. Виконання замовлення</h4>
-      Після оплати UC нараховуються на вказаний клієнтом ігровий ID. Час виконання може залежати від навантаження та доступності сервісу.
-      <h4>4. Відповідальність клієнта</h4>
-      Магазин не несе відповідальності за помилки у введеному ігровому ID. Якщо клієнт вказав неправильний ID, повернення коштів або повторне нарахування не гарантується.
-      <h4>5. Повернення коштів</h4>
-      Повернення коштів можливе лише у випадку, якщо замовлення ще не було виконано. Після успішного нарахування UC повернення коштів не здійснюється.
-      <h4>6. Підтримка</h4>
-      Якщо виникли питання або проблеми із замовленням, клієнт може звернутися до підтримки магазину. Ми намагаємося допомогти кожному клієнту якнайшвидше.
-      <h4>7. Зміна правил</h4>
-      Магазин залишає за собою право змінювати ці правила. Актуальна політика діє на момент оформлення замовлення.
-      <h4>8. Флуд у особисті повідомлення</h4>
-      Якщо клієнт після оформлення замовлення починає надсилати повідомлення на кшталт «Де мої UC?» — магазин має право відмовити в обслуговуванні. Писати нагадування допустимо лише якщо пройшло більше 10 хвилин.
-    </div>
-  </div>
-
-  <!-- Допомога -->
-  <div id="sv-p-help" style="display:none">
-    <div class="hero">
-      <span class="hero-em">ℹ️</span>
-      <h2>Як користуватися</h2>
-      <p>Покроковий гайд по магазину</p>
-    </div>
-    <div class="ib">
-      <h3>🛍 Як зробити замовлення</h3>
-      <p>1. Перейди у вкладку «Магазин»<br>2. Оберіть категорію: UC, Prime або Prime+<br>3. Оберіть потрібний пакет<br>4. Введіть свій ігровий ID у PUBG Mobile<br>5. Скопіюй номер картки та оплати<br>6. Натисни «✅ Я оплатив!»<br>7. Очікуй підтвердження адміна</p>
-    </div>
-    <div class="ib">
-      <h3>🎁 Як отримати знижку</h3>
-      <p>• Активуй промокод у вкладці «Сервіси → Бонуси»<br>• Запроси друга через реферальне посилання<br>• Знижка застосовується автоматично при наступній покупці</p>
-    </div>
-    <div class="ib">
-      <h3>📋 Як перевірити статус</h3>
-      <p>Перейди у вкладку «Замовлення» — там відображаються всі твої замовлення і їх статус:<br>• ⏳ Очікує — замовлення прийнято<br>• ✅ Виконано — UC нараховано<br>• ❌ Відхилено — зверніться до підтримки</p>
-    </div>
-    <div class="ib">
-      <h3>🆘 Є питання?</h3>
-      <p>Перейди у вкладку «Підтримка» або напиши менеджеру: <a href="https://t.me/Manager_Nezuko">@Manager_Nezuko</a></p>
-    </div>
+<!-- Header -->
+<div class="header">
+  <div class="header-logo">🌸 UC Shop · Nezuko</div>
+  <div class="online-badge">
+    <span class="online-dot"></span>
+    <span id="onlineCnt">0</span> онлайн
   </div>
 </div>
 
-<!-- ═══════════════ ТОП ═══════════════ -->
-<div class="screen" id="sc-top">
-  <div class="hero gold">
-    <span class="hero-em">🏆</span>
-    <h2>Топ донатерів</h2>
-    <p>Найкращі гравці нашого магазину</p>
-    <div class="bdeco">🌟<br>⭐<br>🌟</div>
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<!-- Prize Modal -->
+<div id="prizeModal" class="modal-overlay">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('prizeModal')">✕</button>
+    <div class="prize-big">
+      <div id="prizeIcon" class="prize-big-icon"></div>
+      <div id="prizeName" class="prize-big-name"></div>
+      <div id="prizeDesc" class="prize-big-desc"></div>
+    </div>
+    <button class="btn mt-16" onclick="closeModal('prizeModal')">🎉 Супер!</button>
   </div>
-  <div class="st">👑 Рейтинг</div>
-  <div id="top-list"><div class="ld"><span class="ls">🌸</span>Завантаження...</div></div>
 </div>
 
-<!-- ═══════════════ АДМІН ═══════════════ -->
-<div class="screen" id="sc-admin">
-
-  <div id="adm-gate" class="pwg">
-    <span class="pwi">🔐</span>
-    <div class="pwt">Адмін-панель</div>
-    <div class="pws">Введи пароль для доступу</div>
-    <div class="fg">
-      <input class="fi" id="adm-pwd" type="password" placeholder="Пароль" style="text-align:center;font-size:17px;letter-spacing:3px">
-    </div>
-    <button class="btn btn-u" onclick="admAuth()">🔓 Увійти</button>
-    <div id="adm-err" style="color:#ff6b6b;font-size:11px;margin-top:9px;text-align:center;display:none">❌ Невірний пароль</div>
+<!-- Achievement Modal -->
+<div id="achModal" class="modal-overlay">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('achModal')">✕</button>
+    <div id="achModalBody" class="prize-big"></div>
   </div>
+</div>
 
-  <div id="adm-panel" style="display:none">
-    <div class="hero purple">
-      <span class="hero-em">⚙️</span>
-      <h2 style="color:var(--purple)">Адмін-панель</h2>
-      <p>Керуй замовленнями та магазином</p>
-    </div>
+<!-- ═══ TAB: МАГАЗИН ═══ -->
+<div id="tab-shop" class="tab active">
+  <div class="page" style="padding-top:12px">
+    <div style="text-align:right;margin-bottom:-6px"><span class="hl">N</span></div>
 
-    <div class="stabs">
-      <button class="stab active" id="at-ord" onclick="aTab('ord')" style="font-size:10px">📦 Замовлення</button>
-      <button class="stab" id="at-stat" onclick="aTab('stat')" style="font-size:10px">📊 Статистика</button>
-      <button class="stab" id="at-adm" onclick="aTab('adm')" style="font-size:10px">👤 Адміни</button>
-      <button class="stab" id="at-prom" onclick="aTab('prom')" style="font-size:10px">🎁 Промокоди</button>
-      <button class="stab" id="at-rev" onclick="aTab('rev')" style="font-size:10px">🌟 Відгуки</button>
-      <button class="stab" id="at-find" onclick="aTab('find')" style="font-size:10px">🔍 Знайти</button>
-      <button class="stab" id="at-bc" onclick="aTab('bc')" style="font-size:10px">📢 Розсилка</button>
-    </div>
-
-    <!-- Замовлення -->
-    <div id="ap-ord">
-      <div class="st">⏳ Очікують виконання</div>
-      <div id="ao-list"><div class="ld"><span class="ls">⚙️</span>Завантаження...</div></div>
-    </div>
-
-    <!-- Статистика -->
-    <div id="ap-stat" style="display:none">
-      <div class="st">📊 Статистика магазину</div>
-      <div id="as-con"><div class="ld"><span class="ls">⚙️</span>Завантаження...</div></div>
-    </div>
-
-    <!-- Адміни -->
-    <div id="ap-adm" style="display:none">
-      <div class="st">👤 Управління адмінами</div>
-      <div class="cb mb12">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Telegram ID користувача:</div>
-        <div class="fg" style="margin-bottom:7px">
-          <input class="fi" id="adm-uid" type="number" placeholder="123456789" inputmode="numeric">
+    <!-- Step 1 – Categories -->
+    <div id="shopCats">
+      <div class="section-title">Оберіть категорію</div>
+      <div class="category-grid" style="margin-bottom:10px">
+        <div class="category-card" onclick="showPacks('uc')">
+          <div class="category-icon">💎</div>
+          <div class="category-label">UC</div>
         </div>
-        <div class="row">
-          <button class="btn btn-g" onclick="tglAdm('add')">✅ Видати</button>
-          <button class="btn btn-r" onclick="tglAdm('remove')">❌ Забрати</button>
+        <div class="category-card" onclick="showPacks('prime')">
+          <div class="category-icon">👑</div>
+          <div class="category-label">Prime</div>
+        </div>
+        <div class="category-card" style="grid-column:1/-1" onclick="showPacks('primeplus')">
+          <div class="category-icon">✨</div>
+          <div class="category-label">Prime Plus</div>
         </div>
       </div>
-      <div class="st">📋 Поточні адміни</div>
-      <div id="aa-list"><div class="ld"><span class="ls">⚙️</span>Завантаження...</div></div>
-      <button class="btn btn-s mt8" onclick="ldAdmins()">🔄 Оновити</button>
+      <div class="section-title">Популярне</div>
+      <div id="popularList"></div>
     </div>
 
-    <!-- Промокоди -->
-    <div id="ap-prom" style="display:none">
-      <div class="st">🎁 Створити промокод</div>
-      <div class="cb mb12">
-        <div class="fg" style="margin-bottom:7px">
-          <label class="fl">Назва промокоду</label>
-          <input class="fi" id="np-code" type="text" placeholder="NEZUKO10" style="text-transform:uppercase;letter-spacing:2px;text-align:center;font-size:14px;font-weight:900">
+    <!-- Step 2 – Pack list -->
+    <div id="shopPacks" style="display:none">
+      <div class="back-btn" onclick="backToCats()">← Назад</div>
+      <div class="section-title" id="packTitle">UC Паки</div>
+      <div id="packList"></div>
+    </div>
+
+    <!-- Step 3 – Game ID input -->
+    <div id="shopId" style="display:none">
+      <div class="back-btn" onclick="backToPacks()">← Назад</div>
+      <div class="card">
+        <div style="font-size:15px;font-weight:700;margin-bottom:3px" id="selPackName"></div>
+        <div style="font-size:24px;font-weight:900;color:var(--acc)" id="selPackPrice"></div>
+        <div style="font-size:11px;color:var(--success);margin-top:3px" id="discInfo"></div>
+      </div>
+      <div class="section-title">Ваш ігровий ID</div>
+      <input type="text" id="gameIdInput" placeholder="Ігровий ID PUBG Mobile" inputmode="numeric">
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">Знайти ID: PUBG Mobile → Профіль → ID під ніком</div>
+      <button class="btn mt-12" onclick="goToPayment()">Підтвердити →</button>
+    </div>
+
+    <!-- Step 4 – Payment -->
+    <div id="shopPay" style="display:none">
+      <div class="back-btn" onclick="backToId()">← Назад</div>
+      <div class="card">
+        <div class="section-title" style="margin-top:0">Замовлення</div>
+        <div style="font-size:14px;margin-bottom:4px" id="payPackName"></div>
+        <div style="font-size:12px;color:var(--muted)">ID гравця: <span id="payPid"></span></div>
+        <div class="divider"></div>
+        <div style="font-size:26px;font-weight:900;color:var(--acc)" id="payAmt"></div>
+        <div style="font-size:12px;color:var(--success);min-height:16px;margin-top:2px" id="payDisc"></div>
+      </div>
+      <div class="card">
+        <div class="section-title" style="margin-top:0">💳 Оплата карткою</div>
+        <div style="font-size:17px;font-weight:700;letter-spacing:2px;color:var(--acc);cursor:pointer;margin-bottom:6px" onclick="copyCard()">4874 0700 2036 7247</div>
+        <div style="font-size:11px;color:var(--muted);cursor:pointer" onclick="copyCard()">Натисніть щоб скопіювати картку</div>
+      </div>
+      <button class="btn" id="payBtn" onclick="submitOrder()">✅ Я оплатив</button>
+    </div>
+
+    <!-- Step 5 – Success -->
+    <div id="shopDone" style="display:none;text-align:center;padding:44px 16px">
+      <div style="font-size:60px;margin-bottom:14px">🎉</div>
+      <div style="font-size:20px;font-weight:800;margin-bottom:8px">Замовлення прийнято!</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Адмін підтвердить найближчим часом</div>
+      <div style="font-size:12px;color:var(--muted)">ID: <span id="doneId" style="font-family:monospace;color:var(--acc)"></span></div>
+      <button class="btn mt-16" onclick="resetShop()">На головну</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TAB: ЗАМОВЛЕННЯ ═══ -->
+<div id="tab-orders" class="tab">
+  <div class="page" style="padding-top:12px">
+    <div style="text-align:right;margin-bottom:-6px"><span class="hl">E</span></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <div class="section-title" style="margin:0">Всі замовлення</div>
+      <button class="btn-ghost btn btn-sm" onclick="loadOrders()">↻ Оновити</button>
+    </div>
+    <div id="ordersList"><div class="empty"><div class="spinner"></div></div></div>
+  </div>
+</div>
+
+<!-- ═══ TAB: СЕРВІСИ ═══ -->
+<div id="tab-services" class="tab">
+  <div class="page" style="padding-top:6px">
+    <div class="sub-tabs" id="svcTabs">
+      <div class="sub-tab active" data-svc="bonus">🎁 Бонуси</div>
+      <div class="sub-tab" data-svc="referral">👥 Реферал</div>
+      <div class="sub-tab" data-svc="wheel">🎰 Рулетка</div>
+      <div class="sub-tab" data-svc="top">🏆 Топ</div>
+      <div class="sub-tab" data-svc="reviews">🌟 Відгуки</div>
+      <div class="sub-tab" data-svc="points">💰 Бали</div>
+      <div class="sub-tab" data-svc="support">🆘 Підтримка</div>
+      <div class="sub-tab" data-svc="policy">📄 Політика</div>
+      <div class="sub-tab" data-svc="help">ℹ️ Допомога</div>
+    </div>
+
+    <!-- Bonus -->
+    <div class="svc" id="svc-bonus">
+      <div style="text-align:right"><span class="hl">Z</span></div>
+      <div class="section-title">Активувати промокод</div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="promoCode" placeholder="Введіть промокод" style="text-transform:uppercase;flex:1" oninput="this.value=this.value.toUpperCase()">
+        <button class="btn btn-sm" onclick="activatePromo()">→</button>
+      </div>
+      <div class="section-title">Активні бонуси</div>
+      <div id="bonusList"><div class="empty"><div class="spinner"></div></div></div>
+      <div id="freeUcSection"></div>
+    </div>
+
+    <!-- Referral -->
+    <div class="svc" id="svc-referral" style="display:none">
+      <div style="text-align:right"><span class="hl">K</span></div>
+      <div class="section-title">Ваше реферальне посилання</div>
+      <div class="card" style="cursor:pointer" onclick="copyRef()">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:5px">📋 Натисніть щоб скопіювати</div>
+        <div id="refLinkEl" style="font-size:12px;word-break:break-all;color:var(--acc)">Завантаження...</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="stat-box"><div class="stat-val" id="refInv">—</div><div class="stat-lbl">Запрошено</div></div>
+        <div class="stat-box"><div class="stat-val" id="refDisc">—</div><div class="stat-lbl">Знижок</div></div>
+      </div>
+      <div class="card mt-12">
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px">Як це працює?</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6">Запроси друга за своїм посиланням. Коли він зробить покупку — ти отримаєш знижку 1% на наступне замовлення!</div>
+      </div>
+    </div>
+
+    <!-- Wheel -->
+    <div class="svc" id="svc-wheel" style="display:none">
+      <div style="text-align:right"><span class="hl">O</span></div>
+
+      <div class="section-title">🎰 Безкоштовна рулетка</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Раз на 24 години — безкоштовно!</div>
+
+      <div class="wheel-wrap" id="fwWrap">
+        <div class="wheel-ptr"></div>
+        <div class="wheel-ptr-b"></div>
+        <div class="wheel-center-line"></div>
+        <div class="wheel-tape" id="fwTape"></div>
+      </div>
+      <div class="prizes-legend" id="freeLegend"></div>
+      <button class="spin-btn" id="freeSpinBtn" onclick="doFreeSpin()">🎰 Крутити (безкоштовно)</button>
+      <div class="cooldown-text" id="freeCooldown"></div>
+
+      <div class="divider" style="margin:20px 0"></div>
+
+      <div class="section-title">💎 Платна рулетка</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">40 грн — Адмін особисто крутить після оплати!</div>
+
+      <div class="wheel-wrap" id="pwWrap">
+        <div class="wheel-ptr"></div>
+        <div class="wheel-ptr-b"></div>
+        <div class="wheel-center-line"></div>
+        <div class="wheel-tape" id="pwTape"></div>
+      </div>
+      <div class="prizes-legend" id="paidLegend"></div>
+      <div class="card" style="margin:10px 0">
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px">Як отримати?</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6">1. Натисни кнопку нижче<br>2. Оплати 40 грн на картку адміна<br>3. Адмін підтвердить і крутне колесо<br>4. Приз прийде автоматично!</div>
+      </div>
+      <button class="btn-purple" onclick="reqPaidSpin()">💎 Замовити платне колесо (40 грн)</button>
+    </div>
+
+    <!-- Top -->
+    <div class="svc" id="svc-top" style="display:none">
+      <div style="text-align:right"><span class="hl">U</span></div>
+      <div class="section-title">🏆 Топ-10 Донатерів</div>
+      <div id="topList"><div class="empty"><div class="spinner"></div></div></div>
+    </div>
+
+    <!-- Reviews -->
+    <div class="svc" id="svc-reviews" style="display:none">
+      <div style="text-align:right"><span class="hl">O</span></div>
+      <div class="section-title">Написати відгук</div>
+      <textarea id="reviewTxt" rows="3" placeholder="Напишіть відгук..." style="resize:none"></textarea>
+      <button class="btn mt-8" onclick="sendReview()">Надіслати</button>
+      <div class="section-title">Останні відгуки</div>
+      <div id="reviewsList"><div class="empty"><div class="spinner"></div></div></div>
+    </div>
+
+    <!-- Points shop -->
+    <div class="svc" id="svc-points" style="display:none">
+      <div class="pts-balance">
+        <div class="pts-bal-val" id="ptsBalance">0 🪙</div>
+        <div class="pts-bal-lbl">Ваші бали</div>
+      </div>
+      <div class="section-title">Магазин балів</div>
+      <div id="ptsItems"></div>
+    </div>
+
+    <!-- Support -->
+    <div class="svc" id="svc-support" style="display:none">
+      <div class="card" style="text-align:center;padding:28px 16px">
+        <div style="font-size:46px;margin-bottom:12px">🆘</div>
+        <div style="font-size:18px;font-weight:800;margin-bottom:6px">Підтримка 24/7</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Менеджер відповідає цілодобово, без вихідних</div>
+        <a href="https://t.me/Manager_Nezuko" target="_blank"><button class="btn">💬 Написати @Manager_Nezuko</button></a>
+      </div>
+      <div class="card mt-8">
+        <div style="font-size:13px;font-weight:600;margin-bottom:5px">⏱ Час відповіді</div>
+        <div style="font-size:12px;color:var(--muted)">Зазвичай декілька хвилин. Найактивніші години: 12:00–01:00.</div>
+      </div>
+    </div>
+
+    <!-- Policy -->
+    <div class="svc" id="svc-policy" style="display:none">
+      <div class="card">
+        <div style="font-size:16px;font-weight:800;margin-bottom:12px">📄 Політика магазину</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.8">
+          <b style="color:var(--text)">1. Оформлення</b> — Перевіряйте ігровий ID.<br>
+          <b style="color:var(--text)">2. Оплата</b> — Замовлення обробляється після підтвердження оплати.<br>
+          <b style="color:var(--text)">3. Виконання</b> — UC нараховуються на вказаний ID.<br>
+          <b style="color:var(--text)">4. Повернення</b> — Тільки якщо замовлення ще не виконано.<br>
+          <b style="color:var(--text)">5. Підтримка</b> — 24/7: @Manager_Nezuko.<br>
+          <b style="color:var(--text)">6. Зміни</b> — Магазин може змінювати ці правила.
         </div>
-        <div class="fg" style="margin-bottom:7px">
-          <label class="fl">Тип бонусу</label>
-          <select class="fi" id="np-type">
-            <option value="">— Оберіть бонус —</option>
-            <option value="discount_small_5">Знижка 5% (малі UC паки)</option>
-            <option value="discount_small_4">Знижка 4% (малі UC паки)</option>
-            <option value="discount_small_3">Знижка 3% (малі UC паки)</option>
-            <option value="discount_small_2">Знижка 2% (малі UC паки)</option>
-            <option value="discount_small_1">Знижка 1% (малі UC паки)</option>
-            <option value="free_uc_60">🎁 60 UC безкоштовно</option>
+      </div>
+    </div>
+
+    <!-- Help -->
+    <div class="svc" id="svc-help" style="display:none">
+      <div style="text-align:right"><span class="hl">O</span></div>
+      <div class="card">
+        <div style="font-size:16px;font-weight:800;margin-bottom:12px">ℹ️ Як купити UC</div>
+        <div style="font-size:13px;line-height:2">
+          <span style="color:var(--acc);font-weight:700">1.</span> Вкладка «🛍 Магазин» → Категорія<br>
+          <span style="color:var(--acc);font-weight:700">2.</span> Обери потрібний пакет<br>
+          <span style="color:var(--acc);font-weight:700">3.</span> Введи ігровий ID PUBG Mobile<br>
+          <span style="color:var(--acc);font-weight:700">4.</span> Оплати і натисни «✅ Я оплатив»<br>
+          <span style="color:var(--acc);font-weight:700">5.</span> UC нараховуються протягом кількох хвилин
+        </div>
+      </div>
+      <div class="card">
+        <div style="font-size:13px;font-weight:600;margin-bottom:5px">🎁 Промокоди та бонуси</div>
+        <div style="font-size:12px;color:var(--muted)">Активуй промокоди в розділі «Бонуси». Знижки застосовуються автоматично при покупці. Збирай бали та обмінюй на призи!</div>
+      </div>
+      <div class="card">
+        <div style="font-size:13px;font-weight:600;margin-bottom:5px">🏅 Досягнення</div>
+        <div style="font-size:12px;color:var(--muted)">Виконуй різні дії, щоб отримувати унікальні нагороди. Деякі досягнення секретні — спробуй знайти!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TAB: ПРОФІЛЬ ═══ -->
+<div id="tab-profile" class="tab">
+  <div class="page" style="padding-top:12px">
+    <div style="text-align:right;margin-bottom:-6px"><span class="hl">T</span></div>
+
+    <div class="profile-banner">
+      <div class="profile-avatar">🌸</div>
+      <div class="profile-name" id="pName">Гравець</div>
+      <div class="profile-mini" id="pId">ID: —</div>
+      <div class="profile-stats-row">
+        <div class="pstat"><div class="pstat-val" style="color:var(--pts)" id="pPoints">0</div><div class="pstat-lbl">🪙 балів</div></div>
+        <div class="pstat"><div class="pstat-val" style="color:var(--acc)" id="pAchs">0</div><div class="pstat-lbl">🏅 досягнень</div></div>
+        <div class="pstat"><div class="pstat-val" style="color:#60a5fa" id="pDays">0</div><div class="pstat-lbl">📆 днів</div></div>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-box"><div class="stat-val" id="pSpent">0</div><div class="stat-lbl">💰 грн витрачено</div></div>
+      <div class="stat-box"><div class="stat-val" id="pOrds">0</div><div class="stat-lbl">📦 замовлень</div></div>
+      <div class="stat-box"><div class="stat-val" id="pUC">0</div><div class="stat-lbl">💎 UC донатовано</div></div>
+      <div class="stat-box"><div class="stat-val" style="font-size:13px" id="pSince">—</div><div class="stat-lbl">📅 в магазині з</div></div>
+    </div>
+
+    <div class="section-title">🏅 Досягнення</div>
+    <div id="achGrid" class="ach-grid"></div>
+  </div>
+</div>
+
+<!-- ═══ TAB: АДМІН ═══ -->
+<div id="tab-admin" class="tab">
+
+  <!-- Login -->
+  <div id="adminLogin" class="page" style="padding-top:12px">
+    <div class="admin-login-box">
+      <div style="font-size:40px;margin-bottom:14px">🔐</div>
+      <div style="font-size:18px;font-weight:800;margin-bottom:6px">Адмін панель</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Введіть пароль для доступу</div>
+      <input type="password" id="aPassInput" placeholder="Пароль адміна" style="margin-bottom:10px" onkeydown="if(event.key==='Enter')aLogin()">
+      <button class="btn" onclick="aLogin()">Увійти</button>
+    </div>
+  </div>
+
+  <!-- Panel -->
+  <div id="adminPanel" style="display:none">
+    <div class="page" style="padding-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 6px">
+        <div style="font-size:13px;font-weight:700">⚙️ Панель <span class="hl">K</span></div>
+        <button class="btn-ghost btn btn-sm" onclick="aLogout()">Вийти</button>
+      </div>
+
+      <div class="sub-tabs" id="aTabs">
+        <div class="sub-tab active" data-atab="aords">📦 Замовлення</div>
+        <div class="sub-tab" data-atab="astats">📊 Статистика</div>
+        <div class="sub-tab" data-atab="aadmins">👤 Адміни</div>
+        <div class="sub-tab" data-atab="apromos">🎁 Промокоди</div>
+        <div class="sub-tab" data-atab="aprices">💰 Ціни</div>
+        <div class="sub-tab" data-atab="areviews">🌟 Відгуки</div>
+        <div class="sub-tab" data-atab="aachiev">🏅 Досягнення</div>
+        <div class="sub-tab" data-atab="afind">🔍 Знайти</div>
+        <div class="sub-tab" data-atab="abroadcast">📢 Розсилка</div>
+        <div class="sub-tab" data-atab="awheel">🎰 Колесо</div>
+      </div>
+
+      <!-- Orders -->
+      <div class="atab" id="atab-aords">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div class="section-title" style="margin:0">Очікують виконання</div>
+          <button class="btn-ghost btn btn-sm" onclick="loadAOrders()">↻</button>
+        </div>
+        <div id="aOrdersList"><div class="empty"><div class="spinner"></div></div></div>
+      </div>
+
+      <!-- Stats -->
+      <div class="atab" id="atab-astats" style="display:none">
+        <div class="section-title">Статистика магазину</div>
+        <div id="aStats"><div class="empty"><div class="spinner"></div></div></div>
+      </div>
+
+      <!-- Admins -->
+      <div class="atab" id="atab-aadmins" style="display:none">
+        <div class="section-title">Список адмінів</div>
+        <div id="aAdminsList"></div>
+        <div class="divider"></div>
+        <div class="section-title">Додати / видалити</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input type="number" id="aAdminId" placeholder="User ID" style="flex:1">
+          <button class="btn btn-sm" onclick="toggleAdmin('add')">+</button>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="toggleAdmin('remove')">— Видалити</button>
+      </div>
+
+      <!-- Promos -->
+      <div class="atab" id="atab-apromos" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="section-title" style="margin:0">Промокоди</div>
+          <button class="btn-ghost btn btn-sm" onclick="loadAPromos()">↻</button>
+        </div>
+        <div id="aPromosList" style="margin-top:8px"></div>
+        <div class="divider"></div>
+        <div class="section-title">Створити промокод</div>
+        <div class="promo-form">
+          <input type="text" id="npCode" placeholder="Назва (лат. великі)" oninput="this.value=this.value.toUpperCase()">
+          <select id="npType">
+            <option value="">— Тип бонусу —</option>
+            <optgroup label="🎁 UC бонуси">
+              <option value="free_uc_30">🎁 30 UC безкоштовно</option>
+              <option value="free_uc_60">🎁 60 UC безкоштовно</option>
+            </optgroup>
+            <optgroup label="💸 Знижки (малі паки 30–660 UC)">
+              <option value="discount_small_1">Знижка 1% (малі)</option>
+              <option value="discount_small_2">Знижка 2% (малі)</option>
+              <option value="discount_small_3">Знижка 3% (малі)</option>
+              <option value="discount_small_4">Знижка 4% (малі)</option>
+              <option value="discount_small_5">Знижка 5% (малі)</option>
+            </optgroup>
+            <optgroup label="💸 Знижки (середні паки 1800–8100 UC)">
+              <option value="discount_medium_1">Знижка 1% (середні 1800–8100)</option>
+              <option value="discount_medium_2">Знижка 2% (середні 1800–8100)</option>
+            </optgroup>
+            <optgroup label="🪙 Бали">
+              <option value="points_50">50 балів</option>
+              <option value="points_100">100 балів</option>
+              <option value="points_200">200 балів</option>
+              <option value="points_500">500 балів</option>
+            </optgroup>
+            <optgroup label="🎰 Рулетка">
+              <option value="extra_spin">Повторний прокрут рулетки</option>
+            </optgroup>
           </select>
+          <input type="number" id="npUses" placeholder="Кількість активацій (-1 = ∞)" value="-1">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:2px 0">
+            <input type="checkbox" id="npSecret"> Секретний промокод 🔐
+          </label>
+          <button class="btn" onclick="createPromo()">✅ Створити промокод</button>
         </div>
-        <div class="fg" style="margin-bottom:9px">
-          <label class="fl">Кількість використань (-1 = ∞)</label>
-          <input class="fi" id="np-uses" type="number" placeholder="-1 = безліміт" value="-1" inputmode="numeric">
-        </div>
-        <button class="btn btn-u" onclick="crPromo()">✨ Створити</button>
       </div>
-      <div class="st">📋 Активні промокоди</div>
-      <div id="ap-list"><div class="ld"><span class="ls">⚙️</span>Завантаження...</div></div>
-      <button class="btn btn-s mt8" onclick="ldPromos()">🔄 Оновити</button>
-    </div>
 
-    <!-- Відгуки (адмін) -->
-    <div id="ap-rev" style="display:none">
-      <div class="st">🌟 Відгуки користувачів</div>
-      <div id="ar-list"><div class="ld"><span class="ls">⚙️</span>Завантаження...</div></div>
-      <button class="btn btn-s mt8" onclick="ldARev()">🔄 Оновити</button>
-    </div>
-
-    <!-- Знайти замовлення -->
-    <div id="ap-find" style="display:none">
-      <div class="st">🔍 Знайти замовлення</div>
-      <div class="cb mb12">
-        <div class="fg" style="margin-bottom:9px">
-          <label class="fl">ID замовлення</label>
-          <input class="fi" id="find-id" type="text" placeholder="Наприклад: A1B2C3D4" style="text-transform:uppercase;letter-spacing:2px;text-align:center;font-size:15px;font-weight:700">
+      <!-- Prices -->
+      <div class="atab" id="atab-aprices" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="section-title" style="margin:0">Поточні ціни</div>
+          <button class="btn-ghost btn btn-sm" onclick="loadAPrices()">↻</button>
         </div>
-        <button class="btn btn-b" onclick="findOrd()">🔍 Знайти</button>
-      </div>
-      <div id="find-res"></div>
-    </div>
-
-    <!-- Розсилка -->
-    <div id="ap-bc" style="display:none">
-      <div class="st">📢 Розсилка повідомлень</div>
-      <div class="cb mb12">
-        <div class="fg" style="margin-bottom:7px">
-          <label class="fl">Текст повідомлення</label>
-          <textarea class="fi" id="bc-txt" placeholder="Введи текст для розсилки всім користувачам..." style="min-height:100px"></textarea>
+        <div id="aPricesList" style="margin-top:8px;max-height:280px;overflow-y:auto"></div>
+        <div class="divider"></div>
+        <div class="section-title">Змінити ціну</div>
+        <div class="promo-form">
+          <select id="pricePackSel"><option value="">— Оберіть пак —</option></select>
+          <input type="number" id="priceNewVal" placeholder="Нова ціна (грн)" min="1">
+          <button class="btn" onclick="doUpdatePrice()">💾 Оновити ціну</button>
+          <button class="btn-ghost btn" onclick="doResetPrice()">↺ Скинути до базової</button>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:9px">⚠️ Повідомлення отримають усі, хто коли-небудь робив замовлення.</div>
-        <button class="btn btn-o" onclick="doBC()">📢 Надіслати розсилку</button>
       </div>
-    </div>
 
-    <div class="div"></div>
-    <button class="btn btn-s" onclick="admOut()">🚪 Вийти з адмінки</button>
+      <!-- Reviews admin -->
+      <div class="atab" id="atab-areviews" style="display:none">
+        <div class="section-title">Відгуки (адмін)</div>
+        <div id="aReviewsList"></div>
+      </div>
+
+      <!-- Achievements admin -->
+      <div class="atab" id="atab-aachiev" style="display:none">
+        <div class="section-title">Видати / відкликати досягнення</div>
+        <div class="promo-form">
+          <input type="number" id="achUID" placeholder="User ID гравця">
+          <select id="achSel">
+            <option value="">— Оберіть досягнення —</option>
+            <optgroup label="Ручні досягнення">
+              <option value="partner">🌐 Партнер</option>
+              <option value="tester">🧪 Тестер</option>
+              <option value="trusted">🛡️ Довірений</option>
+              <option value="old">❤️ Олд</option>
+            </optgroup>
+            <optgroup label="Всі досягнення">
+              <option value="novice">🟢 Новачок</option>
+              <option value="regular">🔥 Постійник</option>
+              <option value="vip">👑 VIP Клієнт</option>
+              <option value="whale">🐋 Кит</option>
+              <option value="night_owl">🌙 Нічний житель</option>
+              <option value="early_bird">☀️ Ранній гравець</option>
+              <option value="lucky">🎰 Улюбленець удачі</option>
+              <option value="unlucky">💀 Невдаха</option>
+              <option value="bonus_hunter">🎁 Мисливець за бонусами</option>
+              <option value="secret_seeker">🕵️ Шукач секретів</option>
+              <option value="recruiter">📢 Рекламщик</option>
+              <option value="magnet">🧲 Магніт для людей</option>
+              <option value="loyal">🧡 Вірний клієнт</option>
+              <option value="daily7">📆 Щоденний</option>
+              <option value="flash">⚡ Швидкий</option>
+              <option value="legend">🏆 Легенда шопу</option>
+              <option value="pubg_fan">🎮 PUBG Fan</option>
+              <option value="uc_addict">🔥 UC Залежний</option>
+              <option value="precise">🎯 Точний постріл</option>
+              <option value="saver">🧠 Хитрий</option>
+              <option value="gambler">🎲 Азартний</option>
+              <option value="jackpot">💎 Джекпот</option>
+              <option value="rocket">🚀 Ракета</option>
+              <option value="risky">😈 Ризиковий</option>
+              <option value="secret_ach">🔐 Секретне досягнення</option>
+              <option value="collector">📦 Колекціонер</option>
+              <option value="danger">☢️ Небезпечний донатер</option>
+            </optgroup>
+          </select>
+          <button class="btn" onclick="doGrantAch()">🏅 Видати досягнення</button>
+          <button class="btn btn-danger" style="width:100%" onclick="doRevokeAch()">🗑 Відкликати досягнення</button>
+        </div>
+      </div>
+
+      <!-- Find -->
+      <div class="atab" id="atab-afind" style="display:none">
+        <div class="section-title">Знайти замовлення</div>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="findId" placeholder="ID (напр. AB12CD34)" oninput="this.value=this.value.toUpperCase()" style="flex:1">
+          <button class="btn btn-sm" onclick="doFind()">🔍</button>
+        </div>
+        <div id="findResult" class="mt-12"></div>
+      </div>
+
+      <!-- Broadcast -->
+      <div class="atab" id="atab-abroadcast" style="display:none">
+        <div class="section-title">📢 Розсилка всім користувачам</div>
+        <textarea id="bcastMsg" rows="4" placeholder="Текст повідомлення..." style="resize:none"></textarea>
+        <button class="btn mt-8" onclick="doBroadcast()">📢 Надіслати всім</button>
+      </div>
+
+      <!-- Wheel approvals -->
+      <div class="atab" id="atab-awheel" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div class="section-title" style="margin:0">Запити на платне колесо</div>
+          <button class="btn-ghost btn btn-sm" onclick="loadPendingWheels()">↻</button>
+        </div>
+        <div id="pendingWheels"><div class="empty"><div class="spinner"></div></div></div>
+      </div>
+
+    </div>
   </div>
-
 </div>
 
-<!-- ═══════════════ TABS ═══════════════ -->
-<div class="tabs">
-  <button class="tab active" id="tb-shop" onclick="swTab('shop')"><span class="ti">🛍</span><span class="tl">Магазин</span></button>
-  <button class="tab" id="tb-orders" onclick="swTab('orders')"><span class="ti">📋</span><span class="tl">Замовлення</span></button>
-  <button class="tab" id="tb-serv" onclick="swTab('serv')"><span class="ti">🎁</span><span class="tl">Сервіси</span></button>
-  <button class="tab" id="tb-top" onclick="swTab('top')"><span class="ti">🏆</span><span class="tl">Топ</span></button>
-  <button class="tab at" id="tb-admin" onclick="swTab('admin')"><span class="ti">⚙️</span><span class="tl">Адмін</span></button>
-</div>
-
-<div class="toast" id="toast"></div>
+<!-- Bottom nav -->
+<nav class="bottom-nav">
+  <div class="nav-item active" data-tab="shop"><div class="nav-icon">🛍</div><span>Магазин</span></div>
+  <div class="nav-item" data-tab="orders"><div class="nav-icon">📦</div><span>Замовлення</span></div>
+  <div class="nav-item" data-tab="services"><div class="nav-icon">🎁</div><span>Сервіси</span></div>
+  <div class="nav-item" data-tab="profile"><div class="nav-icon">👤</div><span>Профіль</span></div>
+  <div class="nav-item" data-tab="admin"><div class="nav-icon">⚙️</div><span>Адмін</span></div>
+</nav>
 
 <script>
+'use strict';
+// ─── INIT ────────────────────────────────────────────────────────────────────
 const tg = window.Telegram?.WebApp;
-if(tg){tg.ready();tg.expand();}
-const UID = tg?.initDataUnsafe?.user?.id||0;
-const UNAME = tg?.initDataUnsafe?.user?.username||'';
+if (tg) { tg.expand(); tg.setHeaderColor?.('#0c0c14'); }
 
-const PRODS = {
-  uc:[
-    {n:"30 UC",p:19,f:"30 UC - 19 грн"},
-    {n:"60 UC",p:40,f:"60 UC - 40 грн"},
-    {n:"120 UC",p:78,f:"120 UC - 78 грн"},
-    {n:"180 UC",p:111,f:"180 UC - 113 грн"},
-    {n:"325 UC",p:195,f:"325 UC - 195 грн"},
-    {n:"660 UC",p:389,f:"660 UC - 389 грн"},
-    {n:"1800 UC",p:960,f:"1800 UC - 960 грн"},
-    {n:"3800 UC",p:1909,f:"3800 UC - 1909 грн"},
-    {n:"8100 UC",p:3840,f:"8100 UC - 3840 грн"},
-    {n:"16200 UC",p:7599,f:"16200 UC - 7599 грн"},
-    {n:"24300 UC",p:11399,f:"24300 UC - 11399 грн"},
-    {n:"32400 UC",p:15399,f:"32400 UC - 15399 грн"},
-    {n:"40500 UC",p:18999,f:"40500 UC - 18999 грн"},
-    {n:"81000 UC",p:37900,f:"81000 UC - 37900 грн"},
-  ],
-  prime:[
-    {n:"Prime 1 Місяць",p:45,f:"👑 Prime 1 Місяць - 45 грн"},
-    {n:"Prime 3 Місяці",p:130,f:"👑 Prime 3 Місяця - 130 грн"},
-    {n:"Prime 6 Місяців",p:250,f:"👑 Prime 6 Місяців - 250 грн"},
-    {n:"Prime 12 Місяців",p:500,f:"👑 Prime 12 Місяців - 500 грн"},
-  ],
-  prime_plus:[
-    {n:"Prime Plus 1 Місяць",p:410,f:"👑 Prime Plus 1 Місяць - 410 грн"},
-    {n:"Prime Plus 3 Місяці",p:1200,f:"👑 Prime Plus 3 Місяці - 1200 грн"},
-    {n:"Prime Plus 6 Місяців",p:2400,f:"👑 Prime Plus 6 Місяців - 2400 грн"},
-    {n:"Prime Plus 12 Місяців",p:4730,f:"👑 Prime Plus 12 Місяців - 4730 грн"},
-  ]
+const BASE = window.location.origin;
+let uid = 0, uname = '';
+const user = tg?.initDataUnsafe?.user;
+if (user) { uid = user.id || 0; uname = user.username || user.first_name || ''; }
+
+let adminPass = sessionStorage.getItem('ap') || '';
+let visitTs = Date.now();
+let spinning = false;
+let freePrizes = [], paidPrizes = [];
+let prices = {};
+let curCat = null, curPack = null;
+
+// ─── API ─────────────────────────────────────────────────────────────────────
+async function api(path, method = 'GET', body = null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  try {
+    const r = await fetch(BASE + path, opts);
+    return await r.json();
+  } catch (e) { return { ok: false, error: 'Помилка мережі' }; }
+}
+
+// ─── TOAST ───────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type = 'info', dur = 3200) {
+  clearTimeout(toastTimer);
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast ${type} show`;
+  toastTimer = setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// ─── SAKURA ──────────────────────────────────────────────────────────────────
+function sakura() {
+  const chars = ['🌸','🌺','✨','💮','🌷'];
+  for (let i = 0; i < 9; i++) {
+    setTimeout(() => {
+      const s = document.createElement('div');
+      s.className = 'sakura';
+      s.textContent = chars[Math.floor(Math.random() * chars.length)];
+      s.style.cssText = `left:${Math.random()*100}vw;font-size:${14+Math.random()*18}px;animation-duration:${2.2+Math.random()*2.5}s;animation-delay:${Math.random()*.4}s`;
+      document.body.appendChild(s);
+      setTimeout(() => s.remove(), 5500);
+    }, i * 130);
+  }
+}
+
+// ─── MODAL ───────────────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ─── ONLINE COUNT ────────────────────────────────────────────────────────────
+async function refreshOnline() {
+  const r = await api('/api/online-count');
+  document.getElementById('onlineCnt').textContent = r.online || 0;
+}
+refreshOnline();
+setInterval(refreshOnline, 30000);
+
+// ─── TRACK VISIT ─────────────────────────────────────────────────────────────
+if (uid) api('/api/track-visit', 'POST', { user_id: uid }).catch(() => {});
+
+// ─── BOTTOM NAV ──────────────────────────────────────────────────────────────
+let lazyLoaded = {};
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.addEventListener('click', () => {
+    const tab = el.dataset.tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    el.classList.add('active');
+    if (tab === 'orders' && !lazyLoaded.orders) { lazyLoaded.orders = true; loadOrders(); }
+    else if (tab === 'orders') loadOrders();
+    if (tab === 'services' && !lazyLoaded.svcBonus) { lazyLoaded.svcBonus = true; loadBonuses(); }
+    if (tab === 'profile') loadProfile();
+    if (tab === 'admin' && adminPass) { showAdminPanel(); loadAOrders(); }
+  });
+});
+
+// ─── SERVICES SUB-TABS ───────────────────────────────────────────────────────
+document.querySelectorAll('#svcTabs .sub-tab').forEach(el => {
+  el.addEventListener('click', () => {
+    const svc = el.dataset.svc;
+    document.querySelectorAll('.svc').forEach(s => s.style.display = 'none');
+    document.querySelectorAll('#svcTabs .sub-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('svc-' + svc).style.display = '';
+    el.classList.add('active');
+    if (!lazyLoaded['svc_' + svc]) {
+      lazyLoaded['svc_' + svc] = true;
+      if (svc === 'wheel') initWheel();
+      else if (svc === 'top') loadTop();
+      else if (svc === 'reviews') loadReviews();
+      else if (svc === 'points') loadPointsShop();
+      else if (svc === 'referral') loadReferral();
+      else if (svc === 'bonus') loadBonuses();
+    }
+  });
+});
+
+// ─── ADMIN SUB-TABS ──────────────────────────────────────────────────────────
+document.querySelectorAll('#aTabs .sub-tab').forEach(el => {
+  el.addEventListener('click', () => {
+    const tab = el.dataset.atab;
+    document.querySelectorAll('.atab').forEach(t => t.style.display = 'none');
+    document.querySelectorAll('#aTabs .sub-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('atab-' + tab).style.display = '';
+    el.classList.add('active');
+    if (tab === 'aords') loadAOrders();
+    else if (tab === 'astats') loadAStats();
+    else if (tab === 'aadmins') loadAdmins();
+    else if (tab === 'apromos') loadAPromos();
+    else if (tab === 'aprices') loadAPrices();
+    else if (tab === 'areviews') loadAReviews();
+    else if (tab === 'awheel') loadPendingWheels();
+  });
+});
+
+// ─── PRICES ──────────────────────────────────────────────────────────────────
+api('/api/prices').then(r => {
+  if (r.ok) { prices = r.prices; renderPopular(); }
+});
+
+function renderPopular() {
+  const keys = Object.keys(prices).slice(0, 4);
+  document.getElementById('popularList').innerHTML = keys.map(p =>
+    `<div class="pack-item" onclick="selectPack(${JSON.stringify(p)})">
+       <span class="pack-name">${esc(p)}</span>
+       <span class="pack-price">${prices[p]} грн</span>
+     </div>`).join('');
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ─── SHOP ────────────────────────────────────────────────────────────────────
+const CAT_FILTER = {
+  uc: k => !k.includes('Prime'),
+  prime: k => k.includes('👑 Prime') && !k.includes('Plus'),
+  primeplus: k => k.includes('Prime Plus')
 };
-let cat=null,prod=null,admPwd=null;
+const CAT_LABEL = { uc: '💎 UC Паки', prime: '👑 Prime Паки', primeplus: '✨ Prime Plus Паки' };
 
-// ── TAB SWITCH ──────────────────────────────────────────────────────────────
-function swTab(t){
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(tb=>tb.classList.remove('active'));
-  document.getElementById('sc-'+t).classList.add('active');
-  document.getElementById('tb-'+t).classList.add('active');
-  if(t==='orders') ldOrds();
-  if(t==='serv'){ldBons();ldRefStats();ldRevs();}
-  if(t==='top') ldTop();
-  if(t==='admin' && admPwd) ldAOrd();
-}
-
-// ── SERVICE SUB-TABS ────────────────────────────────────────────────────────
-const SV_TABS=['bonus','ref','rev','supp','pol','help'];
-function sTab(t){
-  SV_TABS.forEach(s=>{
-    document.getElementById('sv-p-'+s).style.display='none';
-    document.getElementById('sv-'+s).classList.remove('active');
-  });
-  document.getElementById('sv-p-'+t).style.display='block';
-  document.getElementById('sv-'+t).classList.add('active');
-  if(t==='bonus') ldBons();
-  if(t==='ref') ldRefStats();
-  if(t==='rev') ldRevs();
+function showPacks(cat) {
+  curCat = cat;
+  const packs = Object.keys(prices).filter(CAT_FILTER[cat]);
+  document.getElementById('packTitle').textContent = CAT_LABEL[cat];
+  document.getElementById('packList').innerHTML = packs.map(p =>
+    `<div class="pack-item" onclick="selectPack(${JSON.stringify(p)})">
+       <span class="pack-name">${esc(p)}</span>
+       <span class="pack-price">${prices[p]} грн</span>
+     </div>`).join('');
+  document.getElementById('shopCats').style.display = 'none';
+  document.getElementById('shopPacks').style.display = '';
 }
 
-// ── ADMIN TABS ──────────────────────────────────────────────────────────────
-const AT=['ord','stat','adm','prom','rev','find','bc'];
-function aTab(t){
-  AT.forEach(s=>{
-    document.getElementById('ap-'+s).style.display='none';
-    document.getElementById('at-'+s).classList.remove('active');
-  });
-  document.getElementById('ap-'+t).style.display='block';
-  document.getElementById('at-'+t).classList.add('active');
-  if(t==='ord') ldAOrd();
-  if(t==='stat') ldAStat();
-  if(t==='adm') ldAdmins();
-  if(t==='prom') ldPromos();
-  if(t==='rev') ldARev();
+function backToCats() {
+  document.getElementById('shopPacks').style.display = 'none';
+  document.getElementById('shopCats').style.display = '';
 }
 
-// ── SHOP ────────────────────────────────────────────────────────────────────
-function sStep(s){
-  ['cat','prod','pid','pay'].forEach(x=>{
-    const el=document.getElementById('sp-'+x);
-    if(el) el.style.display='none';
-  });
-  document.getElementById('sp-ok').classList.remove('a');
-  const t=document.getElementById('sp-'+s);
-  if(t) t.style.display='block';
-}
-function selCat(c,el){
-  cat=c;
-  document.querySelectorAll('.cc').forEach(x=>x.classList.remove('sel'));
-  el.classList.add('sel');
-  const l=document.getElementById('prod-list');
-  l.innerHTML=PRODS[c].map((p,i)=>`<div class="pi" id="pr-${i}" onclick="selProd(${i})"><div class="pi-n">${p.n}</div><div class="pi-p">${p.p} грн</div></div>`).join('');
-  setTimeout(()=>sStep('prod'),100);
-}
-function selProd(i){
-  prod=PRODS[cat][i];
-  document.querySelectorAll('.pi').forEach(x=>x.classList.remove('sel'));
-  document.getElementById('pr-'+i).classList.add('sel');
-  document.getElementById('cp-pk').textContent=prod.n;
-  document.getElementById('cp-pr').textContent=prod.p+' грн';
-  setTimeout(()=>sStep('pid'),100);
-}
-function goConf(){
-  const pid=document.getElementById('pl-id').value.trim();
-  if(!pid||pid.length<5){toast('Введи правильний ігровий ID',1);return;}
-  document.getElementById('cf-pk').textContent=prod.n;
-  document.getElementById('cf-id').textContent=pid;
-  document.getElementById('cf-pr').textContent=prod.p+' грн';
-  sStep('pay');
-}
-async function doPay(){
-  const pid=document.getElementById('pl-id').value.trim();
-  const btn=document.getElementById('paid-btn');
-  btn.disabled=true;btn.textContent='⏳ Надсилаємо...';
-  try{
-    const r=await fetch('/api/submit-order',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({user_id:UID,username:UNAME,pack:prod.f,player_id:pid,amount:prod.p})});
-    const d=await r.json();
-    if(d.ok){spawnS();document.getElementById('sp-pay').style.display='none';document.getElementById('sp-ok').classList.add('a');}
-    else{toast(d.error||'Помилка',1);btn.disabled=false;btn.textContent='✅ Я оплатив!';}
-  }catch{toast('Помилка з\'єднання',1);btn.disabled=false;btn.textContent='✅ Я оплатив!';}
-}
-function cpCard(){navigator.clipboard?.writeText('4874070020367247').then(()=>toast('✅ Картку скопійовано!')).catch(()=>toast('4874070020367247'));}
-function rstShop(){cat=null;prod=null;document.getElementById('pl-id').value='';sStep('cat');}
-
-// ── ORDERS ──────────────────────────────────────────────────────────────────
-async function ldOrds(){
-  const el=document.getElementById('ord-list');
-  el.innerHTML='<div class="ld"><span class="ls">🌸</span>Завантаження...</div>';
-  try{
-    const r=await fetch('/api/orders?user_id='+UID);
-    const d=await r.json();
-    if(!d.orders?.length){el.innerHTML='<div class="emp"><span class="ei">📭</span><div class="et">Замовлень ще немає</div><div class="es">Зроби перше замовлення!</div></div>';return;}
-    el.innerHTML=d.orders.map(o=>{
-      const b=o.status==='done'?'<span class="badge bd">✅ Виконано</span>':o.status==='canceled'?'<span class="badge bc">❌ Відхилено</span>':'<span class="badge bp">⏳ Очікує</span>';
-      return`<div class="oc"><div class="oh"><div><div class="on">${o.pack}</div><div class="oid">ID: ${o.id}</div></div>${b}</div><div class="om">🎮 ${o.player_id||'—'} · ${(o.created_at||'').slice(0,16)}</div></div>`;
-    }).join('');
-  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span><div class="et">Помилка</div></div>';}
-}
-
-// ── BONUSES ──────────────────────────────────────────────────────────────────
-async function ldBons(){
-  const el=document.getElementById('bon-list');
-  el.innerHTML='<div class="ld"><span class="ls">🌸</span>Завантаження...</div>';
-  try{
-    const r=await fetch('/api/bonuses?user_id='+UID);
-    const d=await r.json();
-    if(!d.bonuses?.length){el.innerHTML='<div class="emp"><span class="ei">🎁</span><div class="et">Бонусів немає</div><div class="es">Активуй промокод або запроси друзів!</div></div>';return;}
-    el.innerHTML=d.bonuses.map(b=>{
-      const isFree=b.name==='🎁 60 UC безкоштовно на акаунт';
-      const claimBtn=isFree?`<div class="mt8"><button class="btn btn-g" onclick="claimFreeUC()">🎁 Отримати 60 UC</button></div>`:'';
-      return`<div class="oc"><div class="oh"><div class="on">${b.name}</div><span class="badge bd">✅ ${b.count} шт.</span></div>${claimBtn}</div>`;
-    }).join('');
-  }catch{el.innerHTML='';}
-}
-async function actPromo(){
-  const code=document.getElementById('promo-in').value.trim().toUpperCase();
-  if(!code){toast('Введи промокод',1);return;}
-  try{
-    const r=await fetch('/api/promo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:UID,code})});
-    const d=await r.json();
-    if(d.ok){toast('🎉 '+(d.message||'Активовано!'));document.getElementById('promo-in').value='';ldBons();}
-    else toast(d.error||'Невірний промокод',1);
-  }catch{toast('Помилка з\'єднання',1);}
-}
-
-// Free UC claim
-let freeUCMode=false;
-async function claimFreeUC(){
-  const pid=prompt('Введи свій ігровий ID в PUBG Mobile:');
-  if(!pid||pid.trim().length<5){toast('Невірний ігровий ID',1);return;}
-  try{
-    const r=await fetch('/api/claim-free-uc',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({user_id:UID,username:UNAME,player_id:pid.trim()})});
-    const d=await r.json();
-    if(d.ok){spawnS();toast('✅ '+d.message);ldBons();}
-    else toast(d.error,1);
-  }catch{toast('Помилка з\'єднання',1);}
-}
-
-// ── REFERRAL ─────────────────────────────────────────────────────────────────
-function ldRefLink(){
-  const link=`https://t.me/NezukoUCBot?start=ref_${UID}`;
-  document.getElementById('ref-lnk').textContent=link;
-}
-async function ldRefStats(){
-  ldRefLink();
-  try{
-    const r=await fetch('/api/referral-stats?user_id='+UID);
-    const d=await r.json();
-    if(d.ok){
-      document.getElementById('rs-inv').textContent=d.invited;
-      document.getElementById('rs-disc').textContent=d.discounts;
+async function selectPack(p) {
+  curPack = p;
+  document.getElementById('selPackName').textContent = p;
+  document.getElementById('selPackPrice').textContent = (prices[p] || 0) + ' грн';
+  document.getElementById('discInfo').textContent = '';
+  // Check discount
+  if (uid) {
+    const r = await api('/api/bonuses?user_id=' + uid);
+    let bestDisc = 0;
+    for (const b of r.bonuses || []) {
+      if (b.type?.startsWith('discount')) {
+        const pct = parseInt(b.type.split('_').pop()) || 0;
+        if (pct > bestDisc) bestDisc = pct;
+      }
     }
-  }catch{}
-}
-function cpRef(){
-  const l=document.getElementById('ref-lnk').textContent;
-  navigator.clipboard?.writeText(l).then(()=>toast('✅ Посилання скопійовано!'));
-}
-function shrRef(){
-  const l=document.getElementById('ref-lnk').textContent;
-  if(tg) tg.switchInlineQuery(`🌸 Купуй UC для PUBG Mobile!\n${l}`); else cpRef();
-}
-
-// ── REVIEWS (USER) ───────────────────────────────────────────────────────────
-async function ldRevs(){
-  const el=document.getElementById('rev-list');
-  el.innerHTML='<div class="ld"><span class="ls">🌸</span>Завантаження...</div>';
-  try{
-    const r=await fetch('/api/reviews');
-    const d=await r.json();
-    if(!d.reviews?.length){el.innerHTML='<div class="emp"><span class="ei">🌟</span><div class="et">Відгуків ще немає</div><div class="es">Стань першим!</div></div>';return;}
-    el.innerHTML=d.reviews.map(v=>`<div class="rv"><div class="rv-u">👤 ${v.user}</div><div class="rv-t">${v.text}</div></div>`).join('');
-  }catch{el.innerHTML='';}
-}
-async function sbmRev(){
-  const txt=document.getElementById('rev-txt').value.trim();
-  if(!txt||txt.length<3){toast('Відгук занадто короткий',1);return;}
-  try{
-    const r=await fetch('/api/submit-review',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({user_id:UID,username:UNAME,text:txt})});
-    const d=await r.json();
-    if(d.ok){toast('✅ Відгук збережено!');document.getElementById('rev-txt').value='';ldRevs();}
-    else toast(d.error||'Помилка',1);
-  }catch{toast('Помилка з\'єднання',1);}
-}
-
-// ── TOP ──────────────────────────────────────────────────────────────────────
-async function ldTop(){
-  const el=document.getElementById('top-list');
-  el.innerHTML='<div class="ld"><span class="ls">🌸</span>Завантаження...</div>';
-  try{
-    const r=await fetch('/api/top');
-    const d=await r.json();
-    if(!d.top?.length){el.innerHTML='<div class="emp"><span class="ei">🏆</span><div class="et">Рейтинг порожній</div><div class="es">Будь першим!</div></div>';return;}
-    const m=['🥇','🥈','🥉'];
-    el.innerHTML=d.top.map((t,i)=>{
-      const cls=i===0?'r1':i===1?'r2':i===2?'r3':'';
-      return`<div class="ti2"><div class="tr ${cls}">${i<3?m[i]:'#'+t.rank}</div><div class="tn">${t.name}</div><div class="ts">${t.total} грн</div></div>`;
-    }).join('');
-  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span><div class="et">Помилка</div></div>';}
-}
-
-// ── ADMIN AUTH ────────────────────────────────────────────────────────────────
-async function admAuth(){
-  const pwd=document.getElementById('adm-pwd').value;
-  if(!pwd) return;
-  try{
-    const r=await fetch('/api/admin/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd})});
-    const d=await r.json();
-    if(d.ok){
-      admPwd=pwd;
-      document.getElementById('adm-gate').style.display='none';
-      document.getElementById('adm-panel').style.display='block';
-      document.getElementById('adm-err').style.display='none';
-      ldAOrd();
-    } else {
-      document.getElementById('adm-err').style.display='block';
-      document.getElementById('adm-pwd').value='';
+    if (bestDisc > 0) {
+      const dp = Math.max(1, Math.floor((prices[p] || 0) * (100 - bestDisc) / 100));
+      document.getElementById('discInfo').textContent = `🎉 Знижка ${bestDisc}% → ${dp} грн`;
     }
-  }catch{toast('Помилка з\'єднання',1);}
-}
-function admOut(){
-  admPwd=null;
-  document.getElementById('adm-pwd').value='';
-  document.getElementById('adm-gate').style.display='block';
-  document.getElementById('adm-panel').style.display='none';
-  document.getElementById('adm-err').style.display='none';
+  }
+  document.getElementById('shopPacks').style.display = 'none';
+  document.getElementById('shopCats').style.display = 'none';
+  document.getElementById('shopId').style.display = '';
 }
 
-// ── ADMIN ORDERS ──────────────────────────────────────────────────────────────
-async function ldAOrd(){
-  const el=document.getElementById('ao-list');
-  el.innerHTML='<div class="ld"><span class="ls">⚙️</span>Завантаження...</div>';
-  try{
-    const r=await fetch('/api/admin/orders?password='+encodeURIComponent(admPwd));
-    const d=await r.json();
-    if(!d.ok){toast(d.error,1);return;}
-    if(!d.orders.length){el.innerHTML='<div class="emp"><span class="ei">📭</span><div class="et">Нових замовлень немає</div></div>';return;}
-    el.innerHTML=d.orders.map(o=>`
-      <div class="oc" id="ao-${o.id}">
-        <div class="oh"><div class="on">${o.pack}</div><span class="badge bp">⏳ ${o.amount} грн</span></div>
-        <div class="om">👤 ${o.user} · 🎮 ${o.player_id}<br>🆔 ${o.id} · 📅 ${o.created_at}</div>
-        <div class="row mt8">
-          <button class="btn btn-g" onclick="doAct('${o.id}','ok')">✅ Виконано</button>
-          <button class="btn btn-r" onclick="doAct('${o.id}','no')">❌ Відхилити</button>
-        </div>
-      </div>`).join('');
-  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span><div class="et">Помилка</div></div>';}
-}
-async function doAct(id,act){
-  try{
-    const r=await fetch('/api/admin/action',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({password:admPwd,order_id:id,action:act})});
-    const d=await r.json();
-    if(d.ok){
-      toast(act==='ok'?'✅ Виконано!':'❌ Відхилено');
-      const el=document.getElementById('ao-'+id);
-      if(el) el.remove();
-    } else toast(d.error||'Помилка',1);
-  }catch{toast('Помилка',1);}
+function backToPacks() {
+  document.getElementById('shopId').style.display = 'none';
+  if (curCat) showPacks(curCat);
+  else { document.getElementById('shopCats').style.display = ''; }
 }
 
-// ── ADMIN STATS ───────────────────────────────────────────────────────────────
-async function ldAStat(){
-  const el=document.getElementById('as-con');
-  el.innerHTML='<div class="ld"><span class="ls">⚙️</span>Завантаження...</div>';
-  try{
-    const r=await fetch('/api/admin/stats?password='+encodeURIComponent(admPwd));
-    const d=await r.json();
-    if(!d.ok){toast(d.error,1);return;}
-    el.innerHTML=`
-      <div class="sg">
-        <div class="sc g"><div class="sv">${d.done}</div><div class="sl">✅ Виконано</div></div>
-        <div class="sc r"><div class="sv">${d.canceled}</div><div class="sl">❌ Відхилено</div></div>
-        <div class="sc go"><div class="sv">${d.today_sum}</div><div class="sl">💰 Сьогодні грн</div></div>
-        <div class="sc b"><div class="sv">${d.total_sum}</div><div class="sl">📊 Всього грн</div></div>
+function backToId() {
+  document.getElementById('shopPay').style.display = 'none';
+  document.getElementById('shopId').style.display = '';
+}
+
+function goToPayment() {
+  const gid = document.getElementById('gameIdInput').value.trim();
+  if (!gid || gid.length < 5) { toast('Введіть правильний ігровий ID', 'error'); return; }
+  document.getElementById('payPackName').textContent = curPack;
+  document.getElementById('payPid').textContent = gid;
+  document.getElementById('payAmt').textContent = (prices[curPack] || 0) + ' грн';
+  document.getElementById('payDisc').textContent = '';
+  document.getElementById('shopId').style.display = 'none';
+  document.getElementById('shopPay').style.display = '';
+}
+
+function copyCard() {
+  navigator.clipboard?.writeText('4874070020367247')
+    .then(() => toast('Картку скопійовано!', 'success'))
+    .catch(() => {});
+}
+
+async function submitOrder() {
+  const btn = document.getElementById('payBtn');
+  btn.disabled = true; btn.textContent = 'Відправляємо...';
+  const gid = document.getElementById('payPid').textContent;
+  const isFlash = (Date.now() - visitTs) < 90000;
+  const r = await api('/api/submit-order', 'POST', {
+    user_id: uid, username: uname, pack: curPack,
+    player_id: gid, amount: prices[curPack] || 0, flash_order: isFlash
+  });
+  btn.disabled = false; btn.textContent = '✅ Я оплатив';
+  if (r.ok) {
+    if (r.final_price && r.final_price !== prices[curPack]) {
+      document.getElementById('payAmt').textContent = r.final_price + ' грн';
+      if (r.discount) document.getElementById('payDisc').textContent = `✂️ Знижка ${r.discount}% застосована!`;
+    }
+    document.getElementById('shopPay').style.display = 'none';
+    document.getElementById('doneId').textContent = r.order_id;
+    document.getElementById('shopDone').style.display = '';
+    sakura();
+  } else toast(r.error || 'Помилка', 'error');
+}
+
+function resetShop() {
+  document.getElementById('shopDone').style.display = 'none';
+  document.getElementById('shopId').style.display = 'none';
+  document.getElementById('shopPacks').style.display = 'none';
+  document.getElementById('shopCats').style.display = '';
+  document.getElementById('gameIdInput').value = '';
+  curPack = null; curCat = null;
+  api('/api/prices').then(r => { if (r.ok) { prices = r.prices; renderPopular(); } });
+}
+
+// ─── ORDERS ──────────────────────────────────────────────────────────────────
+async function loadOrders() {
+  const el = document.getElementById('ordersList');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api('/api/all-orders?user_id=' + uid);
+  const orders = r.orders || [];
+  if (!orders.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">📦</div>Замовлень ще немає</div>'; return; }
+  const cls = { pending: 's-pending', done: 's-done', canceled: 's-canceled' };
+  const lbl = { pending: '⏳ Очікує', done: '✅ Виконано', canceled: '❌ Відхилено' };
+  el.innerHTML = orders.map(o => `
+    <div class="order-card">
+      <div class="order-header">
+        <span class="order-id">#${esc(o.id)}</span>
+        <span class="status-badge ${cls[o.status]||''}">${lbl[o.status]||o.status}</span>
       </div>
-      <div class="oc"><div class="oh"><div class="on">⏳ Очікують</div><span class="badge bp">${d.pending}</span></div></div>
-      <button class="btn btn-s mt8" onclick="ldAStat()">🔄 Оновити</button>`;
-  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span></div>';}
+      <div class="order-pack">${esc(o.pack)}</div>
+      <div class="order-meta">ID: ${esc(o.player_id)} · ${esc(o.created_at)} · ${esc(o.amount)} грн</div>
+    </div>`).join('');
 }
 
-// ── ADMIN ADMINS ──────────────────────────────────────────────────────────────
-async function ldAdmins(){
-  const el=document.getElementById('aa-list');
-  el.innerHTML='<div class="ld"><span class="ls">⚙️</span>Завантаження...</div>';
-  try{
-    const r=await fetch('/api/admin/admins?password='+encodeURIComponent(admPwd));
-    const d=await r.json();
-    if(!d.ok){toast(d.error,1);return;}
-    let h=`<div class="oc mb8"><div class="oh"><div class="on">👑 Власник</div><span class="badge bd">${d.owner_id}</span></div></div>`;
-    if(!d.admins.length) h+='<div class="emp"><span class="ei">👤</span><div class="et">Додаткових адмінів немає</div></div>';
-    else h+=d.admins.map(a=>`<div class="oc mb8"><div class="oh"><div class="on">⚙️ ID: ${a.id}</div><button class="btn btn-r btn-sm" onclick="tglAdm('remove','${a.id}')">❌</button></div></div>`).join('');
-    el.innerHTML=h;
-  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span></div>';}
-}
-async function tglAdm(act,pre=null){
-  const uid=pre||document.getElementById('adm-uid').value.trim();
-  if(!uid){toast('Введи Telegram ID',1);return;}
-  try{
-    const r=await fetch('/api/admin/toggle-admin',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({password:admPwd,user_id:parseInt(uid),action:act})});
-    const d=await r.json();
-    if(d.ok){toast(d.message);document.getElementById('adm-uid').value='';ldAdmins();}
-    else toast(d.error||'Помилка',1);
-  }catch{toast('Помилка',1);}
+// ─── BONUS ───────────────────────────────────────────────────────────────────
+async function loadBonuses() {
+  const el = document.getElementById('bonusList');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api('/api/bonuses?user_id=' + uid);
+  const bonuses = r.bonuses || [];
+  if (!bonuses.length) el.innerHTML = '<div class="empty">Активних бонусів немає</div>';
+  else el.innerHTML = bonuses.map(b => `
+    <div class="card" style="margin-bottom:8px;padding:12px 14px">
+      <div style="font-size:13px;font-weight:600">${esc(b.name)}</div>
+      <div style="font-size:11px;color:var(--muted)">×${b.count}</div>
+    </div>`).join('');
+  // Free UC buttons
+  let freeHtml = '';
+  for (const b of bonuses) {
+    if (b.type === 'free_uc_30') freeHtml += `<button class="btn mt-8" onclick="claimFreeUC(30,'free_uc_30')">🎁 Отримати 30 UC безкоштовно</button>`;
+    if (b.type === 'free_uc_60') freeHtml += `<button class="btn mt-8" onclick="claimFreeUC(60,'free_uc_60')">🎁 Отримати 60 UC безкоштовно</button>`;
+  }
+  document.getElementById('freeUcSection').innerHTML = freeHtml;
 }
 
-// ── ADMIN PROMOS ──────────────────────────────────────────────────────────────
-async function ldPromos(){
-  const el=document.getElementById('ap-list');
-  el.innerHTML='<div class="ld"><span class="ls">⚙️</span>Завантаження...</div>';
-  try{
-    const r=await fetch('/api/admin/promos?password='+encodeURIComponent(admPwd));
-    const d=await r.json();
-    if(!d.ok){toast(d.error,1);return;}
-    if(!d.promos.length){el.innerHTML='<div class="emp"><span class="ei">🎁</span><div class="et">Промокодів немає</div><div class="es">Створи перший!</div></div>';return;}
-    el.innerHTML=d.promos.map(p=>{
-      const u=p.uses_left===-1||p.uses_left===null?'∞':p.uses_left;
-      return`<div class="oc mb8" id="pc-${p.code}">
-        <div class="oh"><span style="font-size:14px;font-weight:900;letter-spacing:2px;color:var(--gold)">${p.code}</span><span class="badge bp">🔢 ${u}</span></div>
-        <div class="om">${p.bonus_label} · ${p.created_at}</div>
-        <button class="btn btn-r mt8" onclick="delPromo('${p.code}')">🗑 Видалити</button>
-      </div>`;
-    }).join('');
-  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span></div>';}
-}
-async function crPromo(){
-  const code=document.getElementById('np-code').value.trim().toUpperCase();
-  const bt=document.getElementById('np-type').value;
-  const uses=parseInt(document.getElementById('np-uses').value)||(-1);
-  if(!code){toast('Введи назву промокоду',1);return;}
-  if(!bt){toast('Оберіть тип бонусу',1);return;}
-  if(!/^[A-Z0-9_]{2,20}$/.test(code)){toast('Код: латиниця/цифри, 2-20 символів',1);return;}
-  try{
-    const r=await fetch('/api/admin/create-promo',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({password:admPwd,code,bonus_type:bt,uses})});
-    const d=await r.json();
-    if(d.ok){toast('✅ '+d.message);document.getElementById('np-code').value='';document.getElementById('np-type').value='';document.getElementById('np-uses').value='-1';ldPromos();}
-    else toast(d.error||'Помилка',1);
-  }catch{toast('Помилка',1);}
-}
-async function delPromo(code){
-  try{
-    const r=await fetch('/api/admin/delete-promo',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({password:admPwd,code})});
-    const d=await r.json();
-    if(d.ok){toast('🗑 '+d.message);document.getElementById('pc-'+code)?.remove();}
-    else toast(d.error||'Помилка',1);
-  }catch{toast('Помилка',1);}
+async function claimFreeUC(uc, bt) {
+  const pid = prompt(`Введіть ігровий ID для нарахування ${uc} UC:`);
+  if (!pid || pid.trim().length < 5) { toast('Невірний ігровий ID', 'error'); return; }
+  const r = await api('/api/claim-free-uc', 'POST', { user_id: uid, username: uname, player_id: pid.trim(), bonus_type: bt });
+  if (r.ok) { toast(r.message, 'success'); sakura(); lazyLoaded['svc_bonus'] = false; loadBonuses(); }
+  else toast(r.error || 'Помилка', 'error');
 }
 
-// ── ADMIN REVIEWS ─────────────────────────────────────────────────────────────
-async function ldARev(){
-  const el=document.getElementById('ar-list');
-  el.innerHTML='<div class="ld"><span class="ls">⚙️</span>Завантаження...</div>';
-  try{
-    const r=await fetch('/api/admin/reviews?password='+encodeURIComponent(admPwd));
-    const d=await r.json();
-    if(!d.ok){toast(d.error,1);return;}
-    if(!d.reviews.length){el.innerHTML='<div class="emp"><span class="ei">🌟</span><div class="et">Відгуків немає</div></div>';return;}
-    el.innerHTML=d.reviews.map(v=>`
-      <div class="rv" id="rv-${v.id}">
-        <div class="oh"><div class="rv-u">👤 ${v.user}</div><button class="btn btn-r btn-sm" onclick="delRev(${v.id})">🗑</button></div>
-        <div class="rv-t">${v.text}</div>
-      </div>`).join('');
-  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span></div>';}
-}
-async function delRev(id){
-  try{
-    const r=await fetch('/api/admin/delete-review',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({password:admPwd,review_id:id})});
-    const d=await r.json();
-    if(d.ok){toast('🗑 Відгук видалено');document.getElementById('rv-'+id)?.remove();}
-    else toast(d.error||'Помилка',1);
-  }catch{toast('Помилка',1);}
+async function activatePromo() {
+  const code = document.getElementById('promoCode').value.trim().toUpperCase();
+  if (!code) { toast('Введіть промокод', 'error'); return; }
+  const r = await api('/api/promo', 'POST', { user_id: uid, code });
+  if (r.ok) { toast(r.message, 'success'); sakura(); document.getElementById('promoCode').value = ''; lazyLoaded['svc_bonus'] = false; loadBonuses(); }
+  else toast(r.error || 'Помилка', 'error');
 }
 
-// ── ADMIN FIND ────────────────────────────────────────────────────────────────
-async function findOrd(){
-  const id=document.getElementById('find-id').value.trim().toUpperCase();
-  if(!id){toast('Введи ID замовлення',1);return;}
-  const el=document.getElementById('find-res');
-  el.innerHTML='<div class="ld"><span class="ls">⚙️</span>Пошук...</div>';
-  try{
-    const r=await fetch('/api/admin/find?password='+encodeURIComponent(admPwd)+'&order_id='+encodeURIComponent(id));
-    const d=await r.json();
-    if(!d.ok){el.innerHTML=`<div class="emp"><span class="ei">🔍</span><div class="et">${d.error}</div></div>`;return;}
-    const o=d.order;
-    const st=o.status==='done'?'<span class="badge bd">✅ Виконано</span>':o.status==='canceled'?'<span class="badge bc">❌ Відхилено</span>':'<span class="badge bp">⏳ Очікує</span>';
-    el.innerHTML=`<div class="fr">
-      <div class="frl"><span class="frk">🆔 ID</span><span class="frv">${o.id}</span></div>
-      <div class="frl"><span class="frk">👤 Користувач</span><span class="frv">${o.user}</span></div>
-      <div class="frl"><span class="frk">🎁 Пакет</span><span class="frv">${o.pack}</span></div>
-      <div class="frl"><span class="frk">🎮 Ігровий ID</span><span class="frv">${o.player_id||'—'}</span></div>
-      <div class="frl"><span class="frk">💵 Сума</span><span class="frv">${o.amount} грн</span></div>
-      <div class="frl"><span class="frk">📌 Статус</span><span class="frv">${st}</span></div>
-      <div class="frl"><span class="frk">📅 Дата</span><span class="frv">${o.created_at}</span></div>
-      <div class="frl"><span class="frk">💬 Chat ID</span><span class="frv">${o.chat_id||'—'}</span></div>
-    </div>
-    ${o.status==='pending'?`<div class="row mt8">
-      <button class="btn btn-g" onclick="doAct('${o.id}','ok')">✅ Виконати</button>
-      <button class="btn btn-r" onclick="doAct('${o.id}','no')">❌ Відхилити</button>
-    </div>`:''}`;
-  }catch{el.innerHTML='<div class="emp"><span class="ei">⚠️</span><div class="et">Помилка</div></div>';}
+// ─── REFERRAL ────────────────────────────────────────────────────────────────
+async function loadReferral() {
+  const botName = 'NezukoUCBot';
+  const link = `https://t.me/${botName}?start=ref_${uid}`;
+  document.getElementById('refLinkEl').textContent = link;
+  const r = await api('/api/referral-stats?user_id=' + uid);
+  document.getElementById('refInv').textContent = r.invited ?? '—';
+  document.getElementById('refDisc').textContent = r.discounts ?? '—';
 }
 
-// ── ADMIN BROADCAST ───────────────────────────────────────────────────────────
-async function doBC(){
-  const msg=document.getElementById('bc-txt').value.trim();
-  if(!msg){toast('Введи текст розсилки',1);return;}
-  if(!confirm('Надіслати розсилку всім користувачам?')) return;
-  try{
-    const r=await fetch('/api/admin/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({password:admPwd,message:msg})});
-    const d=await r.json();
-    if(d.ok){toast('📢 '+d.message);document.getElementById('bc-txt').value='';}
-    else toast(d.error||'Помилка',1);
-  }catch{toast('Помилка',1);}
+function copyRef() {
+  const link = document.getElementById('refLinkEl').textContent;
+  navigator.clipboard?.writeText(link).then(() => toast('Посилання скопійовано!', 'success')).catch(() => {});
 }
 
-// ── HELPERS ───────────────────────────────────────────────────────────────────
-function toast(msg,err=0){
-  const t=document.getElementById('toast');
-  t.textContent=msg;t.className='toast'+(err?' err':'');
-  t.classList.add('on');
-  setTimeout(()=>t.classList.remove('on'),2500);
-}
-function spawnS(){
-  const p=['🌸','🌺','🌼','💮'];
-  for(let i=0;i<12;i++) setTimeout(()=>{
-    const el=document.createElement('div');
-    el.className='sk';
-    el.textContent=p[Math.floor(Math.random()*p.length)];
-    el.style.left=Math.random()*100+'vw';
-    el.style.fontSize=(12+Math.random()*12)+'px';
-    el.style.animationDuration=(2+Math.random()*2)+'s';
-    document.body.appendChild(el);
-    setTimeout(()=>el.remove(),4000);
-  },i*130);
+// ─── WHEEL ───────────────────────────────────────────────────────────────────
+const ITEM_W = 88; // width per wheel item (px)
+
+function prizeEmoji(p) {
+  if (p.type === 'points') return p.value >= 500 ? '💰' : p.value >= 100 ? '🪙🪙' : '🪙';
+  if (p.type === 'free_uc_30') return '💎';
+  if (p.type === 'free_uc_60') return '💎💎';
+  if (p.type === 'random_discount_small') return '💸';
+  return '💀';
 }
 
-// init
-sStep('cat');
-ldRefLink();
+function rarityColor(r) {
+  return { rare: '#52d68a', epic: '#60a5fa', legendary: '#ffd166', common: '#666' }[r] || '#666';
+}
+
+function buildTapeItems(prizes, total = 54, winnerPrize = null, winnerPos = 45) {
+  const items = [];
+  for (let i = 0; i < total; i++) {
+    if (winnerPrize && i === winnerPos) { items.push(winnerPrize); continue; }
+    const w = prizes.reduce((s, p) => s + p.weight, 0);
+    let r = Math.random() * w, cum = 0, chosen = prizes[prizes.length - 1];
+    for (const p of prizes) { cum += p.weight; if (r <= cum) { chosen = p; break; } }
+    items.push(chosen);
+  }
+  return items;
+}
+
+function renderTape(tapeEl, items) {
+  tapeEl.style.transition = 'none';
+  tapeEl.style.transform = 'translateX(0)';
+  tapeEl.innerHTML = items.map(p => `
+    <div class="wheel-item ri-${p.rarity}">
+      <div class="wheel-item-icon">${prizeEmoji(p)}</div>
+      <div class="wheel-item-name" style="color:${rarityColor(p.rarity)}">${esc(p.name)}</div>
+    </div>`).join('');
+}
+
+function animateToPosition(tapeEl, winnerIdx, containerW) {
+  const startX = containerW / 2 - ITEM_W / 2;
+  const endX = -(winnerIdx * (ITEM_W + 4) - containerW / 2 + (ITEM_W + 4) / 2);
+  tapeEl.style.transition = 'none';
+  tapeEl.style.transform = `translateX(${startX}px)`;
+  void tapeEl.offsetWidth;
+  setTimeout(() => {
+    tapeEl.style.transition = 'transform 5.8s cubic-bezier(0.06, 0.85, 0.15, 1.0)';
+    tapeEl.style.transform = `translateX(${endX}px)`;
+  }, 50);
+}
+
+function renderPrizeLegend(prizes, elId) {
+  document.getElementById(elId).innerHTML = prizes.map(p => `
+    <div class="prize-chip" style="background:${p.rarity==='legendary'?'var(--leg-bg)':p.rarity==='epic'?'var(--epic-bg)':p.rarity==='rare'?'var(--rare-bg)':'#1a1a1a'};border-color:${rarityColor(p.rarity)};color:${rarityColor(p.rarity)}">
+      ${prizeEmoji(p)} ${p.name} <span style="opacity:.6">${p.weight}%</span>
+    </div>`).join('');
+}
+
+async function initWheel() {
+  const r = await api('/api/wheel/status?user_id=' + uid);
+  freePrizes = r.prizes || [];
+  paidPrizes = r.paid_prizes || [];
+  // Render idle tapes
+  const cw = document.getElementById('fwWrap').offsetWidth;
+  const fItems = buildTapeItems(freePrizes, 12);
+  const pItems = buildTapeItems(paidPrizes, 12);
+  const fTape = document.getElementById('fwTape');
+  const pTape = document.getElementById('pwTape');
+  renderTape(fTape, fItems);
+  renderTape(pTape, pItems);
+  // Center idle tape
+  const idleX = cw / 2 - ITEM_W / 2;
+  fTape.style.transform = `translateX(${idleX}px)`;
+  pTape.style.transform = `translateX(${idleX}px)`;
+  // Legends
+  renderPrizeLegend(freePrizes, 'freeLegend');
+  renderPrizeLegend(paidPrizes, 'paidLegend');
+  // Button state
+  const btn = document.getElementById('freeSpinBtn');
+  if (!r.can_spin_free) {
+    btn.disabled = true;
+    let s = r.seconds_left || 0;
+    const tick = () => {
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      document.getElementById('freeCooldown').textContent = `⏰ Наступне: ${h > 0 ? h + 'г ' : ''}${m}хв ${sec}с`;
+      if (s > 0) { s--; setTimeout(tick, 1000); }
+      else { btn.disabled = false; document.getElementById('freeCooldown').textContent = '🎰 Можна крутити!'; }
+    };
+    tick();
+  } else {
+    btn.disabled = false;
+    if (r.has_extra_spin) document.getElementById('freeCooldown').textContent = '🎰 Є повторний прокрут!';
+    else document.getElementById('freeCooldown').textContent = '';
+  }
+}
+
+async function doFreeSpin() {
+  if (spinning) return;
+  const btn = document.getElementById('freeSpinBtn');
+  btn.disabled = true; spinning = true; btn.textContent = '🌀 Крутимо...';
+  const r = await api('/api/wheel/spin-free', 'POST', { user_id: uid, username: uname });
+  if (!r.ok) {
+    toast(r.error || 'Помилка', 'error');
+    btn.disabled = false; spinning = false; btn.textContent = '🎰 Крутити (безкоштовно)';
+    return;
+  }
+  const prize = r.prize;
+  const cw = document.getElementById('fwWrap').offsetWidth;
+  const WINNER_POS = 45;
+  const items = buildTapeItems(freePrizes, 54, prize, WINNER_POS);
+  const fTape = document.getElementById('fwTape');
+  renderTape(fTape, items);
+  animateToPosition(fTape, WINNER_POS, cw);
+  setTimeout(() => {
+    showPrizeReveal(prize);
+    spinning = false;
+    lazyLoaded['svc_wheel'] = false;
+    initWheel();
+    lazyLoaded['svc_bonus'] = false; loadBonuses();
+  }, 6400);
+}
+
+async function reqPaidSpin() {
+  if (!uid) { toast('Відкрийте через Telegram', 'error'); return; }
+  if (!confirm('Платне колесо коштує 40 грн.\nНадіслати запит адміну?')) return;
+  const r = await api('/api/wheel/spin-paid', 'POST', { user_id: uid, username: uname });
+  if (r.ok) { toast(r.message, 'success'); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+function showPrizeReveal(prize) {
+  const colors = { common: '#888', rare: '#52d68a', epic: '#60a5fa', legendary: '#ffd166' };
+  document.getElementById('prizeIcon').textContent = prizeEmoji(prize);
+  document.getElementById('prizeName').textContent = prize.name;
+  document.getElementById('prizeName').style.color = colors[prize.rarity] || 'var(--acc)';
+  const desc = prize.type === 'nothing' ? 'Не пощастило 😅 Спробуй знову!'
+    : prize.type === 'points' ? `+${prize.value} балів зараховано на баланс!`
+    : prize.type?.includes('uc') ? 'Кнопка з\'явиться в боті для отримання!'
+    : 'Знижка зарахована до ваших бонусів!';
+  document.getElementById('prizeDesc').textContent = desc;
+  openModal('prizeModal');
+  if (prize.type !== 'nothing') sakura();
+}
+
+// ─── TOP ─────────────────────────────────────────────────────────────────────
+async function loadTop() {
+  const el = document.getElementById('topList');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api('/api/top');
+  const top = r.top || [];
+  if (!top.length) { el.innerHTML = '<div class="empty">Поки немає даних</div>'; return; }
+  const medals = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
+  el.innerHTML = top.map((t, i) => `
+    <div class="top-row">
+      <div class="top-medal">${medals[i] || (i+1)}</div>
+      <div class="top-name">${esc(t.name)}</div>
+      <div class="top-sum">${t.total} грн</div>
+    </div>`).join('');
+}
+
+// ─── REVIEWS ─────────────────────────────────────────────────────────────────
+async function loadReviews() {
+  const el = document.getElementById('reviewsList');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api('/api/reviews');
+  const revs = r.reviews || [];
+  if (!revs.length) { el.innerHTML = '<div class="empty">Відгуків ще немає</div>'; return; }
+  el.innerHTML = revs.map(rv => `
+    <div class="card" style="margin-bottom:8px;padding:12px 14px">
+      <div style="font-size:11px;font-weight:700;color:var(--acc);margin-bottom:4px">${esc(rv.user)}</div>
+      <div style="font-size:13px;line-height:1.5">${esc(rv.text)}</div>
+    </div>`).join('');
+}
+
+async function sendReview() {
+  const text = document.getElementById('reviewTxt').value.trim();
+  if (text.length < 3) { toast('Відгук занадто короткий', 'error'); return; }
+  if (text.length > 500) { toast('Максимум 500 символів', 'error'); return; }
+  const r = await api('/api/submit-review', 'POST', { user_id: uid, username: uname, text });
+  if (r.ok) { toast(r.message, 'success'); document.getElementById('reviewTxt').value = ''; lazyLoaded['svc_reviews'] = false; loadReviews(); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+// ─── POINTS SHOP ─────────────────────────────────────────────────────────────
+async function loadPointsShop() {
+  const r = await api('/api/points?user_id=' + uid);
+  document.getElementById('ptsBalance').textContent = (r.points || 0) + ' 🪙';
+  const SHOP = [
+    { id: 'uc30', name: '🎁 30 UC безкоштовно', cost: 1500 },
+    { id: 'uc60', name: '🎁 60 UC безкоштовно', cost: 3000 },
+    { id: 'disc_s1', name: 'Знижка 1% (малі UC)', cost: 500 },
+    { id: 'disc_s2', name: 'Знижка 2% (малі UC)', cost: 1000 },
+    { id: 'disc_m1', name: 'Знижка 1% (середні UC)', cost: 750 },
+    { id: 'disc_m2', name: 'Знижка 2% (середні UC)', cost: 1500 },
+    { id: 'extra_spin', name: '🎰 Повторний прокрут рулетки', cost: 300 },
+  ];
+  document.getElementById('ptsItems').innerHTML = SHOP.map(i => `
+    <div class="pts-item">
+      <div><div class="pts-item-name">${i.name}</div><div class="pts-item-cost">${i.cost} 🪙</div></div>
+      <button class="btn btn-sm" onclick="buyPointsItem('${i.id}')">Купити</button>
+    </div>`).join('');
+}
+
+async function buyPointsItem(itemId) {
+  const r = await api('/api/points/spend', 'POST', { user_id: uid, item_id: itemId });
+  if (r.ok) { toast(r.message, 'success'); sakura(); lazyLoaded['svc_points'] = false; loadPointsShop(); lazyLoaded['svc_bonus'] = false; }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+// ─── PROFILE ─────────────────────────────────────────────────────────────────
+async function loadProfile() {
+  const u = tg?.initDataUnsafe?.user;
+  document.getElementById('pName').textContent = u?.first_name || uname || 'Гравець';
+  document.getElementById('pId').textContent = 'Telegram ID: ' + uid;
+  try {
+    const r = await api('/api/profile?user_id=' + uid);
+    if (r.ok) {
+      document.getElementById('pPoints').textContent = r.points || 0;
+      document.getElementById('pAchs').textContent = r.achievements || 0;
+      document.getElementById('pDays').textContent = r.consecutive_days || 0;
+      document.getElementById('pSpent').textContent = r.total_spent || 0;
+      document.getElementById('pOrds').textContent = r.total_orders || 0;
+      document.getElementById('pUC').textContent = r.total_uc || 0;
+      document.getElementById('pSince').textContent = r.first_seen || '—';
+    }
+    loadAchievements();
+  } catch (e) {}
+}
+
+async function loadAchievements() {
+  const el = document.getElementById('achGrid');
+  el.innerHTML = '<div style="grid-column:1/-1" class="empty"><div class="spinner"></div></div>';
+  const r = await api('/api/achievements?user_id=' + uid);
+  const achs = r.achievements || [];
+  el.innerHTML = achs.map(a => `
+    <div class="ach-card ${a.earned ? 'earned' : 'locked'}" onclick='showAch(${JSON.stringify(a)})'>
+      <div class="ach-emoji">${a.earned ? a.emoji : '🔒'}</div>
+      <div class="ach-name">${a.earned ? esc(a.name) : '???'}</div>
+      <div class="ach-hint">${esc(a.hint)}</div>
+      ${a.earned ? '<div class="ach-badge">✅</div>' : ''}
+      <div class="ach-pct">${a.count} гравців · ${a.percent}%</div>
+    </div>`).join('');
+}
+
+function showAch(a) {
+  document.getElementById('achModalBody').innerHTML = `
+    <div style="font-size:52px;margin-bottom:10px">${a.earned ? a.emoji : '🔒'}</div>
+    <div style="font-size:20px;font-weight:800;margin-bottom:6px">${a.earned ? esc(a.name) : 'Заховано'}</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:8px">${esc(a.earned ? a.desc : a.hint)}</div>
+    ${a.earned ? `<div style="font-size:11px;color:var(--muted)">${a.count} гравців отримали · ${a.percent}%</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:3px">Отримано: ${a.granted_at}</div>` : ''}
+    <button class="btn mt-12" onclick="closeModal('achModal')">Закрити</button>`;
+  openModal('achModal');
+}
+
+// ─── ADMIN ───────────────────────────────────────────────────────────────────
+function aLogin() {
+  const pwd = document.getElementById('aPassInput').value;
+  api('/api/admin/auth', 'POST', { password: pwd }).then(r => {
+    if (r.ok) { adminPass = pwd; sessionStorage.setItem('ap', pwd); showAdminPanel(); loadAOrders(); }
+    else toast(r.error || 'Невірний пароль', 'error');
+  });
+}
+
+function showAdminPanel() {
+  document.getElementById('adminLogin').style.display = 'none';
+  document.getElementById('adminPanel').style.display = '';
+}
+
+function aLogout() {
+  adminPass = ''; sessionStorage.removeItem('ap');
+  document.getElementById('adminLogin').style.display = '';
+  document.getElementById('adminPanel').style.display = 'none';
+}
+
+async function loadAOrders() {
+  const el = document.getElementById('aOrdersList');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api(`/api/admin/orders?password=${adminPass}`);
+  const orders = r.orders || [];
+  if (!orders.length) { el.innerHTML = '<div class="empty">🎉 Нових замовлень немає</div>'; return; }
+  el.innerHTML = orders.map(o => `
+    <div class="order-card">
+      <div class="order-header"><span class="order-id">#${esc(o.id)}</span><span class="status-badge s-pending">⏳ Очікує</span></div>
+      <div class="order-pack">${esc(o.pack)}</div>
+      <div class="order-meta">${esc(o.user)} · ID: ${esc(o.player_id)}<br>${esc(o.created_at)} · ${esc(o.amount)} грн</div>
+      <div class="order-acts">
+        <button class="btn btn-sm" style="background:var(--success)" onclick="aAction('${esc(o.id)}','ok')">✅ Виконано</button>
+        <button class="btn btn-sm btn-danger" onclick="aAction('${esc(o.id)}','no')">❌ Відхилити</button>
+      </div>
+    </div>`).join('');
+}
+
+async function aAction(id, action) {
+  const r = await api('/api/admin/action', 'POST', { password: adminPass, order_id: id, action });
+  if (r.ok) { toast(r.message, 'success'); loadAOrders(); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+async function loadAStats() {
+  const el = document.getElementById('aStats');
+  const r = await api(`/api/admin/stats?password=${adminPass}`);
+  if (!r.ok) { el.innerHTML = '<div class="empty">' + esc(r.error) + '</div>'; return; }
+  el.innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-box"><div class="stat-val" style="color:var(--success)">${r.done}</div><div class="stat-lbl">✅ Виконано</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--err)">${r.canceled}</div><div class="stat-lbl">❌ Відхилено</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--warn)">${r.pending}</div><div class="stat-lbl">⏳ Очікують</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--pts)">${r.users}</div><div class="stat-lbl">👥 Користувачів</div></div>
+      <div class="stat-box" style="grid-column:1/-1"><div class="stat-val" style="font-size:26px">${r.total_sum} грн</div><div class="stat-lbl">💰 Загальні продажі</div></div>
+      <div class="stat-box" style="grid-column:1/-1"><div class="stat-val" style="font-size:26px;color:var(--success)">${r.today_sum} грн</div><div class="stat-lbl">📅 Сьогодні</div></div>
+    </div>`;
+}
+
+async function loadAdmins() {
+  const r = await api(`/api/admin/admins?password=${adminPass}`);
+  document.getElementById('aAdminsList').innerHTML = (r.admins || []).map(a => `
+    <div class="card" style="margin-bottom:6px;padding:10px 14px;font-size:13px">
+      👤 ID: ${a.id}${a.id === r.owner_id ? ' 👑 Власник' : ''}
+    </div>`).join('');
+}
+
+async function toggleAdmin(action) {
+  const id = parseInt(document.getElementById('aAdminId').value) || 0;
+  if (!id) { toast('Введіть User ID', 'error'); return; }
+  const r = await api('/api/admin/toggle-admin', 'POST', { password: adminPass, user_id: id, action });
+  if (r.ok) { toast(r.message, 'success'); loadAdmins(); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+async function loadAPromos() {
+  const el = document.getElementById('aPromosList');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api(`/api/admin/promos?password=${adminPass}`);
+  const promos = r.promos || [];
+  if (!promos.length) { el.innerHTML = '<div class="empty">Промокодів немає</div>'; return; }
+  el.innerHTML = promos.map(p => `
+    <div class="card" style="margin-bottom:8px;padding:11px 14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-size:14px;font-weight:700;font-family:monospace;color:var(--acc)">${esc(p.code)}${p.secret ? ' 🔐' : ''}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(p.bonus_label)}</div>
+          <div style="font-size:10px;color:var(--muted)">${p.uses_left === -1 || p.uses_left === null ? '∞ безліміт' : (p.uses_left + '/' + p.total_uses + ' активацій')} · ${esc(p.created_at)}</div>
+        </div>
+        <button class="btn btn-sm btn-danger" onclick="deletePromo('${esc(p.code)}')">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+async function createPromo() {
+  const code = document.getElementById('npCode').value.trim().toUpperCase();
+  const type = document.getElementById('npType').value;
+  const uses = parseInt(document.getElementById('npUses').value) || -1;
+  const secret = document.getElementById('npSecret').checked;
+  if (!code || !type) { toast('Заповни всі поля', 'error'); return; }
+  const r = await api('/api/admin/create-promo', 'POST', { password: adminPass, code, bonus_type: type, uses, secret });
+  if (r.ok) { toast(r.message, 'success'); document.getElementById('npCode').value = ''; loadAPromos(); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+async function deletePromo(code) {
+  if (!confirm(`Видалити промокод ${code}?`)) return;
+  const r = await api('/api/admin/delete-promo', 'POST', { password: adminPass, code });
+  if (r.ok) { toast(r.message, 'success'); loadAPromos(); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+async function loadAPrices() {
+  const el = document.getElementById('aPricesList');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api(`/api/admin/prices?password=${adminPass}`);
+  if (!r.ok) { el.innerHTML = '<div class="empty">' + esc(r.error) + '</div>'; return; }
+  const sel = document.getElementById('pricePackSel');
+  sel.innerHTML = '<option value="">— Оберіть пак —</option>';
+  el.innerHTML = Object.entries(r.prices).map(([pack, data]) => {
+    const opt = document.createElement('option');
+    opt.value = pack; opt.textContent = pack;
+    sel.appendChild(opt);
+    const changed = data.current !== data.base;
+    return `<div class="card" style="margin-bottom:6px;padding:9px 13px">
+      <div style="font-size:11px;font-weight:600">${esc(pack)}</div>
+      <div style="font-size:13px;margin-top:2px">
+        <span style="color:var(--acc);font-weight:700">${data.current} грн</span>
+        ${changed ? `<span style="font-size:10px;color:var(--muted);margin-left:6px">база: ${data.base} грн</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function doUpdatePrice() {
+  const pack = document.getElementById('pricePackSel').value;
+  const price = parseInt(document.getElementById('priceNewVal').value) || 0;
+  if (!pack) { toast('Оберіть пак', 'error'); return; }
+  if (price < 1) { toast('Введіть ціну > 0', 'error'); return; }
+  const r = await api('/api/admin/update-price', 'POST', { password: adminPass, pack_name: pack, price });
+  if (r.ok) { toast(r.message, 'success'); loadAPrices(); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+async function doResetPrice() {
+  const pack = document.getElementById('pricePackSel').value;
+  if (!pack) { toast('Оберіть пак', 'error'); return; }
+  const r = await api('/api/admin/reset-price', 'POST', { password: adminPass, pack_name: pack });
+  if (r.ok) { toast(r.message, 'success'); loadAPrices(); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+async function loadAReviews() {
+  const el = document.getElementById('aReviewsList');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api(`/api/admin/reviews?password=${adminPass}`);
+  const revs = r.reviews || [];
+  if (!revs.length) { el.innerHTML = '<div class="empty">Відгуків немає</div>'; return; }
+  el.innerHTML = revs.map(rv => `
+    <div class="card" style="margin-bottom:8px;padding:11px 14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--acc)">${esc(rv.user)}</div>
+          <div style="font-size:12px;margin-top:3px">${esc(rv.text)}</div>
+        </div>
+        <button class="btn btn-sm btn-danger" onclick="delReview(${rv.id})">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+async function delReview(id) {
+  const r = await api('/api/admin/delete-review', 'POST', { password: adminPass, review_id: id });
+  if (r.ok) { toast('Видалено', 'success'); loadAReviews(); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+async function doGrantAch() {
+  const uid2 = parseInt(document.getElementById('achUID').value) || 0;
+  const id = document.getElementById('achSel').value;
+  if (!uid2 || !id) { toast('Заповни всі поля', 'error'); return; }
+  const r = await api('/api/admin/grant-achievement', 'POST', { password: adminPass, user_id: uid2, achievement_id: id });
+  if (r.ok) toast(r.message, 'success'); else toast(r.error || 'Помилка', 'error');
+}
+
+async function doRevokeAch() {
+  const uid2 = parseInt(document.getElementById('achUID').value) || 0;
+  const id = document.getElementById('achSel').value;
+  if (!uid2 || !id) { toast('Заповни всі поля', 'error'); return; }
+  const r = await api('/api/admin/revoke-achievement', 'POST', { password: adminPass, user_id: uid2, achievement_id: id });
+  if (r.ok) toast(r.message, 'success'); else toast(r.error || 'Помилка', 'error');
+}
+
+async function doFind() {
+  const oid = document.getElementById('findId').value.trim().toUpperCase();
+  if (!oid) { toast('Введіть ID', 'error'); return; }
+  const el = document.getElementById('findResult');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api(`/api/admin/find?password=${adminPass}&order_id=${oid}`);
+  if (!r.ok) { el.innerHTML = `<div class="empty">${esc(r.error || 'Не знайдено')}</div>`; return; }
+  const o = r.order;
+  const cls = { pending: 's-pending', done: 's-done', canceled: 's-canceled' };
+  const lbl = { pending: '⏳ Очікує', done: '✅ Виконано', canceled: '❌ Відхилено' };
+  el.innerHTML = `
+    <div class="order-card">
+      <div class="order-header"><span class="order-id">#${esc(o.id)}</span><span class="status-badge ${cls[o.status]||''}">${lbl[o.status]||o.status}</span></div>
+      <div class="order-pack">${esc(o.pack)}</div>
+      <div class="order-meta">${esc(o.user)} · Chat ID: ${esc(o.chat_id)}</div>
+      <div class="order-meta">ID: ${esc(o.player_id)} · ${esc(o.created_at)} · ${esc(o.amount)} грн</div>
+      ${o.status === 'pending' ? `<div class="order-acts">
+        <button class="btn btn-sm" style="background:var(--success)" onclick="aAction('${esc(o.id)}','ok')">✅ Виконано</button>
+        <button class="btn btn-sm btn-danger" onclick="aAction('${esc(o.id)}','no')">❌ Відхилити</button>
+      </div>` : ''}
+    </div>`;
+}
+
+async function doBroadcast() {
+  const msg = document.getElementById('bcastMsg').value.trim();
+  if (!msg) { toast('Повідомлення порожнє', 'error'); return; }
+  if (!confirm(`Надіслати всім: "${msg}"?`)) return;
+  const r = await api('/api/admin/broadcast', 'POST', { password: adminPass, message: msg });
+  if (r.ok) { toast(r.message, 'success'); document.getElementById('bcastMsg').value = ''; }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+async function loadPendingWheels() {
+  const el = document.getElementById('pendingWheels');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api(`/api/admin/pending-wheels?password=${adminPass}`);
+  const spins = r.spins || [];
+  if (!spins.length) { el.innerHTML = '<div class="empty">🎰 Немає запитів на колесо</div>'; return; }
+  el.innerHTML = spins.map(s => `
+    <div class="order-card">
+      <div class="order-header"><span class="order-id">#${s.id}</span><span class="status-badge s-pending">⏳ Очікує</span></div>
+      <div class="order-pack">${esc(s.user)}</div>
+      <div class="order-meta">${esc(s.created_at)} · User ID: ${s.user_id}</div>
+      <button class="btn-purple mt-8 btn-sm btn" onclick="approveWheel(${s.id})" style="width:100%">🎰 Крутити колесо!</button>
+    </div>`).join('');
+}
+
+async function approveWheel(spinId) {
+  if (!confirm(`Крутити колесо для запиту #${spinId}?`)) return;
+  const r = await api('/api/admin/approve-wheel', 'POST', { password: adminPass, spin_id: spinId });
+  if (r.ok) { toast(`✅ Приз: ${r.prize?.name} — ${r.message}`, 'success'); loadPendingWheels(); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+// ─── AUTO-SHOW ADMIN PANEL IF LOGGED IN ──────────────────────────────────────
+if (adminPass) showAdminPanel();
 </script>
 </body>
 </html>

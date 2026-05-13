@@ -1,5 +1,5 @@
-import sqlite3, uuid, logging, threading, os, re, json, urllib.request, urllib.parse
-from datetime import datetime
+import sqlite3, uuid, logging, threading, os, re, json, urllib.request, urllib.parse, random
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
@@ -58,13 +58,22 @@ _c.execute("CREATE TABLE IF NOT EXISTS ref_discounts (id INTEGER PRIMARY KEY AUT
 _c.execute("CREATE TABLE IF NOT EXISTS promo_codes (code TEXT PRIMARY KEY, bonus_type TEXT, bonus_value INTEGER, uses_left INTEGER DEFAULT -1, total_uses INTEGER DEFAULT -1, created_at TEXT)")
 _c.execute("CREATE TABLE IF NOT EXISTS user_bonuses (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bonus_type TEXT, bonus_value INTEGER, used INTEGER DEFAULT 0, created_at TEXT)")
 _c.execute("CREATE TABLE IF NOT EXISTS used_promo_codes (user_id INTEGER, code TEXT, PRIMARY KEY (user_id, code))")
-# Додаємо колонки якщо таблиця promo_codes вже існувала без них
 _c.execute("PRAGMA table_info(promo_codes)")
 _pc_cols = [r[1] for r in _c.fetchall()]
 if "uses_left" not in _pc_cols:
     _c.execute("ALTER TABLE promo_codes ADD COLUMN uses_left INTEGER DEFAULT -1")
 if "total_uses" not in _pc_cols:
     _c.execute("ALTER TABLE promo_codes ADD COLUMN total_uses INTEGER DEFAULT -1")
+if "secret" not in _pc_cols:
+    _c.execute("ALTER TABLE promo_codes ADD COLUMN secret INTEGER DEFAULT 0")
+# Нові таблиці
+_c.execute("CREATE TABLE IF NOT EXISTS user_achievements (user_id INTEGER, achievement_id TEXT, granted_at TEXT, PRIMARY KEY (user_id, achievement_id))")
+_c.execute("CREATE TABLE IF NOT EXISTS user_points (user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0)")
+_c.execute("CREATE TABLE IF NOT EXISTS user_points_tx (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, delta INTEGER, reason TEXT, created_at TEXT)")
+_c.execute("CREATE TABLE IF NOT EXISTS wheel_data (user_id INTEGER PRIMARY KEY, last_free_spin TEXT, consecutive_losses INTEGER DEFAULT 0, paid_spin_count INTEGER DEFAULT 0)")
+_c.execute("CREATE TABLE IF NOT EXISTS pending_wheel_spins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, created_at TEXT, status TEXT DEFAULT 'pending', prize_id TEXT)")
+_c.execute("CREATE TABLE IF NOT EXISTS user_profile (user_id INTEGER PRIMARY KEY, first_seen TEXT, last_seen TEXT, consecutive_days INTEGER DEFAULT 0, last_login_date TEXT)")
+_c.execute("CREATE TABLE IF NOT EXISTS price_overrides (pack_name TEXT PRIMARY KEY, price INTEGER, updated_at TEXT)")
 conn.commit()
 del _c, _oc, _pc_cols
 
@@ -91,30 +100,102 @@ SMALL_UC = set(list(PACKS.keys())[:6])
 MEDIUM_UC = set(list(PACKS.keys())[6:9])
 
 BONUS_TYPES = {
-    "free_uc_60":        "🎁 60 UC безкоштовно на акаунт",
-    "discount_small_5":  "Знижка 5% на малі UC паки (30–660 UC)",
-    "discount_small_4":  "Знижка 4% на малі UC паки (30–660 UC)",
-    "discount_small_3":  "Знижка 3% на малі UC паки (30–660 UC)",
-    "discount_small_2":  "Знижка 2% на малі UC паки (30–660 UC)",
-    "discount_small_1":  "Знижка 1% на малі UC паки (30–660 UC)",
-    "discount_medium_2": "Знижка 2% на середні UC паки (1800–8100 UC)",
-    "discount_medium_1": "Знижка 1% на середні UC паки (1800–8100 UC)",
+    "free_uc_30":       "🎁 30 UC безкоштовно на акаунт",
+    "free_uc_60":       "🎁 60 UC безкоштовно на акаунт",
+    "discount_small_5": "Знижка 5% на малі UC паки (30–660 UC)",
+    "discount_small_4": "Знижка 4% на малі UC паки (30–660 UC)",
+    "discount_small_3": "Знижка 3% на малі UC паки (30–660 UC)",
+    "discount_small_2": "Знижка 2% на малі UC паки (30–660 UC)",
+    "discount_small_1": "Знижка 1% на малі UC паки (30–660 UC)",
+    "discount_medium_2":"Знижка 2% на середні UC паки (1800–8100 UC)",
+    "discount_medium_1":"Знижка 1% на середні UC паки (1800–8100 UC)",
+    "points_50":        "🪙 50 балів",
+    "points_100":       "🪙 100 балів",
+    "points_200":       "💰 200 балів",
+    "points_500":       "💰 500 балів",
+    "extra_spin":       "🎰 Повторний прокрут рулетки",
 }
+
+# --- ДОСЯГНЕННЯ ---
+ACHIEVEMENTS = {
+    "novice":       {"emoji":"🟢","name":"Новачок",             "desc":"Ти зробив перший крок у світ UC 😄",                  "hint":"Зробити першу покупку.",                      "manual":0},
+    "regular":      {"emoji":"🔥","name":"Постійник",            "desc":"Ти вже своя людина в шопі.",                          "hint":"Зробити 5 покупок.",                          "manual":0},
+    "vip":          {"emoji":"👑","name":"VIP Клієнт",           "desc":"Ти занадто часто тут з'являєшся 😄",                 "hint":"Зробити 15 покупок.",                         "manual":0},
+    "whale":        {"emoji":"🐋","name":"Кит",                  "desc":"Nezuko тебе любить.",                                 "hint":"Витратити 1000 грн в боті.",                  "manual":0},
+    "night_owl":    {"emoji":"🌙","name":"Нічний житель",        "desc":"Справжні донатери не сплять вночі.",                 "hint":"Зробити замовлення після 00:00 до 06:00.",    "manual":0},
+    "early_bird":   {"emoji":"☀️","name":"Ранній гравець",       "desc":"Поки всі сплять — ти вже фармиш UC.",                "hint":"Зробити покупку о 07:00–08:00.",              "manual":0},
+    "lucky":        {"emoji":"🎰","name":"Улюбленець удачі",     "desc":"Колесо фортуни сьогодні було на твоєму боці.",       "hint":"Вибити рідкісний приз із колеса.",            "manual":0},
+    "unlucky":      {"emoji":"💀","name":"Невдаха",              "desc":"Іноді удача йде у відпустку…",                       "hint":"3 рази підряд програти в колесі.",            "manual":0},
+    "bonus_hunter": {"emoji":"🎁","name":"Мисливець за бонусами","desc":"Ти не пропускаєш жодного бонусу.",                  "hint":"Активувати 5 промокодів.",                    "manual":0},
+    "secret_seeker":{"emoji":"🕵️","name":"Шукач секретів",      "desc":"Ти вмієш знаходити те, чого інші не бачать.",        "hint":"Знайти прихований промокод.",                 "manual":0},
+    "recruiter":    {"emoji":"📢","name":"Рекламщик",            "desc":"Ти приводиш нових людей у шоп.",                     "hint":"Запросити 10 друзів.",                        "manual":0},
+    "magnet":       {"emoji":"🧲","name":"Магніт для людей",     "desc":"Люди приходять за твоїм посиланням знову і знову.",  "hint":"Запросити 20 друзів.",                        "manual":0},
+    "loyal":        {"emoji":"🧡","name":"Вірний клієнт",        "desc":"Ти залишаєшся з шопом довгий час.",                  "hint":"Бути зареєстрованим більше місяця.",          "manual":0},
+    "daily7":       {"emoji":"📆","name":"Щоденний",             "desc":"Ти майже живеш у боті 😄",                           "hint":"Заходити 7 днів підряд.",                     "manual":0},
+    "flash":        {"emoji":"⚡","name":"Швидкий як флешка",    "desc":"Ти оформлюєш замовлення швидше за всіх.",            "hint":"Зробити покупку одразу після входу в міні апп.","manual":0},
+    "legend":       {"emoji":"🏆","name":"Легенда шопу",         "desc":"Тебе вже знають усі.",                               "hint":"Отримати Топ 1 в таблиці лідерів.",           "manual":0},
+    "pubg_fan":     {"emoji":"🎮","name":"PUBG Fan",             "desc":"UC Shop від Nezuko вже частина твого життя.",         "hint":"Зробити 3 замовлення UC.",                    "manual":0},
+    "uc_addict":    {"emoji":"🔥","name":"UC Залежний",          "desc":"Схоже, без UC ти вже не можеш 😄",                   "hint":"Купити UC 5 разів за один день.",             "manual":0},
+    "precise":      {"emoji":"🎯","name":"Точний постріл",       "desc":"Ти активуєш промокоди швидше за інших.",             "hint":"Встигнути використати лімітований промокод.", "manual":0},
+    "saver":        {"emoji":"🧠","name":"Хитрий",               "desc":"Ти вмієш економити.",                                "hint":"Використати 10 знижок.",                      "manual":0},
+    "gambler":      {"emoji":"🎲","name":"Азартний",             "desc":"Ти занадто любиш колесо фортуни.",                   "hint":"Прокрутити платне колесо 20 разів.",          "manual":0},
+    "jackpot":      {"emoji":"💎","name":"Джекпот",              "desc":"Найрідкісніша удача.",                               "hint":"Вибити найрідкісніший приз в колесі.",        "manual":0},
+    "rocket":       {"emoji":"🚀","name":"Ракета",               "desc":"Ти дуже швидко ростеш.",                             "hint":"Зробити 5 покупок за 1 годину.",              "manual":0},
+    "trusted":      {"emoji":"🛡️","name":"Довірений",           "desc":"Адміністрація тобі довіряє.",                        "hint":"Призначається адміном.",                      "manual":1},
+    "risky":        {"emoji":"😈","name":"Ризиковий",            "desc":"Ти любиш випробовувати удачу.",                      "hint":"Купити платне колесо 10 разів.",              "manual":0},
+    "old":          {"emoji":"❤️","name":"Олд",                 "desc":"Ти з шопом ще з давніх часів.",                      "hint":"Один із найперших користувачів.",             "manual":1},
+    "secret_ach":   {"emoji":"🔐","name":"Секретне досягнення",  "desc":"????",                                               "hint":"Приховано 😄",                                "manual":0},
+    "collector":    {"emoji":"📦","name":"Колекціонер",          "desc":"Ти зібрав безліч досягнень.",                        "hint":"Отримати 20 досягнень.",                      "manual":0},
+    "tester":       {"emoji":"🧪","name":"Тестер",               "desc":"Ти бачив функції раніше за інших.",                  "hint":"Призначається адміном.",                      "manual":1},
+    "danger":       {"emoji":"☢️","name":"Небезпечний донатер", "desc":"Твій баланс лякає оточуючих 😄",                    "hint":"Витратити 10000 грн у боті.",                 "manual":0},
+    "partner":      {"emoji":"🌐","name":"Партнер",              "desc":"Ти дуже допоміг власнику магазина.",                 "hint":"Призначається адміном.",                      "manual":1},
+}
+
+POINTS_SHOP = [
+    {"id":"uc30",       "name":"🎁 30 UC безкоштовно",      "cost":1500, "bonus_type":"free_uc_30"},
+    {"id":"uc60",       "name":"🎁 60 UC безкоштовно",      "cost":3000, "bonus_type":"free_uc_60"},
+    {"id":"disc_s1",    "name":"Знижка 1% (малі паки)",     "cost":500,  "bonus_type":"discount_small_1"},
+    {"id":"disc_s2",    "name":"Знижка 2% (малі паки)",     "cost":1000, "bonus_type":"discount_small_2"},
+    {"id":"disc_m1",    "name":"Знижка 1% (середні паки)",  "cost":750,  "bonus_type":"discount_medium_1"},
+    {"id":"disc_m2",    "name":"Знижка 2% (середні паки)",  "cost":1500, "bonus_type":"discount_medium_2"},
+    {"id":"extra_spin", "name":"Повторний прокрут рулетки", "cost":300,  "bonus_type":"extra_spin"},
+]
+
+FREE_WHEEL_PRIZES = [
+    {"id":"nothing", "name":"Нічого",      "weight":80, "type":"nothing",              "value":0,   "rarity":"common"},
+    {"id":"disc12",  "name":"Знижка 1-2%", "weight":10, "type":"random_discount_small","value":0,   "rarity":"rare"},
+    {"id":"pts50",   "name":"50 балів",    "weight":5,  "type":"points",               "value":50,  "rarity":"rare"},
+    {"id":"pts100",  "name":"100 балів",   "weight":4,  "type":"points",               "value":100, "rarity":"epic"},
+    {"id":"pts200",  "name":"200 балів",   "weight":1,  "type":"points",               "value":200, "rarity":"legendary"},
+]
+
+PAID_WHEEL_PRIZES = [
+    {"id":"nothing", "name":"Нічого",   "weight":25, "type":"nothing",    "value":0,   "rarity":"common"},
+    {"id":"uc30",    "name":"30 UC",    "weight":25, "type":"free_uc_30", "value":30,  "rarity":"rare"},
+    {"id":"uc60",    "name":"60 UC",    "weight":25, "type":"free_uc_60", "value":60,  "rarity":"epic"},
+    {"id":"pts500",  "name":"500 балів","weight":25, "type":"points",     "value":500, "rarity":"legendary"},
+]
 
 # --- КЛАВІАТУРИ ---
 MAIN_KB = [
     ["🛍 Магазин"],
-    ["🏆 Топ донатерів"],
+    ["🏆 Топ донатерів", "🏅 Досягнення"],
     ["🎁 Промокод", "👥 Реферал"],
     ["📋 Мої замовлення", "📄 Політика"],
     ["🆘 Підтримка"],
     ["⚙️ Адмін"]
 ]
+
 def get_main_kb(uid):
-    has_free_uc = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type='free_uc_60' AND used=0 LIMIT 1", (uid,))
-    if has_free_uc:
-        return [["🎁 60 UC Free"]] + MAIN_KB
-    return MAIN_KB
+    kb = list(MAIN_KB)
+    extras = []
+    if db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type='free_uc_60' AND used=0 LIMIT 1", (uid,)):
+        extras.append("🎁 60 UC Free")
+    if db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type='free_uc_30' AND used=0 LIMIT 1", (uid,)):
+        extras.append("🎁 30 UC Free")
+    if extras:
+        return [extras] + kb
+    return kb
 
 SHOP_KB = ReplyKeyboardMarkup(
     [["💸 Купити UC"], ["👑 Prime", "👑 Prime Plus"], ["🔙 Назад"]],
@@ -146,30 +227,26 @@ POLICY_HTML = """<!doctype html>
     </style>
 </head>
 <body>
-<main>
-<section>
+<main><section>
 <h1>Політика магазину UC</h1>
-<p>Наш магазин надає послуги з поповнення UC для гравців PUBG Mobile. Оформлюючи замовлення, клієнт погоджується з правилами роботи магазину.</p>
+<p>Наш магазин надає послуги з поповнення UC для гравців PUBG Mobile.</p>
 <h2>1. Оформлення замовлення</h2>
-<p>Клієнт самостійно обирає потрібний пакет UC та вказує свій ігровий ID. Перед оплатою необхідно уважно перевірити правильність введених даних.</p>
+<p>Клієнт самостійно обирає пакет UC та вказує ігровий ID. Перевіряйте дані перед оплатою.</p>
 <h2>2. Оплата</h2>
-<p>Замовлення передається в обробку тільки після підтвердження оплати. Якщо оплата не була здійснена або не підтверджена, замовлення не виконується.</p>
-<h2>3. Виконання замовлення</h2>
-<p>Після оплати UC нараховуються на вказаний клієнтом ігровий ID. Час виконання може залежати від навантаження та доступності сервісу.</p>
-<h2>4. Відповідальність клієнта</h2>
-<p>Магазин не несе відповідальності за помилки у введеному ігровому ID. Якщо клієнт вказав неправильний ID, повернення коштів або повторне нарахування не гарантується.</p>
-<h2>5. Повернення коштів</h2>
-<p>Повернення коштів можливе лише у випадку, якщо замовлення ще не було виконано. Після успішного нарахування UC повернення коштів не здійснюється.</p>
+<p>Замовлення обробляється лише після підтвердження оплати.</p>
+<h2>3. Виконання</h2>
+<p>UC нараховуються на вказаний ігровий ID після оплати.</p>
+<h2>4. Відповідальність</h2>
+<p>Магазин не відповідає за помилки у введеному ігровому ID.</p>
+<h2>5. Повернення</h2>
+<p>Повернення можливе лише якщо замовлення ще не виконано.</p>
 <h2>6. Підтримка</h2>
-<p>Якщо виникли питання або проблеми із замовленням, клієнт може звернутися до підтримки магазину. Ми намагаємося допомогти кожному клієнту якнайшвидше.</p>
+<p>Підтримка: @Manager_Nezuko — відповідаємо 24/7.</p>
 <h2>7. Зміна правил</h2>
-<p>Магазин залишає за собою право змінювати ці правила. Актуальна політика діє на момент оформлення замовлення.</p>
-<p>Оформлюючи замовлення, клієнт підтверджує, що ознайомився з цією політикою та погоджується з її умовами.</p>
-</section>
-</main>
+<p>Магазин залишає право змінювати правила.</p>
+</section></main>
 </body>
 </html>"""
-
 
 MINIAPP_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "miniapp.html")
 
@@ -208,30 +285,190 @@ def _send_tg_message(chat_id, text):
 def _notify_admin_order(order_id, pack, player_id, amount, user_id, username):
     try:
         user_label_str = f"@{username}" if username else str(user_id)
-        text = (f"💰 ОПЛАТА (Mini App)!\n"
-                f"🆔 {order_id}\n"
-                f"👤 {user_label_str}\n"
-                f"🎁 {pack}\n"
-                f"🎮 ID: {player_id}\n"
-                f"💵 Сума: {amount} грн")
+        text = (f"💰 ОПЛАТА (Mini App)!\n🆔 {order_id}\n👤 {user_label_str}\n🎁 {pack}\n🎮 ID: {player_id}\n💵 Сума: {amount} грн")
         ok_btn = json.dumps({"inline_keyboard": [[
             {"text": "✅ Готово", "callback_data": f"ok_{order_id}"},
             {"text": "❌ Відхилити", "callback_data": f"no_{order_id}"}
         ]]})
-        params = urllib.parse.urlencode({
-            "chat_id": MY_ID,
-            "text": text,
-            "reply_markup": ok_btn
-        }).encode()
-        req = urllib.request.Request(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            data=params
-        )
+        params = urllib.parse.urlencode({"chat_id": MY_ID, "text": text, "reply_markup": ok_btn}).encode()
+        req = urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=params)
         urllib.request.urlopen(req, timeout=5)
     except Exception as e:
         logging.warning(f"Не вдалося повідомити адміна: {e}")
 
+# --- ДОСЯГНЕННЯ + БАЛИ: ХЕЛПЕРИ ---
+def add_points(user_id, delta, reason=""):
+    db_exec("INSERT OR IGNORE INTO user_points (user_id, points) VALUES (?,0)", (user_id,))
+    db_exec("UPDATE user_points SET points=points+? WHERE user_id=?", (delta, user_id))
+    db_exec("INSERT INTO user_points_tx (user_id, delta, reason, created_at) VALUES (?,?,?,?)",
+            (user_id, delta, reason, created_at_now()))
 
+def get_points(user_id):
+    r = db_query_one("SELECT points FROM user_points WHERE user_id=?", (user_id,))
+    return r[0] if r else 0
+
+def grant_achievement(user_id, ach_id):
+    if ach_id not in ACHIEVEMENTS:
+        return False
+    existing = db_query_one("SELECT 1 FROM user_achievements WHERE user_id=? AND achievement_id=?", (user_id, ach_id))
+    if existing:
+        return False
+    db_exec("INSERT OR IGNORE INTO user_achievements (user_id, achievement_id, granted_at) VALUES (?,?,?)",
+            (user_id, ach_id, created_at_now()))
+    ach = ACHIEVEMENTS[ach_id]
+    total = db_query_one("SELECT COUNT(*) FROM user_achievements WHERE achievement_id=?", (ach_id,))[0]
+    total_users = db_query_one("SELECT COUNT(DISTINCT user_id) FROM user_profile")[0] or 1
+    pct = round(total / total_users * 100, 1)
+    msg = (f"🏅 Нове досягнення!\n{ach['emoji']} {ach['name']}\n{ach['desc']}\n\n"
+           f"👥 Отримали: {total} гравців ({pct}% від усіх)")
+    _send_tg_message(user_id, msg)
+    count = db_query_one("SELECT COUNT(*) FROM user_achievements WHERE user_id=?", (user_id,))[0]
+    if count >= 20:
+        grant_achievement(user_id, "collector")
+    return True
+
+def update_user_profile(user_id):
+    today = datetime.now().strftime("%Y-%m-%d")
+    profile = db_query_one("SELECT first_seen, last_login_date, consecutive_days FROM user_profile WHERE user_id=?", (user_id,))
+    if not profile:
+        db_exec("INSERT OR IGNORE INTO user_profile (user_id, first_seen, last_seen, consecutive_days, last_login_date) VALUES (?,?,?,1,?)",
+                (user_id, created_at_now(), created_at_now(), today))
+    else:
+        last_date = profile[1] or ""
+        cons = profile[2] or 0
+        if last_date != today:
+            try:
+                last_dt = datetime.strptime(last_date, "%Y-%m-%d")
+                diff = (datetime.now().date() - last_dt.date()).days
+                cons = cons + 1 if diff == 1 else 1
+            except:
+                cons = 1
+            db_exec("UPDATE user_profile SET last_seen=?, consecutive_days=?, last_login_date=? WHERE user_id=?",
+                    (created_at_now(), cons, today, user_id))
+        else:
+            db_exec("UPDATE user_profile SET last_seen=? WHERE user_id=?", (created_at_now(), user_id))
+
+def check_achievements(user_id):
+    update_user_profile(user_id)
+    profile = db_query_one("SELECT first_seen, consecutive_days FROM user_profile WHERE user_id=?", (user_id,))
+    if not profile:
+        return
+    cons = profile[1] or 0
+    if cons >= 7:
+        grant_achievement(user_id, "daily7")
+    try:
+        first = datetime.strptime(profile[0][:10], "%Y-%m-%d")
+        if (datetime.now() - first).days >= 30:
+            grant_achievement(user_id, "loyal")
+    except: pass
+
+    done_orders = db_query("SELECT pack, created_at, amount FROM orders WHERE chat_id=? AND status='done'", (user_id,))
+    done_count = len(done_orders)
+    if done_count >= 1: grant_achievement(user_id, "novice")
+    if done_count >= 5: grant_achievement(user_id, "regular")
+    if done_count >= 15: grant_achievement(user_id, "vip")
+
+    total_spent = sum(get_pack_price(r[0]) for r in done_orders)
+    if total_spent >= 1000: grant_achievement(user_id, "whale")
+    if total_spent >= 10000: grant_achievement(user_id, "danger")
+
+    for pack, cat_val, _ in done_orders:
+        try:
+            hour = int(cat_val[11:13])
+            if 0 <= hour < 6: grant_achievement(user_id, "night_owl")
+            if 7 <= hour < 9: grant_achievement(user_id, "early_bird")
+        except: pass
+
+    uc_orders = [r for r in done_orders if "UC" in r[0] and "Prime" not in r[0]]
+    if len(uc_orders) >= 3: grant_achievement(user_id, "pubg_fan")
+
+    from collections import Counter
+    day_counts = Counter()
+    for _, c_at, _ in done_orders:
+        day_counts[(c_at or "")[:10]] += 1
+    if any(v >= 5 for v in day_counts.values()):
+        grant_achievement(user_id, "uc_addict")
+
+    # Rocket: 5 purchases in 1 hour
+    if done_count >= 5:
+        times = sorted([r[1] for r in done_orders if r[1]])
+        for i in range(len(times) - 4):
+            try:
+                t0 = datetime.strptime(times[i], "%Y-%m-%d %H:%M:%S")
+                t4 = datetime.strptime(times[i+4], "%Y-%m-%d %H:%M:%S")
+                if (t4 - t0).total_seconds() <= 3600:
+                    grant_achievement(user_id, "rocket"); break
+            except: pass
+
+    refs = db_query_one("SELECT COUNT(*) FROM referrals WHERE referrer_id=?", (user_id,))
+    ref_count = refs[0] if refs else 0
+    if ref_count >= 10: grant_achievement(user_id, "recruiter")
+    if ref_count >= 20: grant_achievement(user_id, "magnet")
+
+    promo_count = db_query_one("SELECT COUNT(*) FROM used_promo_codes WHERE user_id=?", (user_id,))
+    if promo_count and promo_count[0] >= 5: grant_achievement(user_id, "bonus_hunter")
+
+    disc_count = db_query_one("SELECT COUNT(*) FROM user_bonuses WHERE user_id=? AND used=1 AND bonus_type LIKE 'discount%'", (user_id,))
+    if disc_count and disc_count[0] >= 10: grant_achievement(user_id, "saver")
+
+    wheel = db_query_one("SELECT consecutive_losses, paid_spin_count FROM wheel_data WHERE user_id=?", (user_id,))
+    if wheel:
+        if wheel[0] >= 3: grant_achievement(user_id, "unlucky")
+        if wheel[1] >= 20: grant_achievement(user_id, "gambler")
+        if wheel[1] >= 10: grant_achievement(user_id, "risky")
+
+    top = db_query("SELECT chat_id FROM (SELECT chat_id, SUM(COALESCE(CAST(amount AS INTEGER),0)) as total FROM orders WHERE status='done' GROUP BY chat_id ORDER BY total DESC LIMIT 1)")
+    if top and top[0][0] == user_id:
+        grant_achievement(user_id, "legend")
+
+def spin_wheel_random(prizes):
+    total = sum(p["weight"] for p in prizes)
+    r = random.randint(1, total)
+    cumulative = 0
+    for prize in prizes:
+        cumulative += prize["weight"]
+        if r <= cumulative:
+            return prize
+    return prizes[-1]
+
+def deliver_wheel_prize(user_id, username, prize):
+    ptype = prize["type"]
+    if ptype == "points":
+        add_points(user_id, prize["value"], "Колесо фортуни")
+        grant_achievement(user_id, "lucky")
+        _send_tg_message(user_id, f"🎰 Колесо фортуни: {prize['name']}!\n+{prize['value']} балів нараховано!")
+    elif ptype == "free_uc_30":
+        db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)",
+                (user_id, "free_uc_30", 30, created_at_now()))
+        grant_achievement(user_id, "lucky")
+        if prize.get("rarity") == "legendary":
+            grant_achievement(user_id, "jackpot")
+        _send_tg_message(user_id, f"🎰 Колесо фортуни: 30 UC! Кнопка з'явиться в меню 🎁")
+    elif ptype == "free_uc_60":
+        db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)",
+                (user_id, "free_uc_60", 60, created_at_now()))
+        grant_achievement(user_id, "lucky")
+        if prize.get("rarity") == "legendary":
+            grant_achievement(user_id, "jackpot")
+        _send_tg_message(user_id, f"🎰 Колесо фортуни: 60 UC! Кнопка з'явиться в меню 🎁")
+    elif ptype == "random_discount_small":
+        pct = random.choice([1, 2])
+        bt = f"discount_small_{pct}"
+        db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)",
+                (user_id, bt, pct, created_at_now()))
+        grant_achievement(user_id, "lucky")
+        _send_tg_message(user_id, f"🎰 Колесо фортуни: Знижка {pct}% на малі UC паки!")
+    elif ptype == "nothing":
+        db_exec("INSERT OR IGNORE INTO wheel_data (user_id) VALUES (?)", (user_id,))
+        db_exec("UPDATE wheel_data SET consecutive_losses=consecutive_losses+1 WHERE user_id=?", (user_id,))
+        check_achievements(user_id)
+        _send_tg_message(user_id, "🎰 Колесо фортуни: Нічого не випало. Спробуй наступного разу!")
+        return
+    # Reset consecutive losses on win
+    db_exec("INSERT OR IGNORE INTO wheel_data (user_id) VALUES (?)", (user_id,))
+    db_exec("UPDATE wheel_data SET consecutive_losses=0 WHERE user_id=?", (user_id,))
+
+# --- HTTP ОБРОБНИК ---
 class PolicyHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
@@ -259,10 +496,23 @@ class PolicyHandler(BaseHTTPRequestHandler):
             if not user_id:
                 _json_response(self, {"orders": []}); return
             rows = db_query(
-                "SELECT id, pack, status, player_id, created_at FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 10",
+                "SELECT id, pack, status, player_id, created_at, amount FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 20",
                 (user_id,)
             )
-            orders = [{"id": r[0], "pack": r[1], "status": r[2], "player_id": r[3], "created_at": (r[4] or "")[:16]} for r in rows]
+            orders = [{"id": r[0], "pack": r[1], "status": r[2], "player_id": r[3],
+                       "created_at": (r[4] or "")[:16], "amount": r[5] or "?"} for r in rows]
+            _json_response(self, {"orders": orders}); return
+
+        if path == "/api/all-orders":
+            user_id = int(params.get("user_id", 0))
+            if not user_id:
+                _json_response(self, {"orders": []}); return
+            rows = db_query(
+                "SELECT id, pack, status, player_id, created_at, amount FROM orders WHERE chat_id=? ORDER BY rowid DESC",
+                (user_id,)
+            )
+            orders = [{"id": r[0], "pack": r[1], "status": r[2], "player_id": r[3],
+                       "created_at": (r[4] or "")[:16], "amount": r[5] or "?"} for r in rows]
             _json_response(self, {"orders": orders}); return
 
         if path == "/api/bonuses":
@@ -274,9 +524,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 counts[bt] = counts.get(bt, 0) + 1
             result = []
             for bt, cnt in counts.items():
-                result.append({"name": BONUS_TYPES.get(bt, bt), "count": cnt})
+                result.append({"type": bt, "name": BONUS_TYPES.get(bt, bt), "count": cnt})
             if ref_disc:
-                result.append({"name": "Реферальна знижка 1%", "count": len(ref_disc)})
+                result.append({"type": "ref_discount", "name": "Реферальна знижка 1%", "count": len(ref_disc)})
             _json_response(self, {"bonuses": result}); return
 
         if path == "/api/top":
@@ -289,6 +539,99 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 name = f"@{r[0]}" if r[0] else f"ID {r[1]}"
                 top.append({"rank": i+1, "name": name, "total": r[2]})
             _json_response(self, {"top": top}); return
+
+        if path == "/api/achievements":
+            user_id = int(params.get("user_id", 0))
+            earned_rows = db_query("SELECT achievement_id, granted_at FROM user_achievements WHERE user_id=?", (user_id,))
+            earned = {r[0]: r[1] for r in earned_rows}
+            result = []
+            for aid, ach in ACHIEVEMENTS.items():
+                total = db_query_one("SELECT COUNT(*) FROM user_achievements WHERE achievement_id=?", (aid,))[0]
+                total_users = db_query_one("SELECT COUNT(DISTINCT user_id) FROM user_profile")[0] or 1
+                pct = round(total / total_users * 100, 1)
+                result.append({
+                    "id": aid, "emoji": ach["emoji"], "name": ach["name"],
+                    "desc": ach["desc"] if aid in earned else "???",
+                    "hint": ach["hint"], "manual": ach["manual"],
+                    "earned": aid in earned, "granted_at": (earned.get(aid) or "")[:10],
+                    "count": total, "percent": pct
+                })
+            _json_response(self, {"achievements": result}); return
+
+        if path == "/api/profile":
+            user_id = int(params.get("user_id", 0))
+            if not user_id:
+                _json_response(self, {"ok": False}); return
+            update_user_profile(user_id)
+            profile = db_query_one("SELECT first_seen, last_seen, consecutive_days FROM user_profile WHERE user_id=?", (user_id,))
+            done_orders = db_query("SELECT pack, amount FROM orders WHERE chat_id=? AND status='done'", (user_id,))
+            total_orders = len(done_orders)
+            total_spent = sum(get_pack_price(r[0]) for r in done_orders)
+            total_uc = 0
+            for pack, _ in done_orders:
+                m = re.search(r"(\d+)\s*UC", pack)
+                if m: total_uc += int(m.group(1))
+            points = get_points(user_id)
+            ach_count = db_query_one("SELECT COUNT(*) FROM user_achievements WHERE user_id=?", (user_id,))[0]
+            _json_response(self, {
+                "ok": True, "user_id": user_id,
+                "first_seen": (profile[0] if profile else "")[:10],
+                "consecutive_days": (profile[2] if profile else 0),
+                "total_orders": total_orders, "total_spent": total_spent,
+                "total_uc": total_uc, "points": points, "achievements": ach_count
+            }); return
+
+        if path == "/api/points":
+            user_id = int(params.get("user_id", 0))
+            pts = get_points(user_id)
+            _json_response(self, {"ok": True, "points": pts}); return
+
+        if path == "/api/online-count":
+            cutoff = (datetime.now() - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+            count = db_query_one("SELECT COUNT(*) FROM user_profile WHERE last_seen >= ?", (cutoff,))
+            _json_response(self, {"online": count[0] if count else 0}); return
+
+        if path == "/api/wheel/status":
+            user_id = int(params.get("user_id", 0))
+            wheel = db_query_one("SELECT last_free_spin FROM wheel_data WHERE user_id=?", (user_id,))
+            can_spin = True
+            seconds_left = 0
+            if wheel and wheel[0]:
+                try:
+                    last = datetime.strptime(wheel[0], "%Y-%m-%d %H:%M:%S")
+                    diff = (datetime.now() - last).total_seconds()
+                    if diff < 86400:
+                        can_spin = False
+                        seconds_left = int(86400 - diff)
+                except: pass
+            has_extra = bool(db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type='extra_spin' AND used=0 LIMIT 1", (user_id,)))
+            _json_response(self, {
+                "can_spin_free": can_spin or has_extra,
+                "has_extra_spin": has_extra,
+                "seconds_left": seconds_left,
+                "prizes": FREE_WHEEL_PRIZES,
+                "paid_prizes": PAID_WHEEL_PRIZES
+            }); return
+
+        if path == "/api/prices":
+            result = {}
+            for pack, base_price in ALL_PACKS.items():
+                override = db_query_one("SELECT price FROM price_overrides WHERE pack_name=?", (pack,))
+                result[pack] = override[0] if override else base_price
+            _json_response(self, {"ok": True, "prices": result}); return
+
+        if path == "/api/reviews":
+            rows = db_query("SELECT rowid, user, text FROM reviews ORDER BY rowid DESC LIMIT 20")
+            reviews = [{"id": r[0], "user": r[1], "text": r[2]} for r in rows]
+            _json_response(self, {"ok": True, "reviews": reviews}); return
+
+        if path == "/api/referral-stats":
+            uid = int(params.get("user_id", 0))
+            refs = db_query("SELECT COUNT(*) FROM referrals WHERE referrer_id=?", (uid,))
+            discounts = db_query("SELECT COUNT(*) FROM ref_discounts WHERE user_id=?", (uid,))
+            invited = refs[0][0] if refs else 0
+            disc_count = discounts[0][0] if discounts else 0
+            _json_response(self, {"ok": True, "invited": invited, "discounts": disc_count}); return
 
         if path == "/api/admin/orders":
             pwd = params.get("password", "")
@@ -306,10 +649,11 @@ class PolicyHandler(BaseHTTPRequestHandler):
             done = db_query_one("SELECT COUNT(*) FROM orders WHERE status='done'")[0]
             canceled = db_query_one("SELECT COUNT(*) FROM orders WHERE status='canceled'")[0]
             pending = db_query_one("SELECT COUNT(*) FROM orders WHERE status='pending'")[0]
+            total_users = db_query_one("SELECT COUNT(DISTINCT user_id) FROM user_profile")[0] or 0
             total_sum = get_done_sum()
             today_sum = get_done_sum(today_only=True)
             _json_response(self, {"ok": True, "done": done, "canceled": canceled, "pending": pending,
-                                  "total_sum": total_sum, "today_sum": today_sum}); return
+                                  "total_sum": total_sum, "today_sum": today_sum, "users": total_users}); return
 
         if path == "/api/admin/admins":
             pwd = params.get("password", "")
@@ -323,24 +667,21 @@ class PolicyHandler(BaseHTTPRequestHandler):
             pwd = params.get("password", "")
             if pwd != ADMIN_PASSWORD:
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
-            rows = db_query("SELECT code, bonus_type, bonus_value, uses_left, total_uses, created_at FROM promo_codes ORDER BY rowid DESC")
+            rows = db_query("SELECT code, bonus_type, bonus_value, uses_left, total_uses, created_at, secret FROM promo_codes ORDER BY rowid DESC")
             promos = [{"code": r[0], "bonus_type": r[1], "bonus_label": BONUS_TYPES.get(r[1], r[1]),
                        "bonus_value": r[2], "uses_left": r[3], "total_uses": r[4],
-                       "created_at": (r[5] or "")[:16]} for r in rows]
+                       "created_at": (r[5] or "")[:16], "secret": bool(r[6])} for r in rows]
             _json_response(self, {"ok": True, "promos": promos, "bonus_types": BONUS_TYPES}); return
 
-        if path == "/api/reviews":
-            rows = db_query("SELECT rowid, user, text FROM reviews ORDER BY rowid DESC LIMIT 20")
-            reviews = [{"id": r[0], "user": r[1], "text": r[2]} for r in rows]
-            _json_response(self, {"ok": True, "reviews": reviews}); return
-
-        if path == "/api/referral-stats":
-            uid = int(params.get("user_id", 0))
-            refs = db_query("SELECT COUNT(*) FROM referrals WHERE referrer_id=?", (uid,))
-            discounts = db_query("SELECT COUNT(*) FROM ref_discounts WHERE user_id=?", (uid,))
-            invited = refs[0][0] if refs else 0
-            disc_count = discounts[0][0] if discounts else 0
-            _json_response(self, {"ok": True, "invited": invited, "discounts": disc_count}); return
+        if path == "/api/admin/prices":
+            pwd = params.get("password", "")
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            result = {}
+            for pack, base_price in ALL_PACKS.items():
+                override = db_query_one("SELECT price FROM price_overrides WHERE pack_name=?", (pack,))
+                result[pack] = {"current": override[0] if override else base_price, "base": base_price}
+            _json_response(self, {"ok": True, "prices": result}); return
 
         if path == "/api/admin/reviews":
             pwd = params.get("password", "")
@@ -365,6 +706,16 @@ class PolicyHandler(BaseHTTPRequestHandler):
                      "player_id": row[5], "created_at": (row[6] or "")[:16], "amount": row[7] or "?"}
             _json_response(self, {"ok": True, "order": order}); return
 
+        if path == "/api/admin/pending-wheels":
+            pwd = params.get("password", "")
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            rows = db_query("SELECT id, user_id, username, created_at FROM pending_wheel_spins WHERE status='pending' ORDER BY id DESC")
+            spins = [{"id": r[0], "user_id": r[1],
+                      "user": f"@{r[2]}" if r[2] else str(r[1]),
+                      "created_at": (r[3] or "")[:16]} for r in rows]
+            _json_response(self, {"ok": True, "spins": spins, "prizes": PAID_WHEEL_PRIZES}); return
+
         self.send_response(404); self.end_headers()
 
     def do_POST(self):
@@ -377,21 +728,41 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         path = self.path.split("?")[0]
 
+        if path == "/api/track-visit":
+            user_id = int(data.get("user_id", 0))
+            if user_id:
+                update_user_profile(user_id)
+                check_achievements(user_id)
+            _json_response(self, {"ok": True}); return
+
         if path == "/api/submit-order":
             user_id = int(data.get("user_id", 0))
             username = str(data.get("username", ""))
             pack = str(data.get("pack", ""))
             player_id = str(data.get("player_id", ""))
-            amount = int(data.get("amount", 0))
+            base_amount = int(data.get("amount", 0))
+            flash_order = bool(data.get("flash_order", False))
             if not pack or not player_id:
                 _json_response(self, {"ok": False, "error": "Відсутні дані"}); return
+            # Apply discount (fix)
+            disc_pct, disc_src, disc_id = get_user_discount(user_id, pack)
+            price = get_pack_price(pack) or base_amount
+            final_price = apply_discount(price, disc_pct) if disc_pct else price
+            if disc_pct and disc_src == "promo":
+                db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (disc_id,))
+            elif disc_pct and disc_src == "ref":
+                db_exec("DELETE FROM ref_discounts WHERE id=?", (disc_id,))
             order_id = str(uuid.uuid4())[:8].upper()
             db_exec(
                 "INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount) VALUES (?,?,?,?,?,?,?,?)",
-                (order_id, username, pack, "pending", user_id, player_id, created_at_now(), str(amount))
+                (order_id, username, pack, "pending", user_id, player_id, created_at_now(), str(final_price))
             )
-            _notify_admin_order(order_id, pack, player_id, amount, user_id, username)
-            _json_response(self, {"ok": True, "order_id": order_id}); return
+            _notify_admin_order(order_id, pack, player_id, final_price, user_id, username)
+            update_user_profile(user_id)
+            if flash_order:
+                grant_achievement(user_id, "flash")
+            _json_response(self, {"ok": True, "order_id": order_id, "final_price": final_price,
+                                  "discount": disc_pct}); return
 
         if path == "/api/promo":
             user_id = int(data.get("user_id", 0))
@@ -401,19 +772,129 @@ class PolicyHandler(BaseHTTPRequestHandler):
             already = db_query_one("SELECT 1 FROM used_promo_codes WHERE user_id=? AND code=?", (user_id, code))
             if already:
                 _json_response(self, {"ok": False, "error": "Промокод вже використано"}); return
-            promo = db_query_one("SELECT bonus_type, bonus_value, uses_left FROM promo_codes WHERE code=?", (code,))
+            promo = db_query_one("SELECT bonus_type, bonus_value, uses_left, secret FROM promo_codes WHERE code=?", (code,))
             if not promo:
                 _json_response(self, {"ok": False, "error": "Промокод не знайдено"}); return
-            bonus_type, bonus_value, uses_left = promo
+            bonus_type, bonus_value, uses_left, is_secret = promo
             if uses_left is not None and uses_left != -1 and uses_left <= 0:
                 _json_response(self, {"ok": False, "error": "Промокод вичерпано"}); return
+            # Check if limited (for "precise" achievement)
+            was_limited = uses_left is not None and uses_left != -1
             db_exec("INSERT OR IGNORE INTO used_promo_codes (user_id, code) VALUES (?,?)", (user_id, code))
-            db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, created_at) VALUES (?,?,?,?)",
-                    (user_id, bonus_type, bonus_value, created_at_now()))
+            # Handle points bonus types
+            if bonus_type.startswith("points_"):
+                pts = int(bonus_type.split("_")[1])
+                add_points(user_id, pts, f"Промокод {code}")
+            else:
+                db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, created_at) VALUES (?,?,?,?)",
+                        (user_id, bonus_type, bonus_value or 1, created_at_now()))
             if uses_left is not None and uses_left != -1:
                 db_exec("UPDATE promo_codes SET uses_left=uses_left-1 WHERE code=?", (code,))
+            if is_secret:
+                grant_achievement(user_id, "secret_seeker")
+            if was_limited:
+                grant_achievement(user_id, "precise")
+            check_achievements(user_id)
             bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
+            if bonus_type.startswith("points_"):
+                pts = int(bonus_type.split("_")[1])
+                bonus_name = f"🪙 {pts} балів"
             _json_response(self, {"ok": True, "message": f"Бонус активовано: {bonus_name}"}); return
+
+        if path == "/api/submit-review":
+            user_id = int(data.get("user_id", 0))
+            username = str(data.get("username", "")).strip()
+            text = str(data.get("text", "")).strip()
+            if not text or len(text) < 3:
+                _json_response(self, {"ok": False, "error": "Відгук занадто короткий"}); return
+            if len(text) > 500:
+                _json_response(self, {"ok": False, "error": "Відгук занадто довгий (макс. 500 символів)"}); return
+            user_label_str = f"@{username}" if username else str(user_id)
+            db_exec("INSERT INTO reviews (user, text) VALUES (?,?)", (user_label_str, text))
+            _json_response(self, {"ok": True, "message": "Відгук збережено!"}); return
+
+        if path == "/api/claim-free-uc":
+            user_id = int(data.get("user_id", 0))
+            username = str(data.get("username", ""))
+            player_id = str(data.get("player_id", "")).strip()
+            bonus_type = str(data.get("bonus_type", "free_uc_60"))
+            if not player_id or len(player_id) < 5:
+                _json_response(self, {"ok": False, "error": "Введи правильний ігровий ID"}); return
+            bonus = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type=? AND used=0 LIMIT 1", (user_id, bonus_type))
+            if not bonus:
+                _json_response(self, {"ok": False, "error": f"Бонус {BONUS_TYPES.get(bonus_type,'')} недоступний"}); return
+            db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (bonus[0],))
+            uc_count = 30 if bonus_type == "free_uc_30" else 60
+            oid = str(uuid.uuid4())[:8].upper()
+            db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (oid, username, f"🎁 {uc_count} UC Free (бонус)", "pending", user_id, player_id, created_at_now(), 0, "bonus"))
+            _send_tg_message(MY_ID, f"🎁 БЕЗКОШТОВНІ UC!\n🆔 {oid}\n👤 {'@'+username if username else str(user_id)}\n🎮 ID: {player_id}\n💵 {uc_count} UC (безкоштовно)")
+            _json_response(self, {"ok": True, "message": f"Заявку прийнято! {uc_count} UC буде нараховано."}); return
+
+        if path == "/api/points/spend":
+            user_id = int(data.get("user_id", 0))
+            item_id = str(data.get("item_id", ""))
+            item = next((i for i in POINTS_SHOP if i["id"] == item_id), None)
+            if not item:
+                _json_response(self, {"ok": False, "error": "Невідомий товар"}); return
+            pts = get_points(user_id)
+            if pts < item["cost"]:
+                _json_response(self, {"ok": False, "error": f"Недостатньо балів. Потрібно {item['cost']}, є {pts}"}); return
+            db_exec("UPDATE user_points SET points=points-? WHERE user_id=?", (item["cost"], user_id))
+            db_exec("INSERT INTO user_points_tx (user_id, delta, reason, created_at) VALUES (?,?,?,?)",
+                    (user_id, -item["cost"], f"Покупка: {item['name']}", created_at_now()))
+            if item["bonus_type"] == "extra_spin":
+                db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)",
+                        (user_id, "extra_spin", 1, created_at_now()))
+            else:
+                db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)",
+                        (user_id, item["bonus_type"], 1, created_at_now()))
+            _json_response(self, {"ok": True, "message": f"✅ {item['name']} додано! Залишок балів: {pts - item['cost']}"}); return
+
+        if path == "/api/wheel/spin-free":
+            user_id = int(data.get("user_id", 0))
+            username = str(data.get("username", ""))
+            # Check cooldown
+            wheel = db_query_one("SELECT last_free_spin FROM wheel_data WHERE user_id=?", (user_id,))
+            can_spin = True
+            if wheel and wheel[0]:
+                try:
+                    last = datetime.strptime(wheel[0], "%Y-%m-%d %H:%M:%S")
+                    if (datetime.now() - last).total_seconds() < 86400:
+                        can_spin = False
+                except: pass
+            # Check extra spin bonus
+            extra = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type='extra_spin' AND used=0 LIMIT 1", (user_id,))
+            if not can_spin and not extra:
+                wheel_data = db_query_one("SELECT last_free_spin FROM wheel_data WHERE user_id=?", (user_id,))
+                try:
+                    last = datetime.strptime((wheel_data[0] if wheel_data else ""), "%Y-%m-%d %H:%M:%S")
+                    seconds_left = max(0, int(86400 - (datetime.now() - last).total_seconds()))
+                except:
+                    seconds_left = 0
+                _json_response(self, {"ok": False, "error": "Ще не можна крутити", "seconds_left": seconds_left}); return
+            if extra:
+                db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (extra[0],))
+            else:
+                db_exec("INSERT OR IGNORE INTO wheel_data (user_id) VALUES (?)", (user_id,))
+                db_exec("UPDATE wheel_data SET last_free_spin=? WHERE user_id=?", (created_at_now(), user_id))
+            prize = spin_wheel_random(FREE_WHEEL_PRIZES)
+            deliver_wheel_prize(user_id, username, prize)
+            check_achievements(user_id)
+            _json_response(self, {"ok": True, "prize": prize}); return
+
+        if path == "/api/wheel/spin-paid":
+            user_id = int(data.get("user_id", 0))
+            username = str(data.get("username", ""))
+            db_exec("INSERT INTO pending_wheel_spins (user_id, username, created_at) VALUES (?,?,?)",
+                    (user_id, username, created_at_now()))
+            # Track paid spin count
+            db_exec("INSERT OR IGNORE INTO wheel_data (user_id) VALUES (?)", (user_id,))
+            db_exec("UPDATE wheel_data SET paid_spin_count=paid_spin_count+1 WHERE user_id=?", (user_id,))
+            _send_tg_message(MY_ID,
+                f"🎰 ЗАПИТ НА ПЛАТНЕ КОЛЕСО!\n👤 {'@'+username if username else str(user_id)}\n💵 40 грн\n\nПідтверди оплату та схвали в адмін-панелі.")
+            check_achievements(user_id)
+            _json_response(self, {"ok": True, "message": "Заявку надіслано! Адмін підтвердить і крутне колесо."}); return
 
         if path == "/api/admin/auth":
             pwd = str(data.get("password", ""))
@@ -438,12 +919,29 @@ class PolicyHandler(BaseHTTPRequestHandler):
                     db_exec("INSERT INTO ref_discounts (user_id, created_at) VALUES (?,?)", (ref[0], created_at_now()))
                     _send_tg_message(ref[0], "🎉 Ваш реферал зробив покупку! Ви отримали знижку 1%.")
                 _send_tg_message(chat_id, f"✅ {pack} нараховано! Дякуємо за покупку 🌸")
+                check_achievements(chat_id)
                 _json_response(self, {"ok": True, "message": f"Замовлення {order_id} виконано"}); return
             elif action == "no":
                 db_exec("UPDATE orders SET status='canceled' WHERE id=?", (order_id,))
                 _send_tg_message(chat_id, f"❌ Ваше замовлення ({pack}) відхилено. Зверніться в підтримку.")
                 _json_response(self, {"ok": True, "message": f"Замовлення {order_id} відхилено"}); return
             _json_response(self, {"ok": False, "error": "Невідома дія"}); return
+
+        if path == "/api/admin/approve-wheel":
+            pwd = str(data.get("password", ""))
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            spin_id = int(data.get("spin_id", 0))
+            spin = db_query_one("SELECT user_id, username, status FROM pending_wheel_spins WHERE id=?", (spin_id,))
+            if not spin:
+                _json_response(self, {"ok": False, "error": "Запит не знайдено"}); return
+            if spin[2] != "pending":
+                _json_response(self, {"ok": False, "error": "Вже оброблено"}); return
+            prize = spin_wheel_random(PAID_WHEEL_PRIZES)
+            db_exec("UPDATE pending_wheel_spins SET status='done', prize_id=? WHERE id=?", (prize["id"], spin_id))
+            deliver_wheel_prize(spin[0], spin[1], prize)
+            check_achievements(spin[0])
+            _json_response(self, {"ok": True, "message": f"Колесо крутнуто! Приз: {prize['name']}", "prize": prize}); return
 
         if path == "/api/admin/toggle-admin":
             pwd = str(data.get("password", ""))
@@ -470,16 +968,18 @@ class PolicyHandler(BaseHTTPRequestHandler):
             code = str(data.get("code", "")).strip().upper()
             bonus_type = str(data.get("bonus_type", ""))
             uses = int(data.get("uses", -1))
+            is_secret = int(bool(data.get("secret", False)))
             if not code or not bonus_type:
                 _json_response(self, {"ok": False, "error": "Заповни всі поля"}); return
-            if bonus_type not in BONUS_TYPES:
+            all_types = list(BONUS_TYPES.keys()) + ["points_50","points_100","points_200","points_500"]
+            if bonus_type not in all_types:
                 _json_response(self, {"ok": False, "error": "Невідомий тип бонусу"}); return
             existing = db_query_one("SELECT 1 FROM promo_codes WHERE code=?", (code,))
             if existing:
                 _json_response(self, {"ok": False, "error": "Промокод вже існує"}); return
             db_exec(
-                "INSERT INTO promo_codes (code, bonus_type, bonus_value, uses_left, total_uses, created_at) VALUES (?,?,?,?,?,?)",
-                (code, bonus_type, 1, uses, uses, created_at_now())
+                "INSERT INTO promo_codes (code, bonus_type, bonus_value, uses_left, total_uses, created_at, secret) VALUES (?,?,?,?,?,?,?)",
+                (code, bonus_type, 1, uses, uses, created_at_now(), is_secret)
             )
             _json_response(self, {"ok": True, "message": f"Промокод {code} створено"}); return
 
@@ -493,34 +993,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
             db_exec("DELETE FROM promo_codes WHERE code=?", (code,))
             _json_response(self, {"ok": True, "message": f"Промокод {code} видалено"}); return
 
-        if path == "/api/submit-review":
-            user_id = int(data.get("user_id", 0))
-            username = str(data.get("username", "")).strip()
-            text = str(data.get("text", "")).strip()
-            if not text or len(text) < 3:
-                _json_response(self, {"ok": False, "error": "Відгук занадто короткий"}); return
-            if len(text) > 500:
-                _json_response(self, {"ok": False, "error": "Відгук занадто довгий (макс. 500 символів)"}); return
-            user_label_str = f"@{username}" if username else str(user_id)
-            db_exec("INSERT INTO reviews (user, text) VALUES (?,?)", (user_label_str, text))
-            _json_response(self, {"ok": True, "message": "Відгук збережено!"}); return
-
-        if path == "/api/claim-free-uc":
-            user_id = int(data.get("user_id", 0))
-            username = str(data.get("username", ""))
-            player_id = str(data.get("player_id", "")).strip()
-            if not player_id or len(player_id) < 5:
-                _json_response(self, {"ok": False, "error": "Введи правильний ігровий ID"}); return
-            bonus = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type='free_uc_60' AND used=0 LIMIT 1", (user_id,))
-            if not bonus:
-                _json_response(self, {"ok": False, "error": "Бонус 60 UC недоступний"}); return
-            db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (bonus[0],))
-            oid = str(uuid.uuid4())[:8].upper()
-            db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment) VALUES (?,?,?,?,?,?,?,?,?)",
-                    (oid, username, "🎁 60 UC Free (бонус)", "pending", user_id, player_id, created_at_now(), 0, "bonus"))
-            _send_tg_message(MY_ID, f"🎁 БЕЗКОШТОВНІ UC!\n🆔 {oid}\n👤 {'@'+username if username else str(user_id)}\n🎮 ID: {player_id}\n💵 60 UC (безкоштовно)")
-            _json_response(self, {"ok": True, "message": "Заявку прийнято! 60 UC буде нараховано."}); return
-
         if path == "/api/admin/delete-review":
             pwd = str(data.get("password", ""))
             if pwd != ADMIN_PASSWORD:
@@ -531,6 +1003,52 @@ class PolicyHandler(BaseHTTPRequestHandler):
             db_exec("DELETE FROM reviews WHERE rowid=?", (review_id,))
             _json_response(self, {"ok": True, "message": "Відгук видалено"}); return
 
+        if path == "/api/admin/update-price":
+            pwd = str(data.get("password", ""))
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            pack_name = str(data.get("pack_name", ""))
+            price = int(data.get("price", 0))
+            if pack_name not in ALL_PACKS:
+                _json_response(self, {"ok": False, "error": "Пак не знайдено"}); return
+            if price < 1:
+                _json_response(self, {"ok": False, "error": "Невірна ціна"}); return
+            db_exec("INSERT OR REPLACE INTO price_overrides (pack_name, price, updated_at) VALUES (?,?,?)",
+                    (pack_name, price, created_at_now()))
+            _json_response(self, {"ok": True, "message": f"Ціна оновлена: {pack_name} → {price} грн"}); return
+
+        if path == "/api/admin/reset-price":
+            pwd = str(data.get("password", ""))
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            pack_name = str(data.get("pack_name", ""))
+            db_exec("DELETE FROM price_overrides WHERE pack_name=?", (pack_name,))
+            _json_response(self, {"ok": True, "message": f"Ціна скинута до базової"}); return
+
+        if path == "/api/admin/grant-achievement":
+            pwd = str(data.get("password", ""))
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            target_id = int(data.get("user_id", 0))
+            ach_id = str(data.get("achievement_id", ""))
+            if not target_id or ach_id not in ACHIEVEMENTS:
+                _json_response(self, {"ok": False, "error": "Невірні дані"}); return
+            granted = grant_achievement(target_id, ach_id)
+            if granted:
+                _json_response(self, {"ok": True, "message": f"Досягнення {ach_id} видано"}); return
+            _json_response(self, {"ok": False, "error": "Досягнення вже є"}); return
+
+        if path == "/api/admin/revoke-achievement":
+            pwd = str(data.get("password", ""))
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            target_id = int(data.get("user_id", 0))
+            ach_id = str(data.get("achievement_id", ""))
+            if not target_id or not ach_id:
+                _json_response(self, {"ok": False, "error": "Невірні дані"}); return
+            db_exec("DELETE FROM user_achievements WHERE user_id=? AND achievement_id=?", (target_id, ach_id))
+            _json_response(self, {"ok": True, "message": f"Досягнення {ach_id} відкликано"}); return
+
         if path == "/api/admin/broadcast":
             pwd = str(data.get("password", ""))
             if pwd != ADMIN_PASSWORD:
@@ -538,9 +1056,14 @@ class PolicyHandler(BaseHTTPRequestHandler):
             message = str(data.get("message", "")).strip()
             if not message:
                 _json_response(self, {"ok": False, "error": "Повідомлення порожнє"}); return
-            users = [r[0] for r in db_query("SELECT DISTINCT chat_id FROM orders WHERE chat_id IS NOT NULL")]
+            # Broadcast to ALL registered users (from user_profile + orders)
+            uids = set()
+            for r in db_query("SELECT DISTINCT user_id FROM user_profile"):
+                uids.add(r[0])
+            for r in db_query("SELECT DISTINCT chat_id FROM orders WHERE chat_id IS NOT NULL"):
+                uids.add(r[0])
             sent = 0
-            for chat_id in users:
+            for chat_id in uids:
                 try:
                     _send_tg_message(chat_id, message)
                     sent += 1
@@ -566,10 +1089,14 @@ def is_admin(uid):
     return bool(db_query_one("SELECT id FROM admins WHERE id=?", (uid,)))
 
 def get_policy_url():
-    domain = os.getenv("REPLIT_DEV_DOMAIN") or os.getenv("REPLIT_DOMAINS", "").split(",")[0]
+    domain = (os.getenv("REPLIT_DEV_DOMAIN") or os.getenv("REPLIT_DOMAINS", "").split(",")[0]
+              or os.getenv("RAILWAY_PUBLIC_DOMAIN", ""))
     return f"https://{domain}/policy" if domain else "/policy"
 
 def get_pack_price(pack):
+    override = db_query_one("SELECT price FROM price_overrides WHERE pack_name=?", (pack,))
+    if override:
+        return override[0]
     if pack in ALL_PACKS: return ALL_PACKS[pack]
     m = re.search(r"(\d+)\s*грн", pack)
     return int(m.group(1)) if m else 0
@@ -617,12 +1144,14 @@ def uses_left_label(uses_left, total_uses=None):
 
 # --- КОМАНДИ ---
 def get_miniapp_url():
-    domain = os.getenv("REPLIT_DEV_DOMAIN") or os.getenv("REPLIT_DOMAINS", "").split(",")[0]
+    domain = (os.getenv("REPLIT_DEV_DOMAIN") or os.getenv("REPLIT_DOMAINS", "").split(",")[0]
+              or os.getenv("RAILWAY_PUBLIC_DOMAIN", ""))
     return f"https://{domain}/app" if domain else "/app"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user_states[uid] = None
+    update_user_profile(uid)
     if context.args:
         arg = context.args[0]
         if arg.startswith("ref_"):
@@ -635,12 +1164,52 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mini_app_btn = InlineKeyboardMarkup([[
         InlineKeyboardButton("🌸 Відкрити Mini App", web_app={"url": webapp_url})
     ]])
+    # Hidden letter N in the welcome message
     await update.message.reply_text(
-        "👋 Вітаємо у магазині UC!\n\n"
-        "🌸 Скористайся зручним міні-застосунком або звичайними кнопками нижче:",
+        "👋 Вітаємо у магазині UC від Nezuko! 🌸\n\n"
+        "Скористайся зручним міні-застосунком або звичайними кнопками нижче.\n\n"
+        "┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n"
+        "🔤 N · · · · · · · · · · · · ·",
         reply_markup=mini_app_btn
     )
     await update.message.reply_text("⬇️ Або обери дію:", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
+
+async def achievements_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    earned = db_query("SELECT achievement_id FROM user_achievements WHERE user_id=?", (uid,))
+    earned_set = {r[0] for r in earned}
+    total_all = len(ACHIEVEMENTS)
+    msg = f"🏅 МОЇ ДОСЯГНЕННЯ ({len(earned_set)}/{total_all}):\n\n"
+    for aid, ach in ACHIEVEMENTS.items():
+        if aid in earned_set:
+            msg += f"✅ {ach['emoji']} {ach['name']}\n"
+        else:
+            msg += f"🔒 ??? ({ach['hint']})\n"
+    await update.message.reply_text(msg[:4096])
+
+async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    update_user_profile(uid)
+    done_orders = db_query("SELECT pack FROM orders WHERE chat_id=? AND status='done'", (uid,))
+    total_spent = sum(get_pack_price(r[0]) for r in done_orders)
+    total_uc = 0
+    for (pack,) in done_orders:
+        m = re.search(r"(\d+)\s*UC", pack)
+        if m: total_uc += int(m.group(1))
+    pts = get_points(uid)
+    ach_count = db_query_one("SELECT COUNT(*) FROM user_achievements WHERE user_id=?", (uid,))[0]
+    profile = db_query_one("SELECT first_seen FROM user_profile WHERE user_id=?", (uid,))
+    first_seen = (profile[0] or "")[:10] if profile else "—"
+    await update.message.reply_text(
+        f"👤 ПРОФІЛЬ\n\n"
+        f"🆔 ID: {uid}\n"
+        f"📅 З нами з: {first_seen}\n\n"
+        f"💰 Витрачено: {total_spent} грн\n"
+        f"💎 Донатовано UC: {total_uc} UC\n"
+        f"📦 Замовлень: {len(done_orders)}\n\n"
+        f"🪙 Бали: {pts}\n"
+        f"🏅 Досягнень: {ach_count}/{len(ACHIEVEMENTS)}"
+    )
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -652,46 +1221,32 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🔑 Пароль:", reply_markup=ReplyKeyboardRemove())
 
 async def shop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🛍 Оберіть категорію:", reply_markup=SHOP_KB)
+    # Hidden letter K in shop
+    await update.message.reply_text("🛍 Оберіть категорію:\n· · · K · · ·", reply_markup=SHOP_KB)
 
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Оберіть пакет:", reply_markup=ReplyKeyboardMarkup([[p] for p in PACKS.keys()], resize_keyboard=True))
 
 async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👨‍💻 Менеджер: @Manager_Nezuko")
+    await update.message.reply_text("🆘 Підтримка 24/7\n👨‍💻 Менеджер: @Manager_Nezuko")
 
 async def policy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     policy_text = (
         "📄 *ПОЛІТИКА МАГАЗИНУ UC*\n\n"
-        "Наш магазин надає послуги з поповнення UC для гравців PUBG Mobile. "
-        "Оформлюючи замовлення, клієнт погоджується з правилами роботи магазину.\n\n"
         "*1. Оформлення замовлення*\n"
-        "Клієнт самостійно обирає потрібний пакет UC та вказує свій ігровий ID. "
-        "Перед оплатою необхідно уважно перевірити правильність введених даних.\n\n"
+        "Клієнт обирає пакет UC та вказує ігровий ID. Перевіряйте дані.\n\n"
         "*2. Оплата*\n"
-        "Замовлення передається в обробку тільки після підтвердження оплати. "
-        "Якщо оплата не була здійснена або не підтверджена, замовлення не виконується.\n\n"
+        "Замовлення обробляється після підтвердження оплати.\n\n"
         "*3. Виконання замовлення*\n"
-        "Після оплати UC нараховуються на вказаний клієнтом ігровий ID. "
-        "Час виконання може залежати від навантаження та доступності сервісу.\n\n"
-        "*4. Відповідальність клієнта*\n"
-        "Магазин не несе відповідальності за помилки у введеному ігровому ID. "
-        "Якщо клієнт вказав неправильний ID, повернення коштів або повторне нарахування не гарантується.\n\n"
+        "UC нараховуються на вказаний ігровий ID.\n\n"
+        "*4. Відповідальність*\n"
+        "Магазин не відповідає за помилки у введеному ігровому ID.\n\n"
         "*5. Повернення коштів*\n"
-        "Повернення коштів можливе лише у випадку, якщо замовлення ще не було виконано. "
-        "Після успішного нарахування UC повернення коштів не здійснюється.\n\n"
+        "Повернення можливе лише якщо замовлення ще не виконано.\n\n"
         "*6. Підтримка*\n"
-        "Якщо виникли питання або проблеми із замовленням, клієнт може звернутися до підтримки магазину. "
-        "Ми намагаємося допомогти кожному клієнту якнайшвидше.\n\n"
+        "24/7: @Manager_Nezuko\n\n"
         "*7. Зміна правил*\n"
-        "Магазин залишає за собою право змінювати ці правила. "
-        "Актуальна політика діє на момент оформлення замовлення.\n\n"
-        "*8. Флуд у особисті повідомлення*\n"
-        "Якщо клієнт після оформлення замовлення починає надсилати повідомлення на кшталт "
-        "«Де мої UC?», «Ау, UC де?» — магазин має право відмовити в обслуговуванні. "
-        "Писати нагадування допустимо лише у тому випадку, якщо з моменту оформлення замовлення "
-        "пройшло більше 10 хвилин.\n\n"
-        "_Оформлюючи замовлення, клієнт підтверджує, що ознайомився з цією політикою та погоджується з її умовами._"
+        "Магазин залишає право змінювати ці правила."
     )
     await update.message.reply_text(policy_text, parse_mode="Markdown")
 
@@ -701,62 +1256,58 @@ async def reviews_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🌟 Відгуків ще немає."); return
     msg = "🌟 ОСТАННІ ВІДГУКИ:\n\n"
     for r in revs: msg += f"👤 {r[0]}: {r[1]}\n\n"
-    await update.message.reply_text(msg)
+    await update.message.reply_text(msg[:4096])
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     order = db_query_one("SELECT id, pack, status FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 1", (uid,))
     if not order:
         await update.message.reply_text("📭 У вас ще немає замовлень."); return
-    await update.message.reply_text(f"📦 Ваш останній заказ:\n🆔 {order[0]}\n🎁 {order[1]}\n📌 Статус: {status_text(order[2])}")
+    await update.message.reply_text(f"📦 Останній заказ:\n🆔 {order[0]}\n🎁 {order[1]}\n📌 Статус: {status_text(order[2])}")
 
 async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
+    # Hidden letter U
     orders = db_query("SELECT id, pack, status FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 5", (uid,))
     if not orders:
-        await update.message.reply_text("📭 У вас ще немає замовлень."); return
-    msg = "📋 Ваші останні замовлення:\n\n"
-    for o in orders: msg += f"🆔 {o[0]}\n🎁 {o[1]}\n📌 Статус: {status_text(o[2])}\n\n"
+        await update.message.reply_text("📭 У вас ще немає замовлень.\n· · · U · · ·"); return
+    msg = "📋 Останні замовлення:\n\n"
+    for o in orders: msg += f"🆔 {o[0]}\n🎁 {o[1]}\n📌 {status_text(o[2])}\n\n"
     await update.message.reply_text(msg)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Hidden letter E
     await update.message.reply_text(
         "ℹ️ Як користуватися ботом:\n\n"
-        "1. Натисніть «🛍 Магазин» і оберіть категорію.\n"
-        "2. Оберіть потрібний пакет UC.\n"
-        "3. Введіть свій ігровий ID.\n"
-        "4. Напишіть «ОК» та оплатіть замовлення.\n"
-        "5. Після оплати натисніть «✅ Я оплатив».\n\n"
-        "Підтримка: /support\n"
-        "Політика магазину: /policy\n"
-        "Статус замовлення: /status\n"
-        "Історія замовлень: /history"
+        "1. «🛍 Магазин» → обери категорію\n"
+        "2. Оберіть пакет UC\n"
+        "3. Введіть ігровий ID\n"
+        "4. Напишіть «ОК» та оплатіть\n"
+        "5. Після оплати натисніть «✅ Я оплатив»\n\n"
+        "Підтримка 24/7: /support\n"
+        "Політика: /policy\n"
+        "Статус: /status\n"
+        "Профіль: /profile\n"
+        "Досягнення: /achievements\n\n"
+        "· · E · · · · · · · · ·"
     )
 
 async def mypromos_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     bonuses = db_query("SELECT bonus_type, bonus_value FROM user_bonuses WHERE user_id=? AND used=0", (uid,))
     ref_discounts = db_query("SELECT id FROM ref_discounts WHERE user_id=?", (uid,))
-
+    pts = get_points(uid)
     if not bonuses and not ref_discounts:
-        await update.message.reply_text("🎁 У вас поки немає активних бонусів.\n\nАктивуйте промокод або запросіть друзів через реферальне посилання!")
-        return
-
-    msg = "🎁 ВАШІ АКТИВНІ БОНУСИ:\n\n"
-
-    bonus_counts = {}
-    for bonus_type, _ in bonuses:
-        bonus_counts[bonus_type] = bonus_counts.get(bonus_type, 0) + 1
-
-    for bonus_type, count in bonus_counts.items():
-        name = BONUS_TYPES.get(bonus_type, bonus_type)
-        plural = "шт." if count == 1 else "шт."
-        msg += f"✅ {name}\n   Кількість: {count} {plural}\n\n"
-
+        await update.message.reply_text(f"🎁 Активних бонусів немає.\n🪙 Бали: {pts}"); return
+    msg = f"🎁 АКТИВНІ БОНУСИ:\n\n"
+    counts = {}
+    for bt, _ in bonuses:
+        counts[bt] = counts.get(bt, 0) + 1
+    for bt, cnt in counts.items():
+        msg += f"✅ {BONUS_TYPES.get(bt, bt)} × {cnt}\n"
     if ref_discounts:
-        msg += f"✅ Реферальна знижка 1% на будь-яку покупку\n   Кількість: {len(ref_discounts)} шт.\n\n"
-
-    msg += "💡 Знижки та бонуси застосовуються автоматично при покупці."
+        msg += f"✅ Реферальна знижка 1% × {len(ref_discounts)}\n"
+    msg += f"\n🪙 Бали: {pts}"
     await update.message.reply_text(msg)
 
 async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -778,7 +1329,26 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     canceled_count = db_query_one("SELECT COUNT(*) FROM orders WHERE status='canceled'")[0]
     total_sum = get_done_sum()
     today_sum = get_done_sum(today_only=True)
-    await update.message.reply_text(f"📊 Статистика магазину:\n✅ Виконано замовлень: {done_count}\n❌ Відхилено замовлень: {canceled_count}\n💰 Загальна сума продажів: {total_sum} грн\n📅 Сума за сьогодні: {today_sum} грн")
+    await update.message.reply_text(f"📊 Статистика:\n✅ Виконано: {done_count}\n❌ Відхилено: {canceled_count}\n💰 Загальна сума: {total_sum} грн\n📅 Сьогодні: {today_sum} грн")
+
+async def setprice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        await update.message.reply_text("⛔ Тільки для адміна."); return
+    if not context.args or len(context.args) < 2:
+        packs_list = "\n".join([f"• {p}" for p in list(ALL_PACKS.keys())[:10]])
+        await update.message.reply_text(f"Використання: /setprice <назва_паку> <ціна>\n\nПаки:\n{packs_list}\n..."); return
+    price_str = context.args[-1]
+    pack_name = " ".join(context.args[:-1])
+    if pack_name not in ALL_PACKS:
+        await update.message.reply_text(f"❌ Пак '{pack_name}' не знайдено."); return
+    try:
+        price = int(price_str)
+        if price < 1: raise ValueError
+    except:
+        await update.message.reply_text("❌ Ціна повинна бути числом > 0"); return
+    db_exec("INSERT OR REPLACE INTO price_overrides (pack_name, price, updated_at) VALUES (?,?,?)", (pack_name, price, created_at_now()))
+    await update.message.reply_text(f"✅ Ціна оновлена:\n{pack_name} → {price} грн")
 
 async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -786,10 +1356,10 @@ async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Тільки для адміна."); return
     if not context.args:
         await update.message.reply_text("Використання: /find ID_замовлення"); return
-    order = db_query_one("SELECT id, user, pack, status, chat_id, player_id FROM orders WHERE id=?", (context.args[0],))
+    order = db_query_one("SELECT id, user, pack, status, chat_id, player_id FROM orders WHERE id=?", (context.args[0].upper(),))
     if not order:
         await update.message.reply_text("📭 Замовлення не знайдено."); return
-    await update.message.reply_text(f"🔎 Замовлення:\n🆔 {order[0]}\n👤 {user_label(order[1], order[4])}\n🎁 {order[2]}\n🎮 ID: {order[5]}\n📌 Статус: {status_text(order[3])}\n💬 Chat ID: {order[4]}")
+    await update.message.reply_text(f"🔎 Замовлення:\n🆔 {order[0]}\n👤 {user_label(order[1], order[4])}\n🎁 {order[2]}\n🎮 ID: {order[5]}\n📌 {status_text(order[3])}\n💬 Chat ID: {order[4]}")
 
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -802,9 +1372,13 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_broadcast(update, context, message)
 
 async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, message):
-    users = [r[0] for r in db_query("SELECT DISTINCT chat_id FROM orders WHERE chat_id IS NOT NULL")]
+    uids = set()
+    for r in db_query("SELECT DISTINCT user_id FROM user_profile"):
+        uids.add(r[0])
+    for r in db_query("SELECT DISTINCT chat_id FROM orders WHERE chat_id IS NOT NULL"):
+        uids.add(r[0])
     sent = 0
-    for chat_id in users:
+    for chat_id in uids:
         try:
             await context.bot.send_message(chat_id, message); sent += 1
         except: pass
@@ -824,7 +1398,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[uid] = None
         user_name = f"@{update.effective_user.username}" if update.effective_user.username else "Анонім"
         db_exec("INSERT INTO reviews (user, text) VALUES (?, ?)", (user_name, text))
-        await update.message.reply_text("✅ Дякуємо! Відгук збережено.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
+        await update.message.reply_text("✅ Відгук збережено.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
         return
 
     if state == "WAIT_BROADCAST" and is_admin(uid):
@@ -835,20 +1409,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == "WAIT_PROMO_CODE":
         user_states[uid] = None
         code = text.upper().strip().replace(" ", "")
-        promo = db_query_one("SELECT bonus_type, bonus_value, uses_left, total_uses FROM promo_codes WHERE code=?", (code,))
+        promo = db_query_one("SELECT bonus_type, bonus_value, uses_left, total_uses, secret FROM promo_codes WHERE code=?", (code,))
         if not promo:
-            await update.message.reply_text("❌ Промокод не знайдено або він недійсний.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
+            await update.message.reply_text("❌ Промокод не знайдено.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
         already = db_query_one("SELECT 1 FROM used_promo_codes WHERE user_id=? AND code=?", (uid, code))
         if already:
-            await update.message.reply_text("❌ Ви вже використали цей промокод.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
-        bonus_type, bonus_value, uses_left, total_uses = promo
-        # Перевірка залишку активацій
+            await update.message.reply_text("❌ Вже використано.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
+        bonus_type, bonus_value, uses_left, total_uses, is_secret = promo
         if uses_left is not None and uses_left != -1 and uses_left <= 0:
-            await update.message.reply_text("❌ Цей промокод вичерпав ліміт активацій.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
-        # Застосовуємо промокод
+            await update.message.reply_text("❌ Промокод вичерпано.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
+        was_limited = uses_left is not None and uses_left != -1
         db_exec("INSERT OR IGNORE INTO used_promo_codes (user_id, code) VALUES (?,?)", (uid, code))
-        db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)", (uid, bonus_type, bonus_value, created_at_now()))
-        # Зменшуємо лічильник активацій
+        if bonus_type.startswith("points_"):
+            pts = int(bonus_type.split("_")[1])
+            add_points(uid, pts, f"Промокод {code}")
+        else:
+            db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)", (uid, bonus_type, bonus_value or 1, created_at_now()))
         if uses_left is not None and uses_left != -1:
             new_uses = uses_left - 1
             if new_uses <= 0:
@@ -856,12 +1432,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db_exec("DELETE FROM used_promo_codes WHERE code=?", (code,))
             else:
                 db_exec("UPDATE promo_codes SET uses_left=? WHERE code=?", (new_uses, code))
+        if is_secret:
+            grant_achievement(uid, "secret_seeker")
+        if was_limited:
+            grant_achievement(uid, "precise")
+        check_achievements(uid)
         bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
-        if bonus_type == "free_uc_60":
-            kb = ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)
-            await update.message.reply_text(f"✅ Промокод активовано!\n🎁 Бонус: {bonus_name}\n\nНатисніть кнопку нижче для отримання UC:", reply_markup=kb)
-        else:
-            await update.message.reply_text(f"✅ Промокод активовано!\n🎁 Бонус: {bonus_name}\n\nЗнижка буде застосована автоматично при наступній покупці.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
+        if bonus_type.startswith("points_"):
+            bonus_name = f"🪙 {int(bonus_type.split('_')[1])} балів"
+        kb = ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)
+        await update.message.reply_text(f"✅ Промокод активовано!\n🎁 Бонус: {bonus_name}", reply_markup=kb)
         return
 
     if isinstance(state, dict) and state.get("step") == "WAIT_PROMO_CODE_NAME" and is_admin(uid):
@@ -876,10 +1456,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if isinstance(state, dict) and state.get("step") == "WAIT_PROMO_USES" and is_admin(uid):
         cleaned = re.sub(r"[^0-9]", "", text)
         if not cleaned:
-            await update.message.reply_text("❌ Введіть число від 1 до 1000000:"); return
+            await update.message.reply_text("❌ Введіть число:"); return
         uses = int(cleaned)
         if uses < 1 or uses > 1000000:
-            await update.message.reply_text("❌ Введіть число від 1 до 1000000:"); return
+            await update.message.reply_text("❌ Число від 1 до 1000000:"); return
         code = state["code"]
         bonus_type = state["bonus_type"]
         db_exec("INSERT OR REPLACE INTO promo_codes (code, bonus_type, bonus_value, uses_left, total_uses, created_at) VALUES (?,?,?,?,?,?)",
@@ -887,7 +1467,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db_exec("DELETE FROM used_promo_codes WHERE code=?", (code,))
         user_states[uid] = None
         bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
-        await update.message.reply_text(f"✅ Промокод *{code}* створено!\n🎁 Бонус: {bonus_name}\n🔢 Активацій: {uses}/{uses}", parse_mode="Markdown")
+        await update.message.reply_text(f"✅ Промокод *{code}* створено!\n🎁 Бонус: {bonus_name}\n🔢 Активацій: {uses}", parse_mode="Markdown")
         return
 
     # ── Адмін кнопки ──────────────────────────────────────────────────────────
@@ -904,7 +1484,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if "Відгуки" in text:
             revs = db_query("SELECT rowid, user, text FROM reviews ORDER BY rowid DESC LIMIT 15")
             if not revs:
-                await update.message.reply_text("🌟 Відгуків ще немає."); return
+                await update.message.reply_text("🌟 Відгуків немає."); return
             await update.message.reply_text(f"🌟 ОСТАННІ ВІДГУКИ ({len(revs)}):")
             for r in revs:
                 del_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🗑 Видалити", callback_data=f"delrev_{r[0]}")]])
@@ -915,7 +1495,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             canceled_count = db_query_one("SELECT COUNT(*) FROM orders WHERE status='canceled'")[0]
             total_sum = get_done_sum()
             today_sum = get_done_sum(today_only=True)
-            await update.message.reply_text(f"📊 Статистика магазину:\n✅ Виконано: {done_count}\n❌ Відхилено: {canceled_count}\n💰 Загальна сума: {total_sum} грн\n📅 Сума за сьогодні: {today_sum} грн")
+            total_users = db_query_one("SELECT COUNT(DISTINCT user_id) FROM user_profile")[0] or 0
+            await update.message.reply_text(f"📊 Статистика:\n✅ Виконано: {done_count}\n❌ Відхилено: {canceled_count}\n💰 Загальна сума: {total_sum} грн\n📅 Сьогодні: {today_sum} грн\n👥 Всього користувачів: {total_users}")
             return
         if "Промокоди" in text:
             codes = db_query("SELECT code, bonus_type, uses_left, total_uses FROM promo_codes ORDER BY code")
@@ -957,6 +1538,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Головне меню", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
 
     if text == "🏆 Топ донатерів":
+        # Hidden letter O
         raw = db_query("SELECT user, chat_id, pack FROM orders WHERE status='done'")
         totals = {}
         for user, cid, pack in raw:
@@ -964,12 +1546,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             totals[key] = totals.get(key, 0) + get_pack_price(pack)
         top = sorted(totals.items(), key=lambda x: x[1], reverse=True)[:10]
         if not top:
-            await update.message.reply_text("🏆 Поки що немає даних для таблиці лідерів."); return
-        msg = "🏆 ТОП-10 ДОНАТЕРІВ:\n\n"
+            await update.message.reply_text("🏆 Поки немає даних.\n· O ·"); return
         medals = ["🥇", "🥈", "🥉"] + ["🏅"] * 7
+        msg = "🏆 ТОП-10 ДОНАТЕРІВ:\n\n"
         for i, ((uname, _), total) in enumerate(top):
             msg += f"{medals[i]} {uname} — {total} грн\n"
         await update.message.reply_text(msg); return
+
+    if text == "🏅 Досягнення":
+        await achievements_command(update, context); return
 
     if text == "🎁 Промокод":
         user_states[uid] = "WAIT_PROMO_CODE"
@@ -980,12 +1565,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ref_link = f"https://t.me/{bot_username}?start=ref_{uid}"
         refs = db_query("SELECT referred_id FROM referrals WHERE referrer_id=?", (uid,))
         discounts = db_query("SELECT id FROM ref_discounts WHERE user_id=?", (uid,))
+        # Hidden letter Z
         msg = (
             f"👥 РЕФЕРАЛЬНА СИСТЕМА\n\n"
             f"🔗 Ваше посилання:\n{ref_link}\n\n"
             f"👤 Запрошено людей: {len(refs)}\n"
-            f"🎁 Доступних знижок (1%): {len(discounts)}\n\n"
-            f"За кожного друга, який зробить покупку через ваше посилання — ви отримуєте знижку 1% на будь-яку покупку!"
+            f"🎁 Знижок доступно (1%): {len(discounts)}\n\n"
+            f"За кожного друга, що зробить покупку — знижка 1%!\n"
+            f"· · · Z · · ·"
         )
         await update.message.reply_text(msg); return
 
@@ -999,7 +1586,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Оберіть Prime Plus:", reply_markup=ReplyKeyboardMarkup([[p] for p in PRIME_PLUS_PACKS.keys()], resize_keyboard=True)); return
 
     if text == "🆘 Підтримка":
-        await update.message.reply_text("👨‍💻 Менеджер: @Manager_Nezuko"); return
+        await update.message.reply_text("🆘 Підтримка 24/7\n👨‍💻 Менеджер: @Manager_Nezuko"); return
 
     if text == "📋 Мої замовлення":
         await history_command(update, context); return
@@ -1007,35 +1594,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "📄 Політика":
         await policy_command(update, context); return
 
-    if text == "🎁 60 UC Free":
-        bonus = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type='free_uc_60' AND used=0 LIMIT 1", (uid,))
+    if text in ("🎁 60 UC Free", "🎁 30 UC Free"):
+        bt = "free_uc_60" if "60" in text else "free_uc_30"
+        uc = 60 if "60" in text else 30
+        bonus = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type=? AND used=0 LIMIT 1", (uid, bt))
         if not bonus:
             await update.message.reply_text("❌ Цей бонус недоступний.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
-        user_states[uid] = {"step": "FREE_UC_ID", "bonus_id": bonus[0]}
-        await update.message.reply_text("🎮 Введіть ваш ігровий ID для нарахування 60 UC:", reply_markup=ReplyKeyboardRemove()); return
+        user_states[uid] = {"step": "FREE_UC_ID", "bonus_id": bonus[0], "uc": uc, "bt": bt}
+        await update.message.reply_text(f"🎮 Введіть ваш ігровий ID для нарахування {uc} UC:", reply_markup=ReplyKeyboardRemove()); return
 
     # ── Вибір пакету ───────────────────────────────────────────────────────────
 
     if text in ALL_PACKS:
-        user_states[uid] = {"pack": text, "step": "ID"}
-        await update.message.reply_text("🎮 Введіть ваш ігровий ID:", reply_markup=ReplyKeyboardRemove()); return
+        price = get_pack_price(text)
+        user_states[uid] = {"pack": text, "step": "ID", "price": price}
+        await update.message.reply_text(f"🎮 Введіть ваш ігровий ID:", reply_markup=ReplyKeyboardRemove()); return
 
     # ── Флоу замовлення ────────────────────────────────────────────────────────
 
     if isinstance(state, dict) and state.get("step") == "FREE_UC_ID":
         game_id = text
         bonus_id = state["bonus_id"]
+        uc = state.get("uc", 60)
+        bt = state.get("bt", "free_uc_60")
         db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (bonus_id,))
         oid = str(uuid.uuid4())[:8]
         db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment) VALUES (?,?,?,?,?,?,?,?,?)",
-                (oid, update.effective_user.username, "🎁 60 UC Free (бонус)", "pending", uid, game_id, created_at_now(), 0, "bonus"))
+                (oid, update.effective_user.username, f"🎁 {uc} UC Free (бонус)", "pending", uid, game_id, created_at_now(), 0, "bonus"))
         if MY_ID != 0:
             try:
                 btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Надіслано", callback_data=f"ok_{oid}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{oid}")]])
-                await context.bot.send_message(MY_ID, f"🎁 БЕЗКОШТОВНІ UC!\n🆔 {oid}\n👤 {user_label(update.effective_user.username, uid)}\n🎮 ID: {game_id}\n💵 60 UC (безкоштовно)", reply_markup=btns)
+                await context.bot.send_message(MY_ID, f"🎁 БЕЗКОШТОВНІ UC!\n🆔 {oid}\n👤 {user_label(update.effective_user.username, uid)}\n🎮 ID: {game_id}\n💵 {uc} UC (безкоштовно)", reply_markup=btns)
             except: pass
         user_states[uid] = None
-        await update.message.reply_text("✅ Заявку прийнято! 60 UC буде нараховано найближчим часом.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
+        await update.message.reply_text(f"✅ Заявку прийнято! {uc} UC буде нараховано.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
         return
 
     if isinstance(state, dict) and state.get("step") == "ID":
@@ -1057,6 +1649,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (disc_id,))
         elif disc_pct and disc_src == "ref":
             db_exec("DELETE FROM ref_discounts WHERE id=?", (disc_id,))
+
+        update_user_profile(uid)
 
         price_text = f"💵 Сума: *{final_price} грн*"
         if disc_pct:
@@ -1088,106 +1682,101 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text("🗑 Відгук видалено.")
         return
 
-    # ── Промокоди (адмін) ────────────────────────────────────────────────────
+    if data.startswith("ok_"):
+        order_id = data[3:]
+        res = db_query_one("SELECT chat_id, pack FROM orders WHERE id=?", (order_id,))
+        if not res:
+            await q.edit_message_text("❌ Замовлення не знайдено."); return
+        chat_id, pack = res
+        db_exec("UPDATE orders SET status='done', completed_at=? WHERE id=?", (created_at_now(), order_id))
+        ref = db_query_one("SELECT referrer_id FROM referrals WHERE referred_id=?", (chat_id,))
+        if ref:
+            db_exec("INSERT INTO ref_discounts (user_id, created_at) VALUES (?,?)", (ref[0], created_at_now()))
+            try: await context.bot.send_message(ref[0], "🎉 Ваш реферал зробив покупку! Ви отримали знижку 1%.")
+            except: pass
+        try: await context.bot.send_message(chat_id, f"✅ {pack} нараховано! Дякуємо 🌸")
+        except: pass
+        check_achievements(chat_id)
+        await q.edit_message_text(f"✅ Замовлення {order_id} виконано.")
+        return
+
+    if data.startswith("no_"):
+        order_id = data[3:]
+        res = db_query_one("SELECT chat_id, pack FROM orders WHERE id=?", (order_id,))
+        if not res:
+            await q.edit_message_text("❌ Замовлення не знайдено."); return
+        chat_id, pack = res
+        db_exec("UPDATE orders SET status='canceled' WHERE id=?", (order_id,))
+        try: await context.bot.send_message(chat_id, f"❌ Замовлення ({pack}) відхилено. Зверніться в підтримку.")
+        except: pass
+        await q.edit_message_text(f"❌ Замовлення {order_id} відхилено.")
+        return
+
+    if data.startswith("paid_"):
+        order_id = data[5:]
+        res = db_query_one("SELECT pack, player_id, amount FROM orders WHERE id=?", (order_id,))
+        if not res:
+            await q.answer("Замовлення не знайдено."); return
+        pack, player_id, amount = res
+        try:
+            btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Готово", callback_data=f"ok_{order_id}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{order_id}")]])
+            await context.bot.send_message(MY_ID, f"💰 ОПЛАТА!\n🆔 {order_id}\n👤 {user_label(q.from_user.username, q.from_user.id)}\n🎁 {pack}\n🎮 ID: {player_id}\n💵 {amount} грн", reply_markup=btns)
+        except: pass
+        await q.edit_message_text(f"✅ Дякуємо! Замовлення прийнято.\n🆔 {order_id}\nАдмін підтвердить незабаром.")
+        return
+
     if data == "promo_create":
         if is_admin(q.from_user.id):
             user_states[q.from_user.id] = {"step": "WAIT_PROMO_CODE_NAME"}
-            await context.bot.send_message(q.from_user.id, "🎁 Введіть назву нового промокоду (напр. SUMMER2024):")
+            await context.bot.send_message(q.from_user.id, "🎁 Введіть назву промокоду:")
         return
 
     if data.startswith("promo_del_"):
         if is_admin(q.from_user.id):
-            code = data[len("promo_del_"):]
+            code = data[10:]
             db_exec("DELETE FROM promo_codes WHERE code=?", (code,))
-            db_exec("DELETE FROM used_promo_codes WHERE code=?", (code,))
             await q.edit_message_text(f"🗑 Промокод {code} видалено.")
         return
 
     if data.startswith("promo_bonus_"):
-        if is_admin(q.from_user.id):
-            bonus_type = data[len("promo_bonus_"):]
-            st = user_states.get(q.from_user.id)
-            if isinstance(st, dict) and st.get("step") == "WAIT_PROMO_BONUS":
-                code = st["code"]
-                user_states[q.from_user.id] = {"step": "WAIT_PROMO_USES", "code": code, "bonus_type": bonus_type}
-                bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
-                unlimited_btn = InlineKeyboardMarkup([[InlineKeyboardButton("∞ Без ліміту", callback_data=f"promo_unlimited_{code}|{bonus_type}")]])
-                await q.edit_message_text(
-                    f"🎁 Промокод: *{code}*\n✅ Бонус: {bonus_name}\n\n🔢 Введіть кількість активацій (1–1 000 000)\nабо натисніть кнопку нижче:",
-                    parse_mode="Markdown", reply_markup=unlimited_btn
-                )
+        uid = q.from_user.id
+        if not is_admin(uid): return
+        bonus_type = data[12:]
+        state = user_states.get(uid)
+        if not isinstance(state, dict) or state.get("step") != "WAIT_PROMO_BONUS": return
+        state["bonus_type"] = bonus_type
+        state["step"] = "WAIT_PROMO_USES"
+        bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
+        await context.bot.send_message(uid, f"✅ Бонус: {bonus_name}\nВведіть кількість активацій (-1 = безліміт):")
         return
 
-    if data.startswith("promo_unlimited_"):
-        if is_admin(q.from_user.id):
-            payload = data[len("promo_unlimited_"):]
-            if "|" in payload:
-                code, bonus_type = payload.split("|", 1)
-                db_exec("INSERT OR REPLACE INTO promo_codes (code, bonus_type, bonus_value, uses_left, total_uses, created_at) VALUES (?,?,?,?,?,?)",
-                        (code, bonus_type, 0, -1, -1, created_at_now()))
-                db_exec("DELETE FROM used_promo_codes WHERE code=?", (code,))
-                user_states[q.from_user.id] = None
-                bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
-                await q.edit_message_text(f"✅ Промокод *{code}* створено!\n🎁 Бонус: {bonus_name}\n🔢 Активацій: ∞ безліміт", parse_mode="Markdown")
-        return
 
-    # ── Замовлення ────────────────────────────────────────────────────────────
-    parts = data.split("_", 1)
-    if len(parts) < 2: return
-    act, oid = parts[0], parts[1]
-
-    res = db_query_one("SELECT chat_id, pack, user, player_id FROM orders WHERE id=?", (oid,))
-    if not res: return
-
-    if act == "paid":
-        if MY_ID != 0:
-            try:
-                btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Готово", callback_data=f"ok_{oid}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{oid}")]])
-                price_row = db_query_one("SELECT amount FROM orders WHERE id=?", (oid,))
-                price_val = (price_row[0] if price_row and price_row[0] else get_pack_price(res[1]))
-                await context.bot.send_message(MY_ID, f"💰 ОПЛАТА!\n🆔 {oid}\n👤 {user_label(res[2], res[0])}\n🎁 {res[1]}\n🎮 ID: {res[3]}\n💵 Сума: {price_val} грн", reply_markup=btns)
-            except: pass
-        await q.edit_message_text("✅ Очікуйте нарахування!")
-
-    elif act == "ok":
-        db_exec("UPDATE orders SET status='done', completed_at=? WHERE id=?", (created_at_now(), oid))
-        ref = db_query_one("SELECT referrer_id FROM referrals WHERE referred_id=?", (res[0],))
-        if ref:
-            db_exec("INSERT INTO ref_discounts (user_id, created_at) VALUES (?,?)", (ref[0], created_at_now()))
-            try:
-                await context.bot.send_message(ref[0], "🎉 Ваш реферал зробив покупку! Ви отримали знижку 1% на наступне замовлення. 👥")
-            except: pass
-        rev_kb = InlineKeyboardMarkup([[InlineKeyboardButton("✍️ Залишити відгук", callback_data="leave_review")]])
-        await context.bot.send_message(res[0], f"✅ {res[1]} нараховано!", reply_markup=rev_kb)
-        await q.edit_message_text(f"✅ Виконано: {oid}")
-
-    elif act == "no":
-        db_exec("UPDATE orders SET status='canceled' WHERE id=?", (oid,))
-        try:
-            await context.bot.send_message(res[0], f"❌ Ваше замовлення ({res[1]}) відхилено. Зверніться в підтримку.")
-        except: pass
-        await q.edit_message_text(f"❌ Відхилено: {oid}")
-
-
-if __name__ == "__main__":
+# --- MAIN ---
+def main():
     start_policy_server()
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin_panel))
     app.add_handler(CommandHandler("shop", shop_command))
     app.add_handler(CommandHandler("buy", buy_command))
     app.add_handler(CommandHandler("support", support_command))
     app.add_handler(CommandHandler("policy", policy_command))
+    app.add_handler(CommandHandler("reviews", reviews_command))
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("history", history_command))
-    app.add_handler(CommandHandler("reviews", reviews_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("mypromos", mypromos_command))
+    app.add_handler(CommandHandler("admin", admin_panel))
     app.add_handler(CommandHandler("orders", orders_command))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("find", find_command))
     app.add_handler(CommandHandler("broadcast", broadcast_command))
+    app.add_handler(CommandHandler("achievements", achievements_command))
+    app.add_handler(CommandHandler("profile", profile_command))
+    app.add_handler(CommandHandler("setprice", setprice_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(callback))
-    print("🚀 БОТ ЗАПУЩЕНИЙ!")
+    logging.info("Бот запущено!")
     app.run_polling(drop_pending_updates=True)
+
+if __name__ == "__main__":
+    main()
