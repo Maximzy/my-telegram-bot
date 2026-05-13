@@ -7,6 +7,7 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{background:#0c0c14}
 :root{
   --bg:#0c0c14;--card:#181824;--card2:#1f1f2e;--acc:#e91e8c;--acc2:#ff4db8;
   --text:#e8e8f0;--muted:#8888a0;--success:#4caf50;--err:#f44336;--warn:#ff9800;
@@ -727,7 +728,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 'use strict';
 // ─── INIT ────────────────────────────────────────────────────────────────────
 const tg = window.Telegram?.WebApp;
-if (tg) { tg.expand(); tg.setHeaderColor?.('#0c0c14'); }
+if (tg) { tg.expand(); tg.setHeaderColor?.('#0c0c14'); tg.setBackgroundColor?.('#0c0c14'); }
 
 const BASE = window.location.origin;
 let uid = 0, uname = '';
@@ -1551,16 +1552,8 @@ async function approveWheel(spinId) {
 if (adminPass) showAdminPanel();
 
 // ─── ВІДНОВЛЕННЯ ПІСЛЯ ПОВЕРНЕННЯ В МІНІ-АПП ────────────────────────────────
-function fixRenderingArtifacts() {
-  // Force a GPU repaint to clear any stuck textures/layers
-  requestAnimationFrame(() => {
-    document.body.style.transform = 'translateZ(0)';
-    requestAnimationFrame(() => {
-      document.body.style.transform = '';
-    });
-  });
-
-  // Unblock spin button if animation got interrupted
+function onAppReactivated() {
+  // Unblock spin button if animation got interrupted while app was hidden
   if (spinning) {
     spinning = false;
     const fBtn = document.getElementById('freeSpinBtn');
@@ -1569,31 +1562,24 @@ function fixRenderingArtifacts() {
       fBtn.textContent = '🎰 Крутити (безкоштовно)';
     }
   }
-
-  // Clear any stuck will-change on wheel tapes
+  // Clear stuck will-change on wheel tapes
   ['fwTape', 'pwTape'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.style.willChange = 'auto'; el.style.transition = 'none'; }
   });
-
   // Close stuck modals
   document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
-
-  // Re-expand and apply colors
-  if (tg) {
-    tg.expand();
-    tg.setHeaderColor?.('#0c0c14');
-    tg.setBackgroundColor?.('#0c0c14');
-  }
 }
 
-// Fire on Telegram activation (user returns to mini app)
-if (tg) {
-  tg.onEvent('activated', fixRenderingArtifacts);
-  tg.onEvent('viewportChanged', () => {
-    requestAnimationFrame(fixRenderingArtifacts);
-  });
-}
+// Telegram activation event (user returns to mini app)
+// NOTE: do NOT call tg.expand() or tg.setHeaderColor here — those trigger
+// viewportChanged which would create an infinite loop causing visual glitches
+if (tg) tg.onEvent('activated', onAppReactivated);
+
+// Standard browser visibility fallback
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') onAppReactivated();
+});
 </script>
 </body>
 </html>
