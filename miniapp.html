@@ -1546,6 +1546,57 @@ async function approveWheel(spinId) {
 
 // ─── AUTO-SHOW ADMIN PANEL IF LOGGED IN ──────────────────────────────────────
 if (adminPass) showAdminPanel();
+
+// ─── ВІДНОВЛЕННЯ ПІСЛЯ ПОВЕРНЕННЯ В МІНІ-АПП ────────────────────────────────
+function resetAppState() {
+  // 1. Розблокувати рулетку якщо анімація зависла
+  spinning = false;
+  const fBtn = document.getElementById('freeSpinBtn');
+  if (fBtn && fBtn.textContent.includes('Крутимо')) {
+    fBtn.textContent = '🎰 Крутити (безкоштовно)';
+    fBtn.disabled = false;
+  }
+  // Скинути трансформації стрічок рулетки щоб не залишалось артефактів
+  ['fwTape', 'pwTape'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.style.transition = 'none'; }
+  });
+  // Переініціалізувати колесо якщо вкладка активна
+  if (document.getElementById('svc-wheel')?.style.display !== 'none') {
+    lazyLoaded['svc_wheel'] = false;
+    initWheel();
+  }
+
+  // 2. Закрити всі відкриті модальні вікна
+  document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+
+  // 3. Скинути магазин на початковий крок
+  ['shopPacks','shopId','shopPay','shopDone'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  const shopCats = document.getElementById('shopCats');
+  if (shopCats) shopCats.style.display = '';
+  curCat = null; curPack = null;
+  const gid = document.getElementById('gameIdInput');
+  if (gid) gid.value = '';
+
+  // 4. Повторно розгорнути WebApp та застосувати кольори
+  if (tg) {
+    tg.expand();
+    tg.setHeaderColor?.('#0c0c14');
+    tg.setBackgroundColor?.('#0c0c14');
+  }
+}
+
+// Спрацьовує коли користувач повертається до мінізастосунку
+if (tg) {
+  tg.onEvent('activated', resetAppState);
+}
+// Резервний варіант через стандартний браузерний API видимості
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') resetAppState();
+});
 </script>
 </body>
 </html>
