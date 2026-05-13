@@ -1081,6 +1081,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
 def start_policy_server():
     port = int(os.environ.get("PORT", 5000))
+    ThreadingHTTPServer.allow_reuse_address = True
     server = ThreadingHTTPServer(("0.0.0.0", port), PolicyHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     logging.info(f"Веб-сервер запущено на порту {port}")
