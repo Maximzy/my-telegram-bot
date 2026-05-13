@@ -1484,17 +1484,43 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_broadcast(update, context, message)
 
 async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, message):
+    # Збираємо всіх користувачів з усіх таблиць
     uids = set()
     for r in db_query("SELECT DISTINCT user_id FROM user_profile"):
         uids.add(r[0])
     for r in db_query("SELECT DISTINCT chat_id FROM orders WHERE chat_id IS NOT NULL"):
         uids.add(r[0])
+    for r in db_query("SELECT DISTINCT referrer_id FROM referrals"):
+        uids.add(r[0])
+    for r in db_query("SELECT DISTINCT referred_id FROM referrals"):
+        uids.add(r[0])
+    for r in db_query("SELECT DISTINCT user_id FROM user_bonuses"):
+        uids.add(r[0])
+    for r in db_query("SELECT DISTINCT user_id FROM user_achievements"):
+        uids.add(r[0])
+    for r in db_query("SELECT DISTINCT user_id FROM user_points"):
+        uids.add(r[0])
+
+    total = len(uids)
+    status_msg = await update.message.reply_text(f"📤 Розсилка почалась...\n👥 Всього одержувачів: {total}")
+
     sent = 0
+    failed = 0
     for chat_id in uids:
         try:
-            await context.bot.send_message(chat_id, message); sent += 1
-        except: pass
-    await update.message.reply_text(f"✅ Розсилку надіслано. Отримали: {sent}")
+            await context.bot.send_message(chat_id, message)
+            sent += 1
+        except Exception:
+            failed += 1
+
+    await context.bot.edit_message_text(
+        chat_id=update.effective_chat.id,
+        message_id=status_msg.message_id,
+        text=f"✅ Розсилку завершено!\n\n"
+             f"👥 Всього: {total}\n"
+             f"✉️ Надіслано: {sent}\n"
+             f"❌ Не доставлено: {failed} (заблокували бота)"
+    )
 
 
 # --- ГОЛОВНИЙ ОБРОБНИК ПОВІДОМЛЕНЬ ---
