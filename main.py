@@ -1413,11 +1413,38 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid):
         await update.message.reply_text("⛔ Тільки для адміна."); return
-    done_count = db_query_one("SELECT COUNT(*) FROM orders WHERE status='done'")[0]
+    done_count     = db_query_one("SELECT COUNT(*) FROM orders WHERE status='done'")[0]
     canceled_count = db_query_one("SELECT COUNT(*) FROM orders WHERE status='canceled'")[0]
-    total_sum = get_done_sum()
-    today_sum = get_done_sum(today_only=True)
-    await update.message.reply_text(f"📊 Статистика:\n✅ Виконано: {done_count}\n❌ Відхилено: {canceled_count}\n💰 Загальна сума: {total_sum} грн\n📅 Сьогодні: {today_sum} грн")
+    pending_count  = db_query_one("SELECT COUNT(*) FROM orders WHERE status='pending'")[0]
+    total_sum      = get_done_sum()
+    today_sum      = get_done_sum(today_only=True)
+    total_users    = db_query_one("SELECT COUNT(*) FROM user_profile")[0]
+    today          = datetime.now().strftime("%Y-%m-%d")
+    new_today      = db_query_one("SELECT COUNT(*) FROM user_profile WHERE first_seen LIKE ?", (f"{today}%",))[0]
+    banned_count   = db_query_one("SELECT COUNT(*) FROM banned_users")[0]
+    banned_rows    = db_query("SELECT user_id, reason, banned_at FROM banned_users ORDER BY banned_at DESC LIMIT 5")
+
+    text = (
+        f"📊 Статистика магазину\n"
+        f"{'─'*28}\n"
+        f"✅ Виконано замовлень: {done_count}\n"
+        f"⏳ Очікують: {pending_count}\n"
+        f"❌ Відхилено: {canceled_count}\n"
+        f"{'─'*28}\n"
+        f"💰 Загальна сума: {total_sum} грн\n"
+        f"📅 Сьогодні: {today_sum} грн\n"
+        f"{'─'*28}\n"
+        f"👥 Всього користувачів: {total_users}\n"
+        f"🆕 Нових сьогодні: {new_today}\n"
+        f"🚫 Заблоковано: {banned_count}\n"
+    )
+    if banned_rows:
+        text += f"\n🚫 Останні бани:\n"
+        for r in banned_rows:
+            text += f"  • ID {r[0]} — {r[1]} ({(r[2] or '')[:10]})\n"
+        if banned_count > 5:
+            text += f"  …та ще {banned_count - 5}. Повний список: /unban"
+    await update.message.reply_text(text)
 
 async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
