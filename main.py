@@ -212,7 +212,7 @@ def get_main_kb(uid):
         ""
     )
     if _domain:
-        kb = [[KeyboardButton("🌸 Відкрити Mini App", web_app=WebAppInfo(url=f"https://{_domain}/app"))]] + kb
+        kb = [["🌸 Відкрити Mini App"]] + kb
     return kb
 
 SHOP_KB = ReplyKeyboardMarkup(
@@ -1675,6 +1675,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "📄 Політика":
         await policy_command(update, context); return
+
+    if text == "🌸 Відкрити Mini App":
+        webapp_url = get_miniapp_url()
+        if webapp_url:
+            await update.message.reply_text(
+                "🌸 Натисни кнопку нижче щоб відкрити Mini App:",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🌸 Відкрити Mini App", web_app=WebAppInfo(url=webapp_url))
+                ]])
+            )
+        else:
+            await update.message.reply_text("❌ Mini App тимчасово недоступний.")
+        return
 
     # ── Пріоритетні стани ──────────────────────────────────────────────────────
 
