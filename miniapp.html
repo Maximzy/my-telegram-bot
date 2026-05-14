@@ -769,8 +769,23 @@ const BASE = window.location.origin;
 let uid = 0, uname = '';
 
 function refreshUser() {
+  // Спочатку пробуємо initDataUnsafe (вже розпарсений)
   const user = tg?.initDataUnsafe?.user;
-  if (user && user.id) { uid = user.id; uname = user.username || user.first_name || ''; }
+  if (user && user.id) { uid = user.id; uname = user.username || user.first_name || ''; return; }
+  // Fallback: парсимо initData вручну (рядок, як URLSearchParams)
+  try {
+    const raw = tg?.initData || window.location.hash.replace('#','');
+    if (raw) {
+      const params = new URLSearchParams(raw);
+      const userStr = params.get('user');
+      if (userStr) { const u = JSON.parse(userStr); if (u.id) { uid = u.id; uname = u.username || u.first_name || ''; return; } }
+    }
+  } catch(e) {}
+  // Останній fallback: з URL параметру ?uid= (для дебагу)
+  try {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('uid')) { uid = parseInt(p.get('uid')) || 0; }
+  } catch(e) {}
 }
 refreshUser();
 
@@ -1305,7 +1320,15 @@ async function loadProfile() {
   refreshUser();
   const u = tg?.initDataUnsafe?.user;
   document.getElementById('pName').textContent = u?.first_name || uname || 'Гравець';
-  document.getElementById('pId').textContent = uid ? 'Telegram ID: ' + uid : 'ID не визначено — відкрий через бот';
+  if (uid) {
+    document.getElementById('pId').textContent = 'Telegram ID: ' + uid;
+  } else {
+    const hasWA = !!window.Telegram?.WebApp;
+    const initDataLen = (tg?.initData || '').length;
+    const unsafeKeys = Object.keys(tg?.initDataUnsafe || {}).join(',') || 'пусто';
+    document.getElementById('pId').innerHTML =
+      `<span style="color:var(--err);font-size:11px">⚠ ID=0 | WebApp:${hasWA} | initData:${initDataLen}б | unsafe:${unsafeKeys}</span>`;
+  }
   if (!uid) return;
   try {
     const r = await api('/api/profile?user_id=' + uid);
