@@ -1587,26 +1587,28 @@ async function doRevokeAch() {
 }
 
 async function doFind() {
-  const oid = document.getElementById('findId').value.trim().toUpperCase();
+  const oid = document.getElementById('findId').value.trim();
   if (!oid) { toast('Введіть ID', 'error'); return; }
   const el = document.getElementById('findResult');
   el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
-  const r = await api(`/api/admin/find?password=${adminPass}&order_id=${oid}`);
+  const r = await api(`/api/admin/find?password=${adminPass}&order_id=${encodeURIComponent(oid)}`);
   if (!r.ok) { el.innerHTML = `<div class="empty">${esc(r.error || 'Не знайдено')}</div>`; return; }
-  const o = r.order;
   const cls = { pending: 's-pending', done: 's-done', canceled: 's-canceled' };
   const lbl = { pending: '⏳ Очікує', done: '✅ Виконано', canceled: '❌ Відхилено' };
-  el.innerHTML = `
+  const orderCard = o => `
     <div class="order-card">
       <div class="order-header"><span class="order-id">#${esc(o.id)}</span><span class="status-badge ${cls[o.status]||''}">${lbl[o.status]||o.status}</span></div>
       <div class="order-pack">${esc(o.pack)}</div>
-      <div class="order-meta">${esc(o.user)} · Chat ID: ${esc(o.chat_id)}</div>
-      <div class="order-meta">ID: ${esc(o.player_id)} · ${esc(o.created_at)} · ${esc(o.amount)} грн</div>
+      <div class="order-meta">${esc(o.user)} · Chat ID: ${esc(String(o.chat_id))}</div>
+      <div class="order-meta">🎮 ${esc(o.player_id)} · ${esc(o.created_at)} · ${esc(String(o.amount))} грн</div>
       ${o.status === 'pending' ? `<div class="order-acts">
         <button class="btn btn-sm" style="background:var(--success)" onclick="aAction('${esc(o.id)}','ok')">✅ Виконано</button>
         <button class="btn btn-sm btn-danger" onclick="aAction('${esc(o.id)}','no')">❌ Відхилити</button>
       </div>` : ''}
     </div>`;
+  const orders = r.orders || [r.order];
+  const header = orders.length > 1 ? `<div class="section-title" style="margin-bottom:8px">🔎 Знайдено: ${orders.length}</div>` : '';
+  el.innerHTML = header + orders.map(orderCard).join('');
 }
 
 async function doBroadcast() {

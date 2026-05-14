@@ -716,16 +716,26 @@ class PolicyHandler(BaseHTTPRequestHandler):
             pwd = params.get("password", "")
             if pwd != ADMIN_PASSWORD:
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
-            order_id = params.get("order_id", "").strip().upper()
-            if not order_id:
+            query = params.get("order_id", "").strip()
+            if not query:
                 _json_response(self, {"ok": False, "error": "Вкажи ID замовлення"}); return
-            row = db_query_one("SELECT id, user, pack, status, chat_id, player_id, created_at, amount FROM orders WHERE id=?", (order_id,))
-            if not row:
+            query_upper = query.upper()
+            query_lower = query.lower().lstrip("@")
+            sel = "SELECT id, user, pack, status, chat_id, player_id, created_at, amount FROM orders"
+            rows = (
+                db_query(f"{sel} WHERE id=?", (query_upper,)) or
+                db_query(f"{sel} WHERE player_id=?", (query,)) or
+                db_query(f"{sel} WHERE LOWER(user)=?", (query_lower,)) or
+                db_query(f"{sel} WHERE id LIKE ? OR player_id LIKE ? OR LOWER(user) LIKE ? ORDER BY rowid DESC LIMIT 10",
+                         (f"%{query_upper}%", f"%{query}%", f"%{query_lower}%"))
+            )
+            if not rows:
                 _json_response(self, {"ok": False, "error": "Замовлення не знайдено"}); return
-            order = {"id": row[0], "user": f"@{row[1]}" if row[1] else str(row[4]),
-                     "pack": row[2], "status": row[3], "chat_id": row[4],
-                     "player_id": row[5], "created_at": (row[6] or "")[:16], "amount": row[7] or "?"}
-            _json_response(self, {"ok": True, "order": order}); return
+            orders = [{"id": r[0], "user": f"@{r[1]}" if r[1] else str(r[4]),
+                       "pack": r[2], "status": r[3], "chat_id": r[4],
+                       "player_id": r[5], "created_at": (r[6] or "")[:16], "amount": r[7] or "?"} for r in rows]
+            result = orders[0] if len(orders) == 1 else orders
+            _json_response(self, {"ok": True, "order": result, "orders": orders, "count": len(orders)}); return
 
         if path == "/api/admin/pending-wheels":
             pwd = params.get("password", "")
@@ -1600,11 +1610,24 @@ async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(uid):
         await update.message.reply_text("⛔ Тільки для адміна."); return
     if not context.args:
-        await update.message.reply_text("Використання: /find ID_замовлення"); return
-    order = db_query_one("SELECT id, user, pack, status, chat_id, player_id FROM orders WHERE id=?", (context.args[0].upper(),))
-    if not order:
+        await update.message.reply_text("Використання: /find <ID замовлення або ігровий ID або @юзернейм>"); return
+    query = context.args[0].strip()
+    query_upper = query.upper()
+    query_lower = query.lower().lstrip("@")
+    orders = (
+        db_query("SELECT id, user, pack, status, chat_id, player_id, amount FROM orders WHERE id=?", (query_upper,)) or
+        db_query("SELECT id, user, pack, status, chat_id, player_id, amount FROM orders WHERE player_id=?", (query,)) or
+        db_query("SELECT id, user, pack, status, chat_id, player_id, amount FROM orders WHERE LOWER(user)=?", (query_lower,)) or
+        db_query("SELECT id, user, pack, status, chat_id, player_id, amount FROM orders WHERE id LIKE ? OR player_id LIKE ? OR LOWER(user) LIKE ?",
+                 (f"%{query_upper}%", f"%{query}%", f"%{query_lower}%"))
+    )
+    if not orders:
         await update.message.reply_text("📭 Замовлення не знайдено."); return
-    await update.message.reply_text(f"🔎 Замовлення:\n🆔 {order[0]}\n👤 {user_label(order[1], order[4])}\n🎁 {order[2]}\n🎮 ID: {order[5]}\n📌 {status_text(order[3])}\n💬 Chat ID: {order[4]}")
+    lines = []
+    for o in orders[:10]:
+        lines.append(f"🆔 {o[0]} | {status_text(o[3])}\n👤 {user_label(o[1], o[2])}\n🎁 {o[2]}\n🎮 ID: {o[5]}\n💵 {o[6] or '?'} грн\n")
+    header = f"🔎 Знайдено: {len(orders)} замовлень\n\n" if len(orders) > 1 else "🔎 Замовлення:\n\n"
+    await update.message.reply_text(header + "\n".join(lines))
 
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
