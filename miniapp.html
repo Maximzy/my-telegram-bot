@@ -1116,7 +1116,7 @@ async function activatePromo() {
 // ─── REFERRAL ────────────────────────────────────────────────────────────────
 async function loadReferral() {
   refreshUser();
-  const botName = 'NezukoUCBot';
+  const botName = 'Nezuko_UCShopbot';
   const link = `https://t.me/${botName}?start=ref_${uid}`;
   document.getElementById('refLinkEl').textContent = link;
   const r = await api('/api/referral-stats?user_id=' + uid);
