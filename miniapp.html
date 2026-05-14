@@ -763,12 +763,16 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 'use strict';
 // ─── INIT ────────────────────────────────────────────────────────────────────
 const tg = window.Telegram?.WebApp;
-if (tg) { tg.expand(); tg.setHeaderColor?.('#070711'); tg.setBackgroundColor?.('#070711'); }
+if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor?.('#070711'); tg.setBackgroundColor?.('#070711'); }
 
 const BASE = window.location.origin;
 let uid = 0, uname = '';
-const user = tg?.initDataUnsafe?.user;
-if (user) { uid = user.id || 0; uname = user.username || user.first_name || ''; }
+
+function refreshUser() {
+  const user = tg?.initDataUnsafe?.user;
+  if (user && user.id) { uid = user.id; uname = user.username || user.first_name || ''; }
+}
+refreshUser();
 
 let adminPass = sessionStorage.getItem('ap') || '';
 let visitTs = Date.now();
@@ -825,7 +829,10 @@ refreshOnline();
 setInterval(refreshOnline, 30000);
 
 // ─── TRACK VISIT ─────────────────────────────────────────────────────────────
-if (uid) api('/api/track-visit', 'POST', { user_id: uid }).catch(() => {});
+setTimeout(() => {
+  refreshUser();
+  if (uid) api('/api/track-visit', 'POST', { user_id: uid }).catch(() => {});
+}, 300);
 
 // ─── BOTTOM NAV ──────────────────────────────────────────────────────────────
 let lazyLoaded = {};
@@ -1011,6 +1018,7 @@ function resetShop() {
 
 // ─── ORDERS ──────────────────────────────────────────────────────────────────
 async function loadOrders() {
+  refreshUser();
   const el = document.getElementById('ordersList');
   el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
   const r = await api('/api/all-orders?user_id=' + uid);
@@ -1068,6 +1076,7 @@ async function activatePromo() {
 
 // ─── REFERRAL ────────────────────────────────────────────────────────────────
 async function loadReferral() {
+  refreshUser();
   const botName = 'NezukoUCBot';
   const link = `https://t.me/${botName}?start=ref_${uid}`;
   document.getElementById('refLinkEl').textContent = link;
@@ -1293,9 +1302,11 @@ async function buyPointsItem(itemId) {
 
 // ─── PROFILE ─────────────────────────────────────────────────────────────────
 async function loadProfile() {
+  refreshUser();
   const u = tg?.initDataUnsafe?.user;
   document.getElementById('pName').textContent = u?.first_name || uname || 'Гравець';
-  document.getElementById('pId').textContent = 'Telegram ID: ' + uid;
+  document.getElementById('pId').textContent = uid ? 'Telegram ID: ' + uid : 'ID не визначено — відкрий через бот';
+  if (!uid) return;
   try {
     const r = await api('/api/profile?user_id=' + uid);
     if (r.ok) {
