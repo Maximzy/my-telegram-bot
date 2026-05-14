@@ -749,6 +749,30 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         path = self.path.split("?")[0]
 
+        if path == "/api/resolve-user":
+            import hmac, hashlib
+            init_data = str(data.get("init_data", ""))
+            if not init_data:
+                _json_response(self, {"ok": False, "error": "no init_data"}); return
+            try:
+                parsed = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
+                received_hash = parsed.pop("hash", "")
+                data_check = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+                secret = hmac.new(b"WebAppData", TOKEN.encode(), hashlib.sha256).digest()
+                computed = hmac.new(secret, data_check.encode(), hashlib.sha256).hexdigest()
+                if computed != received_hash:
+                    _json_response(self, {"ok": False, "error": "invalid hash"}); return
+                user_str = parsed.get("user", "")
+                user_obj = json.loads(user_str) if user_str else {}
+                user_id = int(user_obj.get("id", 0))
+                uname_val = user_obj.get("username") or user_obj.get("first_name") or ""
+                if not user_id:
+                    _json_response(self, {"ok": False, "error": "no user"}); return
+                update_user_profile(user_id)
+                _json_response(self, {"ok": True, "user_id": user_id, "username": uname_val}); return
+            except Exception as e:
+                _json_response(self, {"ok": False, "error": str(e)}); return
+
         if path == "/api/track-visit":
             user_id = int(data.get("user_id", 0))
             if user_id:

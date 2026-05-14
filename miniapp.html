@@ -768,23 +768,35 @@ if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor?.('#070711'); tg.setBackgro
 const BASE = window.location.origin;
 let uid = 0, uname = '';
 
+function parseUserFromStr(str) {
+  if (!str) return null;
+  try { const u = JSON.parse(str); if (u && u.id) return u; } catch(e) {}
+  try { const u = JSON.parse(decodeURIComponent(str)); if (u && u.id) return u; } catch(e) {}
+  return null;
+}
 function refreshUser() {
-  // Спочатку пробуємо initDataUnsafe (вже розпарсений)
-  const user = tg?.initDataUnsafe?.user;
-  if (user && user.id) { uid = user.id; uname = user.username || user.first_name || ''; return; }
-  // Fallback: парсимо initData вручну (рядок, як URLSearchParams)
+  // 1. initDataUnsafe — SDK вже розпарсив
+  const u1 = tg?.initDataUnsafe?.user;
+  if (u1?.id) { uid = parseInt(u1.id) || 0; uname = u1.username || u1.first_name || ''; if (uid) return; }
+  // 2. Парсимо tg.initData вручну
+  const rawData = tg?.initData || '';
+  if (rawData) {
+    try {
+      const p = new URLSearchParams(rawData);
+      const u2 = parseUserFromStr(p.get('user'));
+      if (u2?.id) { uid = parseInt(u2.id) || 0; uname = u2.username || u2.first_name || ''; if (uid) return; }
+    } catch(e) {}
+  }
+  // 3. Парсимо URL hash (#tgWebAppData=...)
   try {
-    const raw = tg?.initData || window.location.hash.replace('#','');
-    if (raw) {
-      const params = new URLSearchParams(raw);
-      const userStr = params.get('user');
-      if (userStr) { const u = JSON.parse(userStr); if (u.id) { uid = u.id; uname = u.username || u.first_name || ''; return; } }
+    const hash = window.location.hash.slice(1);
+    if (hash) {
+      const hp = new URLSearchParams(hash);
+      const tgData = hp.get('tgWebAppData') || hash;
+      const dp = new URLSearchParams(decodeURIComponent(tgData));
+      const u3 = parseUserFromStr(dp.get('user'));
+      if (u3?.id) { uid = parseInt(u3.id) || 0; uname = u3.username || u3.first_name || ''; if (uid) return; }
     }
-  } catch(e) {}
-  // Останній fallback: з URL параметру ?uid= (для дебагу)
-  try {
-    const p = new URLSearchParams(window.location.search);
-    if (p.get('uid')) { uid = parseInt(p.get('uid')) || 0; }
   } catch(e) {}
 }
 refreshUser();
@@ -843,11 +855,23 @@ async function refreshOnline() {
 refreshOnline();
 setInterval(refreshOnline, 30000);
 
-// ─── TRACK VISIT ─────────────────────────────────────────────────────────────
-setTimeout(() => {
+// ─── INIT USER (клієнт + сервер fallback) ────────────────────────────────────
+async function initUser() {
   refreshUser();
-  if (uid) api('/api/track-visit', 'POST', { user_id: uid }).catch(() => {});
-}, 300);
+  if (uid) { api('/api/track-visit', 'POST', { user_id: uid }).catch(() => {}); return; }
+  // Якщо uid досі 0 — верифікуємо initData на сервері
+  const rawData = tg?.initData || '';
+  if (!rawData) return;
+  try {
+    const r = await api('/api/resolve-user', 'POST', { init_data: rawData });
+    if (r.ok && r.user_id) {
+      uid = r.user_id;
+      uname = r.username || '';
+      api('/api/track-visit', 'POST', { user_id: uid }).catch(() => {});
+    }
+  } catch(e) {}
+}
+setTimeout(initUser, 150);
 
 // ─── BOTTOM NAV ──────────────────────────────────────────────────────────────
 let lazyLoaded = {};
@@ -1320,15 +1344,14 @@ async function loadProfile() {
   refreshUser();
   const u = tg?.initDataUnsafe?.user;
   document.getElementById('pName').textContent = u?.first_name || uname || 'Гравець';
-  if (uid) {
-    document.getElementById('pId').textContent = 'Telegram ID: ' + uid;
-  } else {
-    const hasWA = !!window.Telegram?.WebApp;
-    const initDataLen = (tg?.initData || '').length;
-    const unsafeKeys = Object.keys(tg?.initDataUnsafe || {}).join(',') || 'пусто';
-    document.getElementById('pId').innerHTML =
-      `<span style="color:var(--err);font-size:11px">⚠ ID=0 | WebApp:${hasWA} | initData:${initDataLen}б | unsafe:${unsafeKeys}</span>`;
+  // Якщо uid ще 0 — чекаємо на initUser (сервер-верифікація)
+  if (!uid && tg?.initData) {
+    await initUser();
+    // Перечитуємо після очікування
+    const u2 = tg?.initDataUnsafe?.user;
+    if (u2?.first_name) document.getElementById('pName').textContent = u2.first_name;
   }
+  document.getElementById('pId').textContent = uid ? 'Telegram ID: ' + uid : '—';
   if (!uid) return;
   try {
     const r = await api('/api/profile?user_id=' + uid);
