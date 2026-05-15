@@ -1535,6 +1535,31 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"  …та ще {banned_count - 5}. Повний список: /unban"
     await update.message.reply_text(text)
 
+async def importdb_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if uid != MY_ID:
+        await update.message.reply_text("⛔ Тільки для власника бота."); return
+    user_states[uid] = "WAIT_DB_FILE"
+    await update.message.reply_text(
+        "📂 Надішліть файл бази даних (.db) у відповідь на це повідомлення.\n\n"
+        "⚠️ Поточна база буде замінена! Перед заміною автоматично збережеться резервна копія.\n\n"
+        "Для скасування надішліть /cancel"
+    )
+
+
+def reconnect_db(new_path: str):
+    global conn
+    with db_lock:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        conn = sqlite3.connect(new_path, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=FULL")
+        conn.commit()
+
+
 async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid):
@@ -1568,6 +1593,53 @@ async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_T
     uid = update.effective_user.id
     if not is_admin(uid): return
     if is_banned(uid): return
+
+    if user_states.get(uid) == "WAIT_DB_FILE" and uid == MY_ID:
+        user_states[uid] = None
+        doc = update.message.document
+        if not doc or not doc.file_name:
+            await update.message.reply_text("❌ Надішліть саме файл .db"); return
+        if not doc.file_name.endswith(".db"):
+            await update.message.reply_text("❌ Файл повинен мати розширення .db"); return
+        await update.message.reply_text("⏳ Завантажую файл та перевіряю...")
+        try:
+            import shutil, tempfile
+            tg_file = await context.bot.get_file(doc.file_id)
+            tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+            tmp.close()
+            await tg_file.download_to_drive(tmp.name)
+            # Validate SQLite magic bytes
+            with open(tmp.name, "rb") as f:
+                magic = f.read(16)
+            if not magic.startswith(b"SQLite format 3"):
+                os.remove(tmp.name)
+                await update.message.reply_text("❌ Файл не є базою SQLite. Операцію скасовано."); return
+            # Backup current db
+            ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            backup_path = os.path.join(os.path.dirname(DB_PATH), f"backup_before_import_{ts}.db")
+            with db_lock:
+                src = sqlite3.connect(DB_PATH)
+                dst = sqlite3.connect(backup_path)
+                src.backup(dst)
+                dst.close()
+                src.close()
+            # Replace db file
+            shutil.copy2(tmp.name, DB_PATH)
+            os.remove(tmp.name)
+            # Reconnect
+            reconnect_db(DB_PATH)
+            await update.message.reply_text(
+                f"✅ База даних успішно замінена!\n\n"
+                f"📦 Резервна копія збережена:\n`backup_before_import_{ts}.db`\n\n"
+                f"🔄 Бот переключився на нову базу.",
+                parse_mode="Markdown"
+            )
+            logging.info(f"DB imported by owner {uid}, backup: {backup_path}")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Помилка імпорту: {e}")
+            logging.error(f"DB import error: {e}")
+        return
+
     if user_states.get(uid) == "WAIT_BROADCAST":
         user_states[uid] = "ADMIN_MODE"
         await send_broadcast(update, context, update.message)
@@ -2155,6 +2227,7 @@ def main():
     app.add_handler(CommandHandler("profile", profile_command))
     app.add_handler(CommandHandler("setprice", setprice_command))
     app.add_handler(CommandHandler("backup", backup_command))
+    app.add_handler(CommandHandler("importdb", importdb_command))
     app.add_handler(CommandHandler("ban", ban_command))
     app.add_handler(CommandHandler("unban", unban_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
