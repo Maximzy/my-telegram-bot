@@ -2271,7 +2271,7 @@ def main():
         handle_broadcast_media
     ))
     app.add_handler(CallbackQueryHandler(callback))
-    app.job_queue.run_repeating(_send_db_to_owner, interval=3600, first=30)
+    app.job_queue.run_repeating(_send_db_to_owner, interval=3600, first=3600)
     logging.info("Бот запущено!")
     app.run_polling(drop_pending_updates=True)
 

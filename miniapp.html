@@ -422,7 +422,23 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div style="font-size:13px;font-weight:600;margin-bottom:6px">Як отримати?</div>
         <div style="font-size:12px;color:var(--muted);line-height:1.6">1. Натисни кнопку нижче<br>2. Оплати 40 грн на картку адміна<br>3. Адмін підтвердить і крутне колесо<br>4. Приз прийде автоматично!</div>
       </div>
-      <button class="btn-purple" onclick="reqPaidSpin()">💎 Замовити платне колесо (40 грн)</button>
+      <button class="btn-purple" id="paidSpinOrderBtn" onclick="reqPaidSpin()">💎 Замовити платне колесо (40 грн)</button>
+
+      <!-- Платна рулетка — екран оплати -->
+      <div id="paidSpinPay" style="display:none;margin-top:12px">
+        <div class="back-btn" onclick="cancelPaidSpinPay()">← Назад</div>
+        <div class="card">
+          <div class="section-title" style="margin-top:0">💎 Платне колесо</div>
+          <div style="font-size:14px;margin-bottom:4px">Вартість: <span style="font-weight:800;color:var(--acc)">40 грн</span></div>
+          <div style="font-size:12px;color:var(--muted)">Адмін отримає запит і крутне колесо особисто</div>
+        </div>
+        <div class="card">
+          <div class="section-title" style="margin-top:0">💳 Оплата карткою</div>
+          <div style="font-size:17px;font-weight:700;letter-spacing:2px;color:var(--acc);cursor:pointer;margin-bottom:6px" onclick="copyCard()">4874 0700 2036 7247</div>
+          <div style="font-size:11px;color:var(--muted);cursor:pointer" onclick="copyCard()">Натисніть щоб скопіювати картку</div>
+        </div>
+        <button class="btn-purple" id="paidSpinConfirmBtn" onclick="submitPaidSpin()">✅ Я оплатив</button>
+      </div>
     </div>
 
     <!-- Top -->
@@ -1343,12 +1359,28 @@ async function doFreeSpin() {
   }, 6400);
 }
 
-async function reqPaidSpin() {
+function reqPaidSpin() {
   if (!uid) { toast('Відкрийте через Telegram', 'error'); return; }
-  if (!confirm('Платне колесо коштує 40 грн.\nНадіслати запит адміну?')) return;
+  document.getElementById('paidSpinOrderBtn').style.display = 'none';
+  showWithAnim(document.getElementById('paidSpinPay'));
+}
+
+function cancelPaidSpinPay() {
+  document.getElementById('paidSpinPay').style.display = 'none';
+  document.getElementById('paidSpinOrderBtn').style.display = '';
+}
+
+async function submitPaidSpin() {
+  if (!uid) { toast('Відкрийте через Telegram', 'error'); return; }
+  const btn = document.getElementById('paidSpinConfirmBtn');
+  btn.disabled = true; btn.textContent = 'Відправляємо...';
   const r = await api('/api/wheel/spin-paid', 'POST', { user_id: uid, username: uname });
-  if (r.ok) { toast(r.message, 'success'); }
-  else toast(r.error || 'Помилка', 'error');
+  btn.disabled = false; btn.textContent = '✅ Я оплатив';
+  if (r.ok) {
+    document.getElementById('paidSpinPay').style.display = 'none';
+    document.getElementById('paidSpinOrderBtn').style.display = '';
+    toast(r.message || 'Запит надіслано! Адмін скоро крутне колесо 🎰', 'success');
+  } else toast(r.error || 'Помилка', 'error');
 }
 
 function showPrizeReveal(prize) {
