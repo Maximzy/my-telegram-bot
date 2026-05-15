@@ -72,6 +72,16 @@ if "total_uses" not in _pc_cols:
     _c.execute("ALTER TABLE promo_codes ADD COLUMN total_uses INTEGER DEFAULT -1")
 if "secret" not in _pc_cols:
     _c.execute("ALTER TABLE promo_codes ADD COLUMN secret INTEGER DEFAULT 0")
+if "min_uc" not in _pc_cols:
+    _c.execute("ALTER TABLE promo_codes ADD COLUMN min_uc INTEGER DEFAULT 0")
+if "max_uc" not in _pc_cols:
+    _c.execute("ALTER TABLE promo_codes ADD COLUMN max_uc INTEGER DEFAULT 0")
+_c.execute("PRAGMA table_info(user_bonuses)")
+_ub_cols = [r[1] for r in _c.fetchall()]
+if "min_uc" not in _ub_cols:
+    _c.execute("ALTER TABLE user_bonuses ADD COLUMN min_uc INTEGER DEFAULT 0")
+if "max_uc" not in _ub_cols:
+    _c.execute("ALTER TABLE user_bonuses ADD COLUMN max_uc INTEGER DEFAULT 0")
 # Нові таблиці
 _c.execute("CREATE TABLE IF NOT EXISTS user_achievements (user_id INTEGER, achievement_id TEXT, granted_at TEXT, PRIMARY KEY (user_id, achievement_id))")
 _c.execute("CREATE TABLE IF NOT EXISTS user_points (user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0)")
@@ -538,12 +548,20 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/bonuses":
             user_id = int(params.get("user_id", 0))
-            bonuses_raw = db_query("SELECT bonus_type, bonus_value FROM user_bonuses WHERE user_id=? AND used=0", (user_id,))
+            bonuses_raw = db_query("SELECT bonus_type, bonus_value, min_uc, max_uc FROM user_bonuses WHERE user_id=? AND used=0", (user_id,))
             ref_disc = db_query("SELECT id FROM ref_discounts WHERE user_id=?", (user_id,))
-            counts = {}
-            for bt, _ in bonuses_raw:
-                counts[bt] = counts.get(bt, 0) + 1
+            # For custom discounts keep each entry separate (need min_uc/max_uc), group the rest
             result = []
+            counts = {}
+            for bt, bv, min_uc, max_uc in bonuses_raw:
+                if bt.startswith("discount_custom_"):
+                    pct = 0
+                    try: pct = int(bt.split("_")[2])
+                    except: pass
+                    label = f"💸 Знижка {pct}% ({min_uc}–{max_uc} UC)"
+                    result.append({"type": bt, "name": label, "count": 1, "min_uc": min_uc or 0, "max_uc": max_uc or 0})
+                else:
+                    counts[bt] = counts.get(bt, 0) + 1
             for bt, cnt in counts.items():
                 result.append({"type": bt, "name": BONUS_TYPES.get(bt, bt), "count": cnt})
             if ref_disc:
@@ -827,22 +845,20 @@ class PolicyHandler(BaseHTTPRequestHandler):
             already = db_query_one("SELECT 1 FROM used_promo_codes WHERE user_id=? AND code=?", (user_id, code))
             if already:
                 _json_response(self, {"ok": False, "error": "Промокод вже використано"}); return
-            promo = db_query_one("SELECT bonus_type, bonus_value, uses_left, secret FROM promo_codes WHERE code=?", (code,))
+            promo = db_query_one("SELECT bonus_type, bonus_value, uses_left, secret, min_uc, max_uc FROM promo_codes WHERE code=?", (code,))
             if not promo:
                 _json_response(self, {"ok": False, "error": "Промокод не знайдено"}); return
-            bonus_type, bonus_value, uses_left, is_secret = promo
+            bonus_type, bonus_value, uses_left, is_secret, promo_min_uc, promo_max_uc = promo
             if uses_left is not None and uses_left != -1 and uses_left <= 0:
                 _json_response(self, {"ok": False, "error": "Промокод вичерпано"}); return
-            # Check if limited (for "precise" achievement)
             was_limited = uses_left is not None and uses_left != -1
             db_exec("INSERT OR IGNORE INTO used_promo_codes (user_id, code) VALUES (?,?)", (user_id, code))
-            # Handle points bonus types
             if bonus_type.startswith("points_"):
                 pts = int(bonus_type.split("_")[1])
                 add_points(user_id, pts, f"Промокод {code}")
             else:
-                db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, created_at) VALUES (?,?,?,?)",
-                        (user_id, bonus_type, bonus_value or 1, created_at_now()))
+                db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, min_uc, max_uc, created_at) VALUES (?,?,?,?,?,?)",
+                        (user_id, bonus_type, bonus_value or 1, promo_min_uc or 0, promo_max_uc or 0, created_at_now()))
             if uses_left is not None and uses_left != -1:
                 db_exec("UPDATE promo_codes SET uses_left=uses_left-1 WHERE code=?", (code,))
             if is_secret:
@@ -850,10 +866,16 @@ class PolicyHandler(BaseHTTPRequestHandler):
             if was_limited:
                 grant_achievement(user_id, "precise")
             check_achievements(user_id)
-            bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
-            if bonus_type.startswith("points_"):
+            if bonus_type.startswith("discount_custom_"):
+                pct = 0
+                try: pct = int(bonus_type.split("_")[2])
+                except: pass
+                bonus_name = f"💸 Знижка {pct}% ({promo_min_uc}–{promo_max_uc} UC)"
+            elif bonus_type.startswith("points_"):
                 pts = int(bonus_type.split("_")[1])
                 bonus_name = f"🪙 {pts} балів"
+            else:
+                bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
             _json_response(self, {"ok": True, "message": f"Бонус активовано: {bonus_name}"}); return
 
         if path == "/api/submit-review":
@@ -1024,17 +1046,30 @@ class PolicyHandler(BaseHTTPRequestHandler):
             bonus_type = str(data.get("bonus_type", ""))
             uses = int(data.get("uses", -1))
             is_secret = int(bool(data.get("secret", False)))
+            promo_min_uc = int(data.get("min_uc", 0))
+            promo_max_uc = int(data.get("max_uc", 0))
+            discount_pct = int(data.get("discount_pct", 0))
             if not code or not bonus_type:
                 _json_response(self, {"ok": False, "error": "Заповни всі поля"}); return
-            all_types = list(BONUS_TYPES.keys()) + ["points_50","points_100","points_200","points_500"]
-            if bonus_type not in all_types:
+            # Allow discount_custom_X type
+            if bonus_type == "discount_custom":
+                if discount_pct < 1 or discount_pct > 99:
+                    _json_response(self, {"ok": False, "error": "Відсоток знижки має бути від 1 до 99"}); return
+                if promo_min_uc <= 0 or promo_max_uc <= 0 or promo_min_uc >= promo_max_uc:
+                    _json_response(self, {"ok": False, "error": "Невірний діапазон UC"}); return
+                bonus_type = f"discount_custom_{discount_pct}"
+                all_types_ok = True
+            else:
+                all_types = list(BONUS_TYPES.keys()) + ["points_50","points_100","points_200","points_500"]
+                all_types_ok = bonus_type in all_types
+            if not all_types_ok:
                 _json_response(self, {"ok": False, "error": "Невідомий тип бонусу"}); return
             existing = db_query_one("SELECT 1 FROM promo_codes WHERE code=?", (code,))
             if existing:
                 _json_response(self, {"ok": False, "error": "Промокод вже існує"}); return
             db_exec(
-                "INSERT INTO promo_codes (code, bonus_type, bonus_value, uses_left, total_uses, created_at, secret) VALUES (?,?,?,?,?,?,?)",
-                (code, bonus_type, 1, uses, uses, created_at_now(), is_secret)
+                "INSERT INTO promo_codes (code, bonus_type, bonus_value, uses_left, total_uses, created_at, secret, min_uc, max_uc) VALUES (?,?,?,?,?,?,?,?,?)",
+                (code, bonus_type, 1, uses, uses, created_at_now(), is_secret, promo_min_uc, promo_max_uc)
             )
             _json_response(self, {"ok": True, "message": f"Промокод {code} створено"}); return
 
@@ -1222,6 +1257,11 @@ def get_done_sum(today_only=False):
     return sum(get_pack_price(r[0]) for r in rows)
 
 def get_user_discount(uid, pack_name):
+    # Extract UC amount from pack name for range checks
+    pack_uc = 0
+    m = re.search(r"^(\d+)\s*UC", pack_name)
+    if m:
+        pack_uc = int(m.group(1))
     if pack_name in SMALL_UC:
         for pct in [5, 4, 3, 2, 1]:
             b = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type=? AND used=0 LIMIT 1", (uid, f"discount_small_{pct}"))
@@ -1230,6 +1270,21 @@ def get_user_discount(uid, pack_name):
         for pct in [2, 1]:
             b = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type=? AND used=0 LIMIT 1", (uid, f"discount_medium_{pct}"))
             if b: return pct, "promo", b[0]
+    # Check custom range discounts
+    if pack_uc > 0:
+        custom = db_query("SELECT id, bonus_type, min_uc, max_uc FROM user_bonuses WHERE user_id=? AND bonus_type LIKE 'discount_custom_%' AND used=0", (uid,))
+        best_pct, best_id = 0, None
+        for row in custom:
+            bid, bt, min_uc, max_uc = row
+            if (min_uc or 0) <= pack_uc <= (max_uc or 0):
+                try:
+                    pct = int(bt.split("_")[2])
+                except:
+                    pct = 0
+                if pct > best_pct:
+                    best_pct, best_id = pct, bid
+        if best_pct > 0:
+            return best_pct, "promo", best_id
     r = db_query_one("SELECT id FROM ref_discounts WHERE user_id=? LIMIT 1", (uid,))
     if r: return 1, "ref", r[0]
     return 0, None, None
@@ -1729,13 +1784,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == "WAIT_PROMO_CODE":
         user_states[uid] = None
         code = text.upper().strip().replace(" ", "")
-        promo = db_query_one("SELECT bonus_type, bonus_value, uses_left, total_uses, secret FROM promo_codes WHERE code=?", (code,))
+        promo = db_query_one("SELECT bonus_type, bonus_value, uses_left, total_uses, secret, min_uc, max_uc FROM promo_codes WHERE code=?", (code,))
         if not promo:
             await update.message.reply_text("❌ Промокод не знайдено.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
         already = db_query_one("SELECT 1 FROM used_promo_codes WHERE user_id=? AND code=?", (uid, code))
         if already:
             await update.message.reply_text("❌ Вже використано.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
-        bonus_type, bonus_value, uses_left, total_uses, is_secret = promo
+        bonus_type, bonus_value, uses_left, total_uses, is_secret, promo_min_uc, promo_max_uc = promo
         if uses_left is not None and uses_left != -1 and uses_left <= 0:
             await update.message.reply_text("❌ Промокод вичерпано.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
         was_limited = uses_left is not None and uses_left != -1
@@ -1744,7 +1799,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pts = int(bonus_type.split("_")[1])
             add_points(uid, pts, f"Промокод {code}")
         else:
-            db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)", (uid, bonus_type, bonus_value or 1, created_at_now()))
+            db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, min_uc, max_uc, used, created_at) VALUES (?,?,?,?,?,0,?)",
+                    (uid, bonus_type, bonus_value or 1, promo_min_uc or 0, promo_max_uc or 0, created_at_now()))
         if uses_left is not None and uses_left != -1:
             new_uses = uses_left - 1
             if new_uses <= 0:
@@ -1757,9 +1813,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if was_limited:
             grant_achievement(uid, "precise")
         check_achievements(uid)
-        bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
-        if bonus_type.startswith("points_"):
+        if bonus_type.startswith("discount_custom_"):
+            try: pct = int(bonus_type.split("_")[2])
+            except: pct = 0
+            bonus_name = f"💸 Знижка {pct}% ({promo_min_uc}–{promo_max_uc} UC)"
+        elif bonus_type.startswith("points_"):
             bonus_name = f"🪙 {int(bonus_type.split('_')[1])} балів"
+        else:
+            bonus_name = BONUS_TYPES.get(bonus_type, bonus_type)
         kb = ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)
         await update.message.reply_text(f"✅ Промокод активовано!\n🎁 Бонус: {bonus_name}", reply_markup=kb)
         return

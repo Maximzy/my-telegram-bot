@@ -631,6 +631,9 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
               <option value="discount_medium_1">Знижка 1% (середні 1800–8100)</option>
               <option value="discount_medium_2">Знижка 2% (середні 1800–8100)</option>
             </optgroup>
+            <optgroup label="🎯 Знижка (свій діапазон UC)">
+              <option value="discount_custom">💸 Знижка % (будь-який діапазон)</option>
+            </optgroup>
             <optgroup label="🪙 Бали">
               <option value="points_50">50 балів</option>
               <option value="points_100">100 балів</option>
@@ -641,6 +644,14 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
               <option value="extra_spin">Повторний прокрут рулетки</option>
             </optgroup>
           </select>
+          <div id="npCustomRange" style="display:none;flex-direction:column;gap:8px">
+            <input type="number" id="npDiscPct" placeholder="Відсоток знижки (1–99)" min="1" max="99">
+            <div style="display:flex;gap:8px">
+              <input type="number" id="npMinUC" placeholder="Мін. UC (напр. 60)" min="1" style="flex:1">
+              <input type="number" id="npMaxUC" placeholder="Макс. UC (напр. 8100)" min="1" style="flex:1">
+            </div>
+            <div style="font-size:11px;color:var(--muted)">Знижка діятиме тільки для паків у вказаному діапазоні UC</div>
+          </div>
           <input type="number" id="npUses" placeholder="Кількість активацій (-1 = ∞)" value="-1">
           <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:2px 0">
             <input type="checkbox" id="npSecret"> Секретний промокод 🔐
@@ -830,6 +841,14 @@ function getPackDiscount(packName, bonuses) {
     if (isMedium && b.type?.startsWith('discount_medium_')) {
       const pct = parseInt(b.type.split('_').pop()) || 0;
       if (pct > best) best = pct;
+    }
+    if (b.type?.startsWith('discount_custom_')) {
+      const minUc = b.min_uc || 0;
+      const maxUc = b.max_uc || 0;
+      if (minUc > 0 && maxUc > 0 && uc >= minUc && uc <= maxUc) {
+        const pct = parseInt(b.type.split('_')[2]) || 0;
+        if (pct > best) best = pct;
+      }
     }
   }
   return best;
@@ -1530,15 +1549,39 @@ async function loadAPromos() {
     </div>`).join('');
 }
 
+document.getElementById('npType').addEventListener('change', function() {
+  const rangeEl = document.getElementById('npCustomRange');
+  if (this.value === 'discount_custom') {
+    rangeEl.style.display = 'flex';
+  } else {
+    rangeEl.style.display = 'none';
+  }
+});
+
 async function createPromo() {
   const code = document.getElementById('npCode').value.trim().toUpperCase();
   const type = document.getElementById('npType').value;
   const uses = parseInt(document.getElementById('npUses').value) || -1;
   const secret = document.getElementById('npSecret').checked;
   if (!code || !type) { toast('Заповни всі поля', 'error'); return; }
-  const r = await api('/api/admin/create-promo', 'POST', { password: adminPass, code, bonus_type: type, uses, secret });
-  if (r.ok) { toast(r.message, 'success'); document.getElementById('npCode').value = ''; loadAPromos(); }
-  else toast(r.error || 'Помилка', 'error');
+  let body = { password: adminPass, code, bonus_type: type, uses, secret };
+  if (type === 'discount_custom') {
+    const pct = parseInt(document.getElementById('npDiscPct').value) || 0;
+    const minUC = parseInt(document.getElementById('npMinUC').value) || 0;
+    const maxUC = parseInt(document.getElementById('npMaxUC').value) || 0;
+    if (!pct || !minUC || !maxUC) { toast('Вкажи відсоток і діапазон UC', 'error'); return; }
+    body.discount_pct = pct;
+    body.min_uc = minUC;
+    body.max_uc = maxUC;
+  }
+  const r = await api('/api/admin/create-promo', 'POST', body);
+  if (r.ok) {
+    toast(r.message, 'success');
+    document.getElementById('npCode').value = '';
+    document.getElementById('npType').value = '';
+    document.getElementById('npCustomRange').style.display = 'none';
+    loadAPromos();
+  } else toast(r.error || 'Помилка', 'error');
 }
 
 async function deletePromo(code) {
