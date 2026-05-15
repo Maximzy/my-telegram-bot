@@ -962,13 +962,27 @@ class PolicyHandler(BaseHTTPRequestHandler):
         if path == "/api/wheel/spin-paid":
             user_id = int(data.get("user_id", 0))
             username = str(data.get("username", ""))
-            db_exec("INSERT INTO pending_wheel_spins (user_id, username, created_at) VALUES (?,?,?)",
+            cur = db_exec("INSERT INTO pending_wheel_spins (user_id, username, created_at) VALUES (?,?,?)",
                     (user_id, username, created_at_now()))
+            spin_id = cur.lastrowid
             # Track paid spin count
             db_exec("INSERT OR IGNORE INTO wheel_data (user_id) VALUES (?)", (user_id,))
             db_exec("UPDATE wheel_data SET paid_spin_count=paid_spin_count+1 WHERE user_id=?", (user_id,))
-            _send_tg_message(MY_ID,
-                f"🎰 ЗАПИТ НА ПЛАТНЕ КОЛЕСО!\n👤 {'@'+username if username else str(user_id)}\n💵 40 грн\n\nПідтверди оплату та схвали в адмін-панелі.")
+            user_label_str = f"@{username}" if username else str(user_id)
+            try:
+                ok_btn = json.dumps({"inline_keyboard": [[
+                    {"text": "🎰 Крутнути колесо", "callback_data": f"wspin_{spin_id}"},
+                    {"text": "❌ Відхилити", "callback_data": f"wdeny_{spin_id}"}
+                ]]})
+                params = urllib.parse.urlencode({
+                    "chat_id": MY_ID,
+                    "text": f"🎰 ПЛАТНЕ КОЛЕСО!\n🆔 #{spin_id}\n👤 {user_label_str}\n💵 40 грн",
+                    "reply_markup": ok_btn
+                }).encode()
+                req = urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=params)
+                urllib.request.urlopen(req, timeout=5)
+            except Exception as e:
+                logging.warning(f"wheel notify failed: {e}")
             check_achievements(user_id)
             _json_response(self, {"ok": True, "message": "Заявку надіслано! Адмін підтвердить і крутне колесо."}); return
 
@@ -2173,6 +2187,35 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try: await context.bot.send_message(chat_id, f"❌ Замовлення ({pack}) відхилено. Зверніться в підтримку.")
         except: pass
         await q.edit_message_text(f"❌ Замовлення {order_id} відхилено.")
+        return
+
+    if data.startswith("wspin_"):
+        if not is_admin(q.from_user.id): return
+        spin_id = int(data[6:])
+        spin = db_query_one("SELECT user_id, username, status FROM pending_wheel_spins WHERE id=?", (spin_id,))
+        if not spin:
+            await q.edit_message_text("❌ Запит не знайдено."); return
+        if spin[2] != "pending":
+            await q.edit_message_text("⚠️ Цей запит вже оброблено."); return
+        prize = spin_wheel_random(PAID_WHEEL_PRIZES)
+        db_exec("UPDATE pending_wheel_spins SET status='done', prize_id=? WHERE id=?", (prize["id"], spin_id))
+        deliver_wheel_prize(spin[0], spin[1], prize)
+        check_achievements(spin[0])
+        await q.edit_message_text(f"✅ Колесо #/{spin_id} крутнуто!\n🎁 Приз: {prize['name']}\n👤 {'@'+spin[1] if spin[1] else str(spin[0])}")
+        return
+
+    if data.startswith("wdeny_"):
+        if not is_admin(q.from_user.id): return
+        spin_id = int(data[6:])
+        spin = db_query_one("SELECT user_id, username, status FROM pending_wheel_spins WHERE id=?", (spin_id,))
+        if not spin:
+            await q.edit_message_text("❌ Запит не знайдено."); return
+        if spin[2] != "pending":
+            await q.edit_message_text("⚠️ Цей запит вже оброблено."); return
+        db_exec("UPDATE pending_wheel_spins SET status='denied' WHERE id=?", (spin_id,))
+        try: await context.bot.send_message(spin[0], "❌ Ваш запит на платне колесо відхилено. Зверніться в підтримку.")
+        except: pass
+        await q.edit_message_text(f"❌ Запит #{spin_id} відхилено.\n👤 {'@'+spin[1] if spin[1] else str(spin[0])}")
         return
 
     if data.startswith("paid_"):
