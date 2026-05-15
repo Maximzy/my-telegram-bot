@@ -807,6 +807,37 @@ let spinning = false;
 let freePrizes = [], paidPrizes = [];
 let prices = {};
 let curCat = null, curPack = null;
+let userBonuses = [];
+
+async function loadUserBonuses() {
+  if (!uid) return;
+  const r = await api('/api/bonuses?user_id=' + uid);
+  userBonuses = r.bonuses || [];
+}
+
+function getPackDiscount(packName, bonuses) {
+  const m = packName.match(/^(\d+)\s*UC/);
+  if (!m) return 0;
+  const uc = parseInt(m[1]);
+  const isSmall = uc >= 30 && uc <= 660;
+  const isMedium = uc >= 1800 && uc <= 8100;
+  let best = 0;
+  for (const b of bonuses) {
+    if (isSmall && b.type?.startsWith('discount_small_')) {
+      const pct = parseInt(b.type.split('_').pop()) || 0;
+      if (pct > best) best = pct;
+    }
+    if (isMedium && b.type?.startsWith('discount_medium_')) {
+      const pct = parseInt(b.type.split('_').pop()) || 0;
+      if (pct > best) best = pct;
+    }
+  }
+  return best;
+}
+
+function discountedPrice(price, pct) {
+  return Math.max(1, Math.floor(price * (100 - pct) / 100));
+}
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 async function api(path, method = 'GET', body = null) {
@@ -930,16 +961,26 @@ document.querySelectorAll('#aTabs .sub-tab').forEach(el => {
 
 // ─── PRICES ──────────────────────────────────────────────────────────────────
 api('/api/prices').then(r => {
-  if (r.ok) { prices = r.prices; renderPopular(); }
+  if (r.ok) {
+    prices = r.prices;
+    if (uid) loadUserBonuses().then(renderPopular);
+    else renderPopular();
+  }
 });
 
 function renderPopular() {
   const keys = Object.keys(prices).slice(0, 4);
-  document.getElementById('popularList').innerHTML = keys.map(p =>
-    `<div class="pack-item" onclick="selectPack(${JSON.stringify(p).replace(/"/g, '&quot;')})">
+  document.getElementById('popularList').innerHTML = keys.map(p => {
+    const base = prices[p];
+    const pct = getPackDiscount(p, userBonuses);
+    const priceHtml = pct > 0
+      ? `<span class="pack-price"><s style="opacity:.5;font-size:.85em">${base}</s> <span style="color:#f9a8d4">${discountedPrice(base, pct)} грн</span> <span style="font-size:.75em;color:#a78bfa">-${pct}%</span></span>`
+      : `<span class="pack-price">${base} грн</span>`;
+    return `<div class="pack-item" onclick="selectPack(${JSON.stringify(p).replace(/"/g, '&quot;')})">
        <span class="pack-name">${esc(p)}</span>
-       <span class="pack-price">${prices[p]} грн</span>
-     </div>`).join('');
+       ${priceHtml}
+     </div>`;
+  }).join('');
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -952,15 +993,22 @@ const CAT_FILTER = {
 };
 const CAT_LABEL = { uc: '💎 UC Паки', prime: '👑 Prime Паки', primeplus: '✨ Prime Plus Паки' };
 
-function showPacks(cat) {
+async function showPacks(cat) {
   curCat = cat;
+  if (uid) await loadUserBonuses();
   const packs = Object.keys(prices).filter(CAT_FILTER[cat]);
   document.getElementById('packTitle').textContent = CAT_LABEL[cat];
-  document.getElementById('packList').innerHTML = packs.map(p =>
-    `<div class="pack-item" onclick="selectPack(${JSON.stringify(p).replace(/"/g, '&quot;')})">
+  document.getElementById('packList').innerHTML = packs.map(p => {
+    const base = prices[p];
+    const pct = getPackDiscount(p, userBonuses);
+    const priceHtml = pct > 0
+      ? `<span class="pack-price"><s style="opacity:.5;font-size:.85em">${base}</s> <span style="color:#f9a8d4">${discountedPrice(base, pct)} грн</span> <span style="font-size:.75em;color:#a78bfa">-${pct}%</span></span>`
+      : `<span class="pack-price">${base} грн</span>`;
+    return `<div class="pack-item" onclick="selectPack(${JSON.stringify(p).replace(/"/g, '&quot;')})">
        <span class="pack-name">${esc(p)}</span>
-       <span class="pack-price">${prices[p]} грн</span>
-     </div>`).join('');
+       ${priceHtml}
+     </div>`;
+  }).join('');
   document.getElementById('shopCats').style.display = 'none';
   document.getElementById('shopPacks').style.display = '';
 }
@@ -975,18 +1023,12 @@ async function selectPack(p) {
   document.getElementById('selPackName').textContent = p;
   document.getElementById('selPackPrice').textContent = (prices[p] || 0) + ' грн';
   document.getElementById('discInfo').textContent = '';
-  // Check discount
   if (uid) {
-    const r = await api('/api/bonuses?user_id=' + uid);
-    let bestDisc = 0;
-    for (const b of r.bonuses || []) {
-      if (b.type?.startsWith('discount')) {
-        const pct = parseInt(b.type.split('_').pop()) || 0;
-        if (pct > bestDisc) bestDisc = pct;
-      }
-    }
+    if (!userBonuses.length) await loadUserBonuses();
+    const bestDisc = getPackDiscount(p, userBonuses);
     if (bestDisc > 0) {
-      const dp = Math.max(1, Math.floor((prices[p] || 0) * (100 - bestDisc) / 100));
+      const base = prices[p] || 0;
+      const dp = discountedPrice(base, bestDisc);
       document.getElementById('discInfo').textContent = `🎉 Знижка ${bestDisc}% → ${dp} грн`;
     }
   }
