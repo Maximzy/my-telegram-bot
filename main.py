@@ -47,52 +47,45 @@ def db_query_one(sql, params=()):
         return cur.fetchone()
 
 # --- ІНІЦІАЛІЗАЦІЯ ТАБЛИЦЬ ---
-_c = conn.cursor()
-_c.execute("CREATE TABLE IF NOT EXISTS orders (id TEXT, user TEXT, pack TEXT, status TEXT, chat_id INTEGER, player_id TEXT)")
-_c.execute("CREATE TABLE IF NOT EXISTS admins (id INTEGER PRIMARY KEY)")
-_c.execute("CREATE TABLE IF NOT EXISTS reviews (user TEXT, text TEXT)")
-_c.execute("PRAGMA table_info(orders)")
-_oc = [r[1] for r in _c.fetchall()]
-for _col in ["created_at", "completed_at", "amount", "payment"]:
-    if _col not in _oc:
-        _c.execute(f"ALTER TABLE orders ADD COLUMN {_col} TEXT")
-_c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_id ON orders(id)")
-_c.execute("DROP INDEX IF EXISTS idx_reviews_unique")
-_c.execute("DROP INDEX IF EXISTS idx_reviews_user")
-_c.execute("CREATE TABLE IF NOT EXISTS referrals (referrer_id INTEGER, referred_id INTEGER PRIMARY KEY, created_at TEXT)")
-_c.execute("CREATE TABLE IF NOT EXISTS ref_discounts (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, created_at TEXT)")
-_c.execute("CREATE TABLE IF NOT EXISTS promo_codes (code TEXT PRIMARY KEY, bonus_type TEXT, bonus_value INTEGER, uses_left INTEGER DEFAULT -1, total_uses INTEGER DEFAULT -1, created_at TEXT)")
-_c.execute("CREATE TABLE IF NOT EXISTS user_bonuses (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bonus_type TEXT, bonus_value INTEGER, used INTEGER DEFAULT 0, created_at TEXT)")
-_c.execute("CREATE TABLE IF NOT EXISTS used_promo_codes (user_id INTEGER, code TEXT, PRIMARY KEY (user_id, code))")
-_c.execute("PRAGMA table_info(promo_codes)")
-_pc_cols = [r[1] for r in _c.fetchall()]
-if "uses_left" not in _pc_cols:
-    _c.execute("ALTER TABLE promo_codes ADD COLUMN uses_left INTEGER DEFAULT -1")
-if "total_uses" not in _pc_cols:
-    _c.execute("ALTER TABLE promo_codes ADD COLUMN total_uses INTEGER DEFAULT -1")
-if "secret" not in _pc_cols:
-    _c.execute("ALTER TABLE promo_codes ADD COLUMN secret INTEGER DEFAULT 0")
-if "min_uc" not in _pc_cols:
-    _c.execute("ALTER TABLE promo_codes ADD COLUMN min_uc INTEGER DEFAULT 0")
-if "max_uc" not in _pc_cols:
-    _c.execute("ALTER TABLE promo_codes ADD COLUMN max_uc INTEGER DEFAULT 0")
-_c.execute("PRAGMA table_info(user_bonuses)")
-_ub_cols = [r[1] for r in _c.fetchall()]
-if "min_uc" not in _ub_cols:
-    _c.execute("ALTER TABLE user_bonuses ADD COLUMN min_uc INTEGER DEFAULT 0")
-if "max_uc" not in _ub_cols:
-    _c.execute("ALTER TABLE user_bonuses ADD COLUMN max_uc INTEGER DEFAULT 0")
-# Нові таблиці
-_c.execute("CREATE TABLE IF NOT EXISTS user_achievements (user_id INTEGER, achievement_id TEXT, granted_at TEXT, PRIMARY KEY (user_id, achievement_id))")
-_c.execute("CREATE TABLE IF NOT EXISTS user_points (user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0)")
-_c.execute("CREATE TABLE IF NOT EXISTS user_points_tx (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, delta INTEGER, reason TEXT, created_at TEXT)")
-_c.execute("CREATE TABLE IF NOT EXISTS wheel_data (user_id INTEGER PRIMARY KEY, last_free_spin TEXT, consecutive_losses INTEGER DEFAULT 0, paid_spin_count INTEGER DEFAULT 0)")
-_c.execute("CREATE TABLE IF NOT EXISTS pending_wheel_spins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, created_at TEXT, status TEXT DEFAULT 'pending', prize_id TEXT)")
-_c.execute("CREATE TABLE IF NOT EXISTS user_profile (user_id INTEGER PRIMARY KEY, first_seen TEXT, last_seen TEXT, consecutive_days INTEGER DEFAULT 0, last_login_date TEXT)")
-_c.execute("CREATE TABLE IF NOT EXISTS price_overrides (pack_name TEXT PRIMARY KEY, price INTEGER, updated_at TEXT)")
-_c.execute("CREATE TABLE IF NOT EXISTS banned_users (user_id INTEGER PRIMARY KEY, reason TEXT, banned_at TEXT)")
-conn.commit()
-del _c, _oc, _pc_cols
+def run_migrations(connection):
+    c = connection.cursor()
+    c.execute("CREATE TABLE IF NOT EXISTS orders (id TEXT, user TEXT, pack TEXT, status TEXT, chat_id INTEGER, player_id TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS admins (id INTEGER PRIMARY KEY)")
+    c.execute("CREATE TABLE IF NOT EXISTS reviews (user TEXT, text TEXT)")
+    c.execute("PRAGMA table_info(orders)")
+    _oc = [r[1] for r in c.fetchall()]
+    for _col in ["created_at", "completed_at", "amount", "payment"]:
+        if _col not in _oc:
+            c.execute(f"ALTER TABLE orders ADD COLUMN {_col} TEXT")
+    c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_id ON orders(id)")
+    c.execute("DROP INDEX IF EXISTS idx_reviews_unique")
+    c.execute("DROP INDEX IF EXISTS idx_reviews_user")
+    c.execute("CREATE TABLE IF NOT EXISTS referrals (referrer_id INTEGER, referred_id INTEGER PRIMARY KEY, created_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS ref_discounts (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, created_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS promo_codes (code TEXT PRIMARY KEY, bonus_type TEXT, bonus_value INTEGER, uses_left INTEGER DEFAULT -1, total_uses INTEGER DEFAULT -1, created_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS user_bonuses (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bonus_type TEXT, bonus_value INTEGER, used INTEGER DEFAULT 0, created_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS used_promo_codes (user_id INTEGER, code TEXT, PRIMARY KEY (user_id, code))")
+    c.execute("PRAGMA table_info(promo_codes)")
+    _pc_cols = [r[1] for r in c.fetchall()]
+    for _col, _def in [("uses_left","INTEGER DEFAULT -1"),("total_uses","INTEGER DEFAULT -1"),("secret","INTEGER DEFAULT 0"),("min_uc","INTEGER DEFAULT 0"),("max_uc","INTEGER DEFAULT 0")]:
+        if _col not in _pc_cols:
+            c.execute(f"ALTER TABLE promo_codes ADD COLUMN {_col} {_def}")
+    c.execute("PRAGMA table_info(user_bonuses)")
+    _ub_cols = [r[1] for r in c.fetchall()]
+    for _col, _def in [("min_uc","INTEGER DEFAULT 0"),("max_uc","INTEGER DEFAULT 0")]:
+        if _col not in _ub_cols:
+            c.execute(f"ALTER TABLE user_bonuses ADD COLUMN {_col} {_def}")
+    c.execute("CREATE TABLE IF NOT EXISTS user_achievements (user_id INTEGER, achievement_id TEXT, granted_at TEXT, PRIMARY KEY (user_id, achievement_id))")
+    c.execute("CREATE TABLE IF NOT EXISTS user_points (user_id INTEGER PRIMARY KEY, points INTEGER DEFAULT 0)")
+    c.execute("CREATE TABLE IF NOT EXISTS user_points_tx (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, delta INTEGER, reason TEXT, created_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS wheel_data (user_id INTEGER PRIMARY KEY, last_free_spin TEXT, consecutive_losses INTEGER DEFAULT 0, paid_spin_count INTEGER DEFAULT 0)")
+    c.execute("CREATE TABLE IF NOT EXISTS pending_wheel_spins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, created_at TEXT, status TEXT DEFAULT 'pending', prize_id TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS user_profile (user_id INTEGER PRIMARY KEY, first_seen TEXT, last_seen TEXT, consecutive_days INTEGER DEFAULT 0, last_login_date TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS price_overrides (pack_name TEXT PRIMARY KEY, price INTEGER, updated_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS banned_users (user_id INTEGER PRIMARY KEY, reason TEXT, banned_at TEXT)")
+    connection.commit()
+
+run_migrations(conn)
 
 logging.info(f"База даних: {DB_PATH}")
 
@@ -1558,6 +1551,7 @@ def reconnect_db(new_path: str):
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=FULL")
         conn.commit()
+        run_migrations(conn)
 
 
 async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
