@@ -1064,6 +1064,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 "INSERT INTO promo_codes (code, bonus_type, bonus_value, uses_left, total_uses, created_at, secret, min_uc, max_uc) VALUES (?,?,?,?,?,?,?,?,?)",
                 (code, bonus_type, 1, uses, uses, created_at_now(), is_secret, promo_min_uc, promo_max_uc)
             )
+            db_exec("DELETE FROM used_promo_codes WHERE code=?", (code,))
             _json_response(self, {"ok": True, "message": f"Промокод {code} створено"}); return
 
         if path == "/api/admin/delete-promo":
@@ -1074,6 +1075,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
             if not code:
                 _json_response(self, {"ok": False, "error": "Вкажи код"}); return
             db_exec("DELETE FROM promo_codes WHERE code=?", (code,))
+            db_exec("DELETE FROM used_promo_codes WHERE code=?", (code,))
             _json_response(self, {"ok": True, "message": f"Промокод {code} видалено"}); return
 
         if path == "/api/admin/delete-review":
@@ -2179,6 +2181,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_admin(q.from_user.id):
             code = data[10:]
             db_exec("DELETE FROM promo_codes WHERE code=?", (code,))
+            db_exec("DELETE FROM used_promo_codes WHERE code=?", (code,))
             await q.edit_message_text(f"🗑 Промокод {code} видалено.")
         return
 
