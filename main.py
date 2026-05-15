@@ -105,7 +105,12 @@ PRIME_PLUS_PACKS = {
     "👑 Prime Plus 1 Місяць - 410 грн": 410, "👑 Prime Plus 3 Місяці - 1200 грн": 1200,
     "👑 Prime Plus 6 Місяців - 2400 грн": 2400, "👑 Prime Plus 12 Місяців - 4730 грн": 4730
 }
-ALL_PACKS = {**PACKS, **PRIME_PACKS, **PRIME_PLUS_PACKS}
+RISE_PACKS = {
+    "⭐️ Набір Підйом 1 (170 UC + 900 AG) - 39 грн": 39,
+    "⭐️ Набір Підйом 2 (180 UC + 9 міні матеріалів) - 119 грн": 119,
+    "⭐️ Набір Підйом 3 (300 UC + 79 міні емблем) - 199 грн": 199,
+}
+ALL_PACKS = {**PACKS, **PRIME_PACKS, **PRIME_PLUS_PACKS, **RISE_PACKS}
 SMALL_UC = set(list(PACKS.keys())[:6])
 MEDIUM_UC = set(list(PACKS.keys())[6:9])
 
@@ -219,7 +224,7 @@ def get_main_kb(uid):
     return kb
 
 SHOP_KB = ReplyKeyboardMarkup(
-    [["💸 Купити UC"], ["👑 Prime", "👑 Prime Plus"], ["🔙 Назад"]],
+    [["💸 Купити UC"], ["👑 Prime", "👑 Prime Plus"], ["⭐️ Набори Підйом"], ["🔙 Назад"]],
     resize_keyboard=True
 )
 ADMIN_KB = [
@@ -2030,6 +2035,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "👑 Prime Plus":
         await update.message.reply_text("Оберіть Prime Plus:", reply_markup=ReplyKeyboardMarkup([[p] for p in PRIME_PLUS_PACKS.keys()], resize_keyboard=True)); return
+
+    if text == "⭐️ Набори Підйом":
+        await update.message.reply_text(
+            "⭐️ *Набори Підйом*\n\n"
+            "⚠️ Кожний набір купується лише *1 раз*!\n"
+            "Перед покупкою перевірте чи він у вас куплений.\n"
+            "Після — пишіть нам чи можна його купити 💸\n\n"
+            "Оберіть набір:",
+            reply_markup=ReplyKeyboardMarkup([[p] for p in RISE_PACKS.keys()], resize_keyboard=True),
+            parse_mode="Markdown"
+        ); return
 
     if text == "🆘 Підтримка":
         await update.message.reply_text("🆘 Підтримка 24/7\n👨‍💻 Менеджер: @Manager_Nezuko"); return

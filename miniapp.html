@@ -271,6 +271,10 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
           <div class="category-label">Prime Plus</div>
           <span class="hl" style="position:absolute;bottom:5px;right:10px;font-size:12px;transform:rotate(8deg)">N</span>
         </div>
+        <div class="category-card" style="grid-column:1/-1;background:linear-gradient(135deg,#1a1000,#251a00);border-color:rgba(255,209,102,.2)" onclick="showPacks('rise')">
+          <div class="category-icon">⭐️</div>
+          <div class="category-label" style="color:#ffd166">Набори Підйом</div>
+        </div>
       </div>
       <div class="section-title">Популярне</div>
       <div id="popularList"></div>
@@ -1018,18 +1022,24 @@ function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 
 // ─── SHOP ────────────────────────────────────────────────────────────────────
 const CAT_FILTER = {
-  uc: k => !k.includes('Prime'),
+  uc: k => !k.includes('Prime') && !k.includes('⭐️'),
   prime: k => k.includes('👑 Prime') && !k.includes('Plus'),
-  primeplus: k => k.includes('Prime Plus')
+  primeplus: k => k.includes('Prime Plus'),
+  rise: k => k.includes('⭐️ Набір Підйом')
 };
-const CAT_LABEL = { uc: '💎 UC Паки', prime: '👑 Prime Паки', primeplus: '✨ Prime Plus Паки' };
+const CAT_LABEL = { uc: '💎 UC Паки', prime: '👑 Prime Паки', primeplus: '✨ Prime Plus Паки', rise: '⭐️ Набори Підйом' };
 
 async function showPacks(cat) {
   curCat = cat;
   if (uid) await loadUserBonuses();
   const packs = Object.keys(prices).filter(CAT_FILTER[cat]);
   document.getElementById('packTitle').textContent = CAT_LABEL[cat];
-  document.getElementById('packList').innerHTML = packs.map(p => {
+  const riseNote = cat === 'rise'
+    ? `<div class="card" style="margin-bottom:10px;padding:12px 14px;border-color:rgba(255,209,102,.3);background:linear-gradient(135deg,#1a1000,#201600)">
+        <div style="font-size:13px;font-weight:700;color:#ffd166;margin-bottom:4px">⚠️ Важливо!</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.7);line-height:1.5">Кожний набір купується лише <b>1 раз</b>.<br>Перед покупкою перевірте чи він у вас куплений. Після — пишіть нам чи можна його купити 💸</div>
+      </div>` : '';
+  document.getElementById('packList').innerHTML = riseNote + packs.map(p => {
     const base = prices[p];
     const pct = getPackDiscount(p, userBonuses);
     const priceHtml = pct > 0
