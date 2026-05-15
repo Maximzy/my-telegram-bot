@@ -2257,6 +2257,10 @@ def main():
 if __name__ == "__main__":
     import time as _time
     import asyncio as _asyncio
+    if os.environ.get("DISABLE_BOT") == "1":
+        logging.info("DISABLE_BOT=1 — бот вимкнено на Replit. Запускайте на Railway.")
+        while True:
+            _time.sleep(3600)
     start_policy_server()
     start_db_backup()
     while True:
