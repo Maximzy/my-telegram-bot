@@ -314,7 +314,8 @@ def _send_tg_message(chat_id, text):
 def _notify_admin_order(order_id, pack, player_id, amount, user_id, username):
     try:
         user_label_str = f"@{username}" if username else str(user_id)
-        text = (f"💰 ОПЛАТА (Mini App)!\n🆔 {order_id}\n👤 {user_label_str}\n🎁 {pack}\n🎮 ID: {player_id}\n💵 Сума: {amount} грн")
+        rise_marker = "⭐️ НАБІР ПІДЙОМ\n" if "Набір Підйом" in pack else ""
+        text = (f"💰 ОПЛАТА (Mini App)!\n{rise_marker}🆔 {order_id}\n👤 {user_label_str}\n🎁 {pack}\n🎮 ID: {player_id}\n💵 Сума: {amount} грн")
         ok_btn = json.dumps({"inline_keyboard": [[
             {"text": "✅ Готово", "callback_data": f"ok_{order_id}"},
             {"text": "❌ Відхилити", "callback_data": f"no_{order_id}"}
@@ -2182,7 +2183,8 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pack, player_id, amount = res
         try:
             btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Готово", callback_data=f"ok_{order_id}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{order_id}")]])
-            await context.bot.send_message(MY_ID, f"💰 ОПЛАТА!\n🆔 {order_id}\n👤 {user_label(q.from_user.username, q.from_user.id)}\n🎁 {pack}\n🎮 ID: {player_id}\n💵 {amount} грн", reply_markup=btns)
+            rise_marker = "⭐️ НАБІР ПІДЙОМ\n" if "Набір Підйом" in pack else ""
+            await context.bot.send_message(MY_ID, f"💰 ОПЛАТА!\n{rise_marker}🆔 {order_id}\n👤 {user_label(q.from_user.username, q.from_user.id)}\n🎁 {pack}\n🎮 ID: {player_id}\n💵 {amount} грн", reply_markup=btns)
         except: pass
         await q.edit_message_text(f"✅ Дякуємо! Замовлення прийнято.\n🆔 {order_id}\nАдмін підтвердить незабаром.")
         return
