@@ -26,13 +26,13 @@ a{color:var(--acc);text-decoration:none}
 input,textarea,select{background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:11px 14px;font-size:14px;width:100%;outline:none;transition:border .2s;font-family:inherit}
 input:focus,textarea:focus,select:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(255,45,120,.12)}
 select option{background:#15152a}
-button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:700;padding:11px 20px;transition:opacity .15s,background .15s;font-family:inherit}
+button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:700;padding:11px 20px;transition:opacity .15s,background .15s,transform .12s;font-family:inherit}
 
 /* ── BUTTONS ────────────────────────────── */
 .btn{background:linear-gradient(135deg,var(--acc),#d4006a);color:#fff;width:100%;padding:14px;display:block;border-radius:14px;box-shadow:0 4px 18px rgba(255,45,120,.35);font-size:14px;font-weight:700}
-.btn:active{opacity:.8}
+.btn:active{opacity:.85;transform:scale(.97)}
 .btn-ghost{background:var(--card2);color:var(--text);border:1px solid var(--border);box-shadow:none}
-.btn-ghost:active{opacity:.7}
+.btn-ghost:active{opacity:.7;transform:scale(.97)}
 .btn-sm{padding:7px 14px;font-size:13px;width:auto;display:inline-block;box-shadow:none}
 .btn-danger{background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;box-shadow:0 3px 12px rgba(239,68,68,.3)}
 .btn-purple{background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;width:100%;padding:14px;display:block;border-radius:14px;box-shadow:0 4px 14px rgba(124,58,237,.35)}
@@ -67,14 +67,17 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 
 /* ── BOTTOM NAV ─────────────────────────── */
 .bottom-nav{position:fixed;bottom:0;left:0;right:0;background:rgba(10,10,24,.95);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--border);display:flex;z-index:100;padding-bottom:env(safe-area-inset-bottom,0px)}
-.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;padding:9px 2px 7px;cursor:pointer;color:var(--muted);font-size:10px;font-weight:600;gap:3px;transition:color .15s;position:relative}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;padding:9px 2px 7px;cursor:pointer;color:var(--muted);font-size:10px;font-weight:600;gap:3px;transition:color .2s;position:relative}
 .nav-item.active{color:var(--acc)}
 .nav-item.active::after{content:'';position:absolute;bottom:3px;width:4px;height:4px;border-radius:50%;background:var(--acc);box-shadow:0 0 6px var(--acc)}
-.nav-icon{font-size:20px;line-height:1}
+.nav-icon{font-size:20px;line-height:1;transition:transform .15s ease}
+.nav-item:active .nav-icon{transform:scale(.82)}
 
 /* ── TABS ───────────────────────────────── */
-.tab{display:none}.tab.active{display:block}
+@keyframes tabFadeUp{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:translateY(0)}}
+.tab{display:none}.tab.active{display:block;animation:tabFadeUp .24s ease forwards}
 .page{padding:0 14px}
+.anim-in{animation:tabFadeUp .22s ease forwards!important}
 
 /* ── SUB-TABS ───────────────────────────── */
 .sub-tabs{display:flex;gap:6px;overflow-x:auto;padding:10px 0 4px;scrollbar-width:none;-ms-overflow-style:none}
@@ -84,13 +87,13 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 
 /* ── SHOP ───────────────────────────────── */
 .category-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.category-card{background:linear-gradient(135deg,var(--card),var(--card2));border:1px solid var(--border);border-radius:18px;padding:22px 12px;text-align:center;cursor:pointer;transition:border-color .15s,box-shadow .15s;position:relative;overflow:hidden}
+.category-card{background:linear-gradient(135deg,var(--card),var(--card2));border:1px solid var(--border);border-radius:18px;padding:22px 12px;text-align:center;cursor:pointer;transition:border-color .18s,box-shadow .18s,transform .18s;position:relative;overflow:hidden}
 .category-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,45,120,.04),transparent);pointer-events:none}
-.category-card:active{border-color:var(--acc);box-shadow:0 0 20px rgba(255,45,120,.2)}
+.category-card:active{border-color:var(--acc);box-shadow:0 0 20px rgba(255,45,120,.25);transform:scale(.96)}
 .category-icon{font-size:36px;margin-bottom:8px;display:block}
 .category-label{font-size:13px;font-weight:800;color:var(--text)}
-.pack-item{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:8px}
-.pack-item:active{border-color:var(--acc);background:var(--card2)}
+.pack-item{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:border-color .15s,background .15s,transform .15s;margin-bottom:8px}
+.pack-item:active{border-color:var(--acc);background:var(--card2);transform:scale(.98)}
 .pack-name{font-size:14px;font-weight:700}
 .pack-price{font-size:14px;color:var(--acc);font-weight:800}
 .back-btn{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;cursor:pointer;padding:10px 0 6px;font-weight:600}
@@ -128,7 +131,8 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 
 /* ── ACHIEVEMENTS ───────────────────────── */
 .ach-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.ach-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px;cursor:pointer;transition:border-color .15s;position:relative}
+.ach-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:13px;cursor:pointer;transition:border-color .15s,transform .15s;position:relative}
+.ach-card:active{transform:scale(.96)}
 .ach-card.earned{border-color:rgba(255,45,120,.4);background:rgba(255,45,120,.05)}
 .ach-card.locked{opacity:.45}
 .ach-emoji{font-size:26px;margin-bottom:5px}
@@ -923,6 +927,14 @@ async function initUser() {
 }
 setTimeout(initUser, 150);
 
+// ─── ANIMATION HELPER ────────────────────────────────────────────────────────
+function showWithAnim(el) {
+  el.style.display = '';
+  el.classList.remove('anim-in');
+  void el.offsetWidth;
+  el.classList.add('anim-in');
+}
+
 // ─── BOTTOM NAV ──────────────────────────────────────────────────────────────
 let lazyLoaded = {};
 document.querySelectorAll('.nav-item').forEach(el => {
@@ -946,7 +958,7 @@ document.querySelectorAll('#svcTabs .sub-tab').forEach(el => {
     const svc = el.dataset.svc;
     document.querySelectorAll('.svc').forEach(s => s.style.display = 'none');
     document.querySelectorAll('#svcTabs .sub-tab').forEach(t => t.classList.remove('active'));
-    document.getElementById('svc-' + svc).style.display = '';
+    showWithAnim(document.getElementById('svc-' + svc));
     el.classList.add('active');
     if (!lazyLoaded['svc_' + svc]) {
       lazyLoaded['svc_' + svc] = true;
@@ -966,7 +978,7 @@ document.querySelectorAll('#aTabs .sub-tab').forEach(el => {
     const tab = el.dataset.atab;
     document.querySelectorAll('.atab').forEach(t => t.style.display = 'none');
     document.querySelectorAll('#aTabs .sub-tab').forEach(t => t.classList.remove('active'));
-    document.getElementById('atab-' + tab).style.display = '';
+    showWithAnim(document.getElementById('atab-' + tab));
     el.classList.add('active');
     if (tab === 'aords') loadAOrders();
     else if (tab === 'astats') loadAStats();
@@ -1029,12 +1041,12 @@ async function showPacks(cat) {
      </div>`;
   }).join('');
   document.getElementById('shopCats').style.display = 'none';
-  document.getElementById('shopPacks').style.display = '';
+  showWithAnim(document.getElementById('shopPacks'));
 }
 
 function backToCats() {
   document.getElementById('shopPacks').style.display = 'none';
-  document.getElementById('shopCats').style.display = '';
+  showWithAnim(document.getElementById('shopCats'));
 }
 
 async function selectPack(p) {
@@ -1053,18 +1065,18 @@ async function selectPack(p) {
   }
   document.getElementById('shopPacks').style.display = 'none';
   document.getElementById('shopCats').style.display = 'none';
-  document.getElementById('shopId').style.display = '';
+  showWithAnim(document.getElementById('shopId'));
 }
 
 function backToPacks() {
   document.getElementById('shopId').style.display = 'none';
   if (curCat) showPacks(curCat);
-  else { document.getElementById('shopCats').style.display = ''; }
+  else { showWithAnim(document.getElementById('shopCats')); }
 }
 
 function backToId() {
   document.getElementById('shopPay').style.display = 'none';
-  document.getElementById('shopId').style.display = '';
+  showWithAnim(document.getElementById('shopId'));
 }
 
 function goToPayment() {
@@ -1083,7 +1095,7 @@ function goToPayment() {
     document.getElementById('payDisc').textContent = '';
   }
   document.getElementById('shopId').style.display = 'none';
-  document.getElementById('shopPay').style.display = '';
+  showWithAnim(document.getElementById('shopPay'));
 }
 
 function copyCard() {
@@ -1109,7 +1121,7 @@ async function submitOrder() {
     }
     document.getElementById('shopPay').style.display = 'none';
     document.getElementById('doneId').textContent = r.order_id;
-    document.getElementById('shopDone').style.display = '';
+    showWithAnim(document.getElementById('shopDone'));
     sakura();
   } else toast(r.error || 'Помилка', 'error');
 }
@@ -1118,7 +1130,7 @@ function resetShop() {
   document.getElementById('shopDone').style.display = 'none';
   document.getElementById('shopId').style.display = 'none';
   document.getElementById('shopPacks').style.display = 'none';
-  document.getElementById('shopCats').style.display = '';
+  showWithAnim(document.getElementById('shopCats'));
   document.getElementById('gameIdInput').value = '';
   curPack = null; curCat = null;
   api('/api/prices').then(r => { if (r.ok) { prices = r.prices; renderPopular(); } });
