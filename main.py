@@ -1244,10 +1244,10 @@ def user_label(username, chat_id=None):
 def get_done_sum(today_only=False):
     if today_only:
         today = datetime.now().strftime("%Y-%m-%d")
-        rows = db_query("SELECT pack FROM orders WHERE status='done' AND COALESCE(completed_at, created_at) LIKE ?", (f"{today}%",))
+        rows = db_query("SELECT CAST(COALESCE(amount, 0) AS INTEGER) FROM orders WHERE status='done' AND COALESCE(completed_at, created_at) LIKE ?", (f"{today}%",))
     else:
-        rows = db_query("SELECT pack FROM orders WHERE status='done'")
-    return sum(get_pack_price(r[0]) for r in rows)
+        rows = db_query("SELECT CAST(COALESCE(amount, 0) AS INTEGER) FROM orders WHERE status='done'")
+    return sum(r[0] for r in rows)
 
 def get_user_discount(uid, pack_name):
     # Extract UC amount from pack name for range checks
@@ -1744,7 +1744,7 @@ async def find_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📭 Замовлення не знайдено."); return
     lines = []
     for o in orders[:10]:
-        lines.append(f"🆔 {o[0]} | {status_text(o[3])}\n👤 {user_label(o[1], o[2])}\n🎁 {o[2]}\n🎮 ID: {o[5]}\n💵 {o[6] or '?'} грн\n")
+        lines.append(f"🆔 {o[0]} | {status_text(o[3])}\n👤 {user_label(o[1], o[4])}\n🎁 {o[2]}\n🎮 ID: {o[5]}\n💵 {o[6] or '?'} грн\n")
     header = f"🔎 Знайдено: {len(orders)} замовлень\n\n" if len(orders) > 1 else "🔎 Замовлення:\n\n"
     await update.message.reply_text(header + "\n".join(lines))
 
@@ -2257,12 +2257,12 @@ def main():
 if __name__ == "__main__":
     import time as _time
     import asyncio as _asyncio
-    if os.environ.get("DISABLE_BOT") == "1":
-        logging.info("DISABLE_BOT=1 — бот вимкнено на Replit. Запускайте на Railway.")
-        while True:
-            _time.sleep(3600)
     start_policy_server()
     start_db_backup()
+    if os.environ.get("DISABLE_BOT") == "1":
+        logging.info("DISABLE_BOT=1 — бот вимкнено. Веб-сервер працює на порту 5000.")
+        while True:
+            _time.sleep(3600)
     while True:
         try:
             main()

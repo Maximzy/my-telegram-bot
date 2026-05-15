@@ -1072,8 +1072,16 @@ function goToPayment() {
   if (!gid || gid.length < 5) { toast('Введіть правильний ігровий ID', 'error'); return; }
   document.getElementById('payPackName').textContent = curPack;
   document.getElementById('payPid').textContent = gid;
-  document.getElementById('payAmt').textContent = (prices[curPack] || 0) + ' грн';
-  document.getElementById('payDisc').textContent = '';
+  const base = prices[curPack] || 0;
+  const pct = getPackDiscount(curPack, userBonuses);
+  if (pct > 0) {
+    const dp = discountedPrice(base, pct);
+    document.getElementById('payAmt').textContent = dp + ' грн';
+    document.getElementById('payDisc').textContent = `✂️ Знижка ${pct}% (було ${base} грн)`;
+  } else {
+    document.getElementById('payAmt').textContent = base + ' грн';
+    document.getElementById('payDisc').textContent = '';
+  }
   document.getElementById('shopId').style.display = 'none';
   document.getElementById('shopPay').style.display = '';
 }
