@@ -2195,6 +2195,29 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
+async def _send_db_to_owner(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        tmp = DB_PATH + ".send_tmp"
+        with db_lock:
+            src = sqlite3.connect(DB_PATH)
+            dst = sqlite3.connect(tmp)
+            src.backup(dst)
+            dst.close()
+            src.close()
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        with open(tmp, "rb") as f:
+            await context.bot.send_document(
+                chat_id=MY_ID,
+                document=f,
+                filename=f"bot_{now}.db",
+                caption=f"🗄 Автобекап БД • {now}"
+            )
+        try: os.remove(tmp)
+        except: pass
+    except Exception as e:
+        logging.warning(f"send_db_to_owner error: {e}")
+
+
 # --- MAIN ---
 def main():
     start_policy_server()
@@ -2229,8 +2252,15 @@ def main():
         handle_broadcast_media
     ))
     app.add_handler(CallbackQueryHandler(callback))
+    app.job_queue.run_repeating(_send_db_to_owner, interval=600, first=30)
     logging.info("Бот запущено!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
-    main()
+    import time as _time
+    while True:
+        try:
+            main()
+        except Exception as _e:
+            logging.warning(f"Бот зупинився ({_e}), перезапуск через 10 сек...")
+            _time.sleep(10)
