@@ -2220,8 +2220,6 @@ async def _send_db_to_owner(context: ContextTypes.DEFAULT_TYPE):
 
 # --- MAIN ---
 def main():
-    start_policy_server()
-    start_db_backup()
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("shop", shop_command))
@@ -2258,9 +2256,19 @@ def main():
 
 if __name__ == "__main__":
     import time as _time
+    import asyncio as _asyncio
+    start_policy_server()
+    start_db_backup()
     while True:
         try:
             main()
         except Exception as _e:
-            logging.warning(f"Бот зупинився ({_e}), перезапуск через 10 сек...")
-            _time.sleep(10)
+            logging.warning(f"Бот зупинився ({_e}), перезапуск через 15 сек...")
+            _time.sleep(15)
+        finally:
+            try:
+                loop = _asyncio.get_event_loop()
+                if loop.is_closed():
+                    _asyncio.set_event_loop(_asyncio.new_event_loop())
+            except Exception:
+                _asyncio.set_event_loop(_asyncio.new_event_loop())
