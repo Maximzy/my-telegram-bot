@@ -1597,10 +1597,8 @@ async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_T
     if user_states.get(uid) == "WAIT_DB_FILE" and uid == MY_ID:
         user_states[uid] = None
         doc = update.message.document
-        if not doc or not doc.file_name:
-            await update.message.reply_text("❌ Надішліть саме файл .db"); return
-        if not doc.file_name.endswith(".db"):
-            await update.message.reply_text("❌ Файл повинен мати розширення .db"); return
+        if not doc:
+            await update.message.reply_text("❌ Надішліть файл бази даних"); return
         await update.message.reply_text("⏳ Завантажую файл та перевіряю...")
         try:
             import shutil, tempfile
