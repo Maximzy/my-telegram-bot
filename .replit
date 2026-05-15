@@ -49,4 +49,3 @@ deploymentTarget = "cloudrun"
 [userenv]
 
 [userenv.shared]
-DISABLE_BOT = "1"
