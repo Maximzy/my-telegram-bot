@@ -1336,11 +1336,16 @@ async function removeFromCart(id) {
 }
 
 function buyFromCart(pack) {
-  document.querySelectorAll('.tab').forEach(t => t.style.display = 'none');
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const shopNav = document.querySelector('.nav-item[data-tab="shop"]');
   if (shopNav) shopNav.classList.add('active');
-  showWithAnim(document.getElementById('tab-shop'));
+  document.getElementById('tab-shop').classList.add('active');
+  document.getElementById('shopPay').style.display = 'none';
+  document.getElementById('shopMix').style.display = 'none';
+  document.getElementById('shopDone').style.display = 'none';
+  document.getElementById('shopPacks').style.display = 'none';
+  document.getElementById('shopCats').style.display = 'none';
   curCat = 'uc';
   selectPack(pack);
 }
