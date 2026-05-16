@@ -774,11 +774,24 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
       <!-- Wheel approvals -->
       <div class="atab" id="atab-awheel" style="display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div class="section-title" style="margin:0">Запити на платне колесо</div>
-          <button class="btn-ghost btn btn-sm" onclick="loadPendingWheels()">↻</button>
+        <div class="sub-tabs" style="margin-bottom:10px">
+          <div class="sub-tab active" data-wtab="wpending" onclick="switchWheelTab(this,'wpending')">⏳ Запити</div>
+          <div class="sub-tab" data-wtab="whistory" onclick="switchWheelTab(this,'whistory')">📊 Результати</div>
         </div>
-        <div id="pendingWheels"><div class="empty"><div class="spinner"></div></div></div>
+        <div id="wtab-wpending">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div class="section-title" style="margin:0">Запити на платне колесо</div>
+            <button class="btn-ghost btn btn-sm" onclick="loadPendingWheels()">↻</button>
+          </div>
+          <div id="pendingWheels"><div class="empty"><div class="spinner"></div></div></div>
+        </div>
+        <div id="wtab-whistory" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div class="section-title" style="margin:0">Результати платного колеса</div>
+            <button class="btn-ghost btn btn-sm" onclick="loadWheelHistory()">↻</button>
+          </div>
+          <div id="wheelHistory"><div class="empty"><div class="spinner"></div></div></div>
+        </div>
       </div>
 
     </div>
@@ -1787,6 +1800,44 @@ async function approveWheel(spinId) {
   const r = await api('/api/admin/approve-wheel', 'POST', { password: adminPass, spin_id: spinId });
   if (r.ok) { toast(`✅ Приз: ${r.prize?.name} — ${r.message}`, 'success'); loadPendingWheels(); }
   else toast(r.error || 'Помилка', 'error');
+}
+
+function switchWheelTab(el, tab) {
+  document.querySelectorAll('#atab-awheel .sub-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('#atab-awheel [id^="wtab-"]').forEach(t => t.style.display = 'none');
+  showWithAnim(document.getElementById('wtab-' + tab));
+  if (tab === 'whistory') loadWheelHistory();
+}
+
+async function loadWheelHistory() {
+  const el = document.getElementById('wheelHistory');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api(`/api/admin/wheel-history?password=${adminPass}`);
+  const history = r.history || [];
+  if (!history.length) { el.innerHTML = '<div class="empty">📊 Поки немає результатів</div>'; return; }
+  const prizeIcon = p => {
+    if (p === 'Нічого') return '😶';
+    if (p.includes('UC')) return '💎';
+    if (p.includes('балів')) return '🪙';
+    return '🎁';
+  };
+  el.innerHTML = history.map(h => {
+    const isDone = h.status === 'done';
+    const isDenied = h.status === 'denied';
+    const statusBadge = isDone
+      ? `<span class="status-badge s-done">✅ Крутнуто</span>`
+      : `<span class="status-badge s-canceled">❌ Відхилено</span>`;
+    const prizeRow = isDone
+      ? `<div style="font-size:13px;margin-top:4px">${prizeIcon(h.prize)} <b>${esc(h.prize)}</b></div>`
+      : '';
+    return `<div class="order-card">
+      <div class="order-header"><span class="order-id">#${h.id}</span>${statusBadge}</div>
+      <div class="order-pack">${esc(h.user)}</div>
+      <div class="order-meta">${esc(h.created_at)}</div>
+      ${prizeRow}
+    </div>`;
+  }).join('');
 }
 
 // ─── AUTO-SHOW ADMIN PANEL IF LOGGED IN ──────────────────────────────────────

@@ -764,6 +764,19 @@ class PolicyHandler(BaseHTTPRequestHandler):
                       "created_at": (r[3] or "")[:16]} for r in rows]
             _json_response(self, {"ok": True, "spins": spins, "prizes": PAID_WHEEL_PRIZES}); return
 
+        if path == "/api/admin/wheel-history":
+            pwd = params.get("password", "")
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            rows = db_query("SELECT id, user_id, username, created_at, status, prize_id FROM pending_wheel_spins WHERE status != 'pending' ORDER BY id DESC LIMIT 50")
+            prize_map = {p["id"]: p["name"] for p in PAID_WHEEL_PRIZES}
+            history = [{"id": r[0], "user_id": r[1],
+                        "user": f"@{r[2]}" if r[2] else str(r[1]),
+                        "created_at": (r[3] or "")[:16],
+                        "status": r[4],
+                        "prize": prize_map.get(r[5] or "", r[5] or "—")} for r in rows]
+            _json_response(self, {"ok": True, "history": history}); return
+
         self.send_response(404); self.end_headers()
 
     def do_POST(self):
