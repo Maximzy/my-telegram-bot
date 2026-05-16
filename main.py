@@ -312,11 +312,22 @@ def _send_tg_message(chat_id, text):
     except Exception as e:
         logging.warning(f"_send_tg_message failed: {e}")
 
-def _notify_admin_order(order_id, pack, player_id, amount, user_id, username):
+def _notify_admin_order(order_id, pack, player_id, amount, user_id, username, mix_packs_list=None):
     try:
         user_label_str = f"@{username}" if username else str(user_id)
         rise_marker = "⭐️ НАБІР ПІДЙОМ\n" if "Набір Підйом" in pack else ""
-        text = (f"💰 ОПЛАТА (Mini App)!\n{rise_marker}🆔 {order_id}\n👤 {user_label_str}\n🎁 {pack}\n🎮 ID: {player_id}\n💵 Сума: {amount} грн")
+        if mix_packs_list:
+            from collections import Counter
+            counts = Counter(mix_packs_list)
+            pack_lines = "\n".join([
+                f"  • {p} × {cnt} = {get_pack_price(p) * cnt} грн"
+                if cnt > 1 else f"  • {p} — {get_pack_price(p)} грн"
+                for p, cnt in counts.items()
+            ])
+            pack_info = f"🎮 МІК UC ({len(mix_packs_list)} пак{'и' if len(mix_packs_list) > 1 else ''}):\n{pack_lines}"
+        else:
+            pack_info = f"🎁 {pack}"
+        text = (f"💰 ОПЛАТА (Mini App)!\n{rise_marker}🆔 {order_id}\n👤 {user_label_str}\n{pack_info}\n🎮 ID: {player_id}\n💵 Сума: {amount} грн")
         ok_btn = json.dumps({"inline_keyboard": [[
             {"text": "✅ Готово", "callback_data": f"ok_{order_id}"},
             {"text": "❌ Відхилити", "callback_data": f"no_{order_id}"}
@@ -860,9 +871,11 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 final_price = true_sum
                 disc_pct = 0
             else:
-                # Single pack — apply discount as before
+                # Single pack — server price always used, client amount ignored
+                if pack not in ALL_PACKS:
+                    _json_response(self, {"ok": False, "error": "Пак не знайдено"}); return
                 disc_pct, disc_src, disc_id = get_user_discount(user_id, pack)
-                price = get_pack_price(pack) or base_amount
+                price = get_pack_price(pack)
                 final_price = apply_discount(price, disc_pct) if disc_pct else price
                 if disc_pct and disc_src == "promo":
                     db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (disc_id,))
@@ -873,7 +886,8 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 "INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount) VALUES (?,?,?,?,?,?,?,?)",
                 (order_id, username, pack, "pending", user_id, player_id, created_at_now(), str(final_price))
             )
-            _notify_admin_order(order_id, pack, player_id, final_price, user_id, username)
+            _notify_admin_order(order_id, pack, player_id, final_price, user_id, username,
+                               mix_packs_list=mix_packs if mix_packs is not None else None)
             update_user_profile(user_id)
             if flash_order:
                 grant_achievement(user_id, "flash")

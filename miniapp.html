@@ -898,7 +898,7 @@ let spinning = false;
 let freePrizes = [], paidPrizes = [];
 let prices = {};
 let curCat = null, curPack = null;
-let mixExtra = [], mixFinalPack = '', mixFinalAmount = 0;
+let mixExtra = [], mixFinalPack = '', mixFinalAmount = 0, mixCounts = {}, _mixUcPacks = [];
 let userBonuses = [];
 
 async function loadUserBonuses() {
@@ -1168,15 +1168,23 @@ function goToPayment() {
   const gid = document.getElementById('gameIdInput').value.trim();
   if (!gid || gid.length < 5) { toast('Введіть правильний ігровий ID', 'error'); return; }
   if (curCat === 'uc') {
-    mixExtra = [];
+    mixExtra = []; mixCounts = {};
     document.getElementById('mixBase').textContent = `📦 Базовий: ${curPack}  —  ${prices[curPack] || 0} грн`;
-    const ucPacks = Object.keys(prices).filter(k => CAT_FILTER.uc(k) && k !== curPack);
-    document.getElementById('mixOptions').innerHTML = ucPacks.map(p => `
-      <label style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;cursor:pointer;margin-bottom:6px;background:var(--card);border:1px solid var(--border)">
-        <input type="checkbox" value="${esc(p)}" onchange="toggleMixPack(this)" style="width:18px;height:18px;accent-color:var(--acc);flex-shrink:0">
-        <span style="flex:1;font-size:13px">${esc(p)}</span>
-        <span style="font-size:12px;color:var(--acc);font-weight:700">${prices[p]} грн</span>
-      </label>`).join('');
+    const ucPacks = Object.keys(prices).filter(k => CAT_FILTER.uc(k));
+    _mixUcPacks.length = 0;
+    ucPacks.forEach(p => _mixUcPacks.push(p));
+    document.getElementById('mixOptions').innerHTML = ucPacks.map((p, i) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;margin-bottom:6px;background:var(--card);border:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p)}</div>
+          <div style="font-size:12px;color:var(--acc);font-weight:700">${prices[p]} грн</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <button onclick="setMixCount(${i},-1)" style="width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:18px;line-height:1;cursor:pointer">−</button>
+          <span id="mixcnt-${i}" style="min-width:22px;text-align:center;font-size:15px;font-weight:700">0</span>
+          <button onclick="setMixCount(${i},1)" style="width:30px;height:30px;border-radius:8px;border:none;background:var(--acc);color:#fff;font-size:18px;line-height:1;cursor:pointer">+</button>
+        </div>
+      </div>`).join('');
     updateMixTotals();
     document.getElementById('shopId').style.display = 'none';
     showWithAnim(document.getElementById('shopMix'));
@@ -1185,10 +1193,15 @@ function goToPayment() {
   }
 }
 
-function toggleMixPack(cb) {
-  const pack = cb.value;
-  if (cb.checked) { if (!mixExtra.includes(pack)) mixExtra.push(pack); }
-  else { mixExtra = mixExtra.filter(p => p !== pack); }
+function setMixCount(idx, delta) {
+  if (mixCounts[idx] === undefined) mixCounts[idx] = 0;
+  mixCounts[idx] = Math.max(0, mixCounts[idx] + delta);
+  const el = document.getElementById('mixcnt-' + idx);
+  if (el) el.textContent = mixCounts[idx];
+  mixExtra = [];
+  _mixUcPacks.forEach((p, i) => {
+    for (let j = 0; j < (mixCounts[i] || 0); j++) mixExtra.push(p);
+  });
   updateMixTotals();
 }
 
@@ -1210,12 +1223,12 @@ function updateMixTotals() {
 }
 
 function backMixToId() {
-  mixExtra = [];
+  mixExtra = []; mixCounts = {};
   document.getElementById('shopMix').style.display = 'none';
   showWithAnim(document.getElementById('shopId'));
 }
 
-function skipMix() { mixExtra = []; goToPaymentDirect(); }
+function skipMix() { mixExtra = []; mixCounts = {}; goToPaymentDirect(); }
 function confirmMix() { goToPaymentDirect(); }
 
 function goToPaymentDirect() {
@@ -1293,7 +1306,7 @@ function resetShop() {
   showWithAnim(document.getElementById('shopCats'));
   document.getElementById('gameIdInput').value = '';
   curPack = null; curCat = null;
-  mixExtra = []; mixFinalPack = ''; mixFinalAmount = 0;
+  mixExtra = []; mixCounts = {}; mixFinalPack = ''; mixFinalAmount = 0;
   api('/api/prices').then(r => { if (r.ok) { prices = r.prices; renderPopular(); } });
 }
 
