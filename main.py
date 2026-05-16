@@ -1057,7 +1057,10 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 if ref:
                     db_exec("INSERT INTO ref_discounts (user_id, created_at) VALUES (?,?)", (ref[0], created_at_now()))
                     _send_tg_message(ref[0], "🎉 Ваш реферал зробив покупку! Ви отримали знижку 1%.")
-                _send_tg_message(chat_id, f"✅ {pack} нараховано! Дякуємо за покупку 🌸")
+                if "Мікс UC" in pack:
+                    _send_tg_message(chat_id, f"✅ Мікс UC нараховано! 🎉\n💎 {pack}\nУсі UC вже у грі. Дякуємо за покупку! 🌸")
+                else:
+                    _send_tg_message(chat_id, f"✅ {pack} нараховано! Дякуємо за покупку 🌸")
                 check_achievements(chat_id)
                 _json_response(self, {"ok": True, "message": f"Замовлення {order_id} виконано"}); return
             elif action == "no":
@@ -2220,7 +2223,11 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db_exec("INSERT INTO ref_discounts (user_id, created_at) VALUES (?,?)", (ref[0], created_at_now()))
             try: await context.bot.send_message(ref[0], "🎉 Ваш реферал зробив покупку! Ви отримали знижку 1%.")
             except: pass
-        try: await context.bot.send_message(chat_id, f"✅ {pack} нараховано! Дякуємо 🌸")
+        if "Мікс UC" in pack:
+            done_msg = f"✅ Мікс UC нараховано! 🎉\n💎 {pack}\nУсі UC вже у грі. Дякуємо! 🌸"
+        else:
+            done_msg = f"✅ {pack} нараховано! Дякуємо 🌸"
+        try: await context.bot.send_message(chat_id, done_msg)
         except: pass
         check_achievements(chat_id)
         await q.edit_message_text(f"✅ Замовлення {order_id} виконано.")
