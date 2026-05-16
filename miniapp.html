@@ -1207,7 +1207,9 @@ function setMixCount(idx, delta) {
 
 function updateMixTotals() {
   const allPacks = [curPack, ...mixExtra];
-  const totalPrice = allPacks.reduce((s, p) => s + (prices[p] || 0), 0);
+  const pct = getPackDiscount(curPack, userBonuses);
+  const curPackPrice = pct > 0 ? discountedPrice(prices[curPack] || 0, pct) : (prices[curPack] || 0);
+  const totalPrice = curPackPrice + mixExtra.reduce((s, p) => s + (prices[p] || 0), 0);
   const totalUC = allPacks.reduce((s, p) => {
     const m = p.match(/(\d+)\s*UC/);
     return s + (m ? parseInt(m[1]) : 0);
@@ -1216,7 +1218,7 @@ function updateMixTotals() {
   if (mixExtra.length > 0) {
     totEl.style.display = '';
     document.getElementById('mixTotalUC').textContent = totalUC + ' UC разом';
-    document.getElementById('mixTotalPrice').textContent = totalPrice + ' грн';
+    document.getElementById('mixTotalPrice').textContent = totalPrice + ' грн' + (pct > 0 ? ` (✂️ -${pct}% на 1-й пак)` : '');
   } else {
     totEl.style.display = 'none';
   }
@@ -1234,7 +1236,9 @@ function confirmMix() { goToPaymentDirect(); }
 function goToPaymentDirect() {
   const gid = document.getElementById('gameIdInput').value.trim();
   const allPacks = [curPack, ...mixExtra];
-  const totalPrice = allPacks.reduce((s, p) => s + (prices[p] || 0), 0);
+  const pct = getPackDiscount(curPack, userBonuses);
+  const curPackPrice = pct > 0 ? discountedPrice(prices[curPack] || 0, pct) : (prices[curPack] || 0);
+  const totalPrice = curPackPrice + mixExtra.reduce((s, p) => s + (prices[p] || 0), 0);
   if (mixExtra.length > 0) {
     const ucLabels = allPacks.map(p => {
       const m = p.match(/(\d+)\s*UC/);
@@ -1247,7 +1251,10 @@ function goToPaymentDirect() {
     mixFinalAmount = totalPrice;
     document.getElementById('payPackName').textContent = mixFinalPack;
     document.getElementById('payAmt').textContent = totalPrice + ' грн';
-    document.getElementById('payDisc').textContent = `💎 ${allPacks.length} паки в одному замовленні`;
+    const discLine = pct > 0
+      ? `✂️ Знижка ${pct}% на перший пак · 💎 ${allPacks.length} паки разом`
+      : `💎 ${allPacks.length} паки в одному замовленні`;
+    document.getElementById('payDisc').textContent = discLine;
   } else {
     mixFinalPack = ''; mixFinalAmount = 0;
     const base = prices[curPack] || 0;

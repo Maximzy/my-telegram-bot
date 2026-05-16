@@ -865,10 +865,17 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 for mp in mix_packs:
                     if mp not in ALL_PACKS:
                         _json_response(self, {"ok": False, "error": f"Пак не знайдено: {mp}"}); return
-                true_sum = sum(get_pack_price(mp) for mp in mix_packs)
+                disc_pct, disc_src, disc_id = get_user_discount(user_id, mix_packs[0])
+                first_price = apply_discount(get_pack_price(mix_packs[0]), disc_pct) if disc_pct else get_pack_price(mix_packs[0])
+                extras_sum = sum(get_pack_price(mp) for mp in mix_packs[1:])
+                true_sum = first_price + extras_sum
                 if true_sum != base_amount:
                     _json_response(self, {"ok": False, "error": f"Невірна сума. Очікується {true_sum} грн"}); return
                 final_price = true_sum
+                if disc_pct and disc_src == "promo":
+                    db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (disc_id,))
+                elif disc_pct and disc_src == "ref":
+                    db_exec("DELETE FROM ref_discounts WHERE id=?", (disc_id,))
                 disc_pct = 0
             else:
                 # Single pack — server price always used, client amount ignored
