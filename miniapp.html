@@ -299,6 +299,25 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <input type="text" id="gameIdInput" placeholder="Ігровий ID PUBG Mobile" inputmode="numeric">
       <div style="font-size:11px;color:var(--muted);margin-top:6px">Знайти ID: PUBG Mobile → Профіль → ID під ніком</div>
       <button class="btn mt-12" onclick="goToPayment()">Підтвердити →</button>
+      <button class="btn-ghost btn mt-8" id="addToCartBtn" style="width:100%;display:none" onclick="addToCart(curPack)">💾 Зберегти в кошик (купити пізніше)</button>
+    </div>
+
+    <!-- Step 3.5 – UC Mix -->
+    <div id="shopMix" style="display:none">
+      <div class="back-btn" onclick="backMixToId()">← Назад</div>
+      <div class="card">
+        <div class="section-title" style="margin-top:0">🎮 Змішати UC паки</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Обери додаткові паки — оплатиш усе разом одним переказом</div>
+        <div style="font-size:13px;font-weight:600;color:var(--acc);margin-bottom:10px" id="mixBase"></div>
+        <div id="mixOptions"></div>
+      </div>
+      <div class="card" id="mixTotals" style="display:none;text-align:center">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">💎 Разом у замовленні:</div>
+        <div style="font-size:22px;font-weight:900;color:var(--acc)" id="mixTotalUC"></div>
+        <div style="font-size:18px;font-weight:700;color:var(--success);margin-top:2px" id="mixTotalPrice"></div>
+      </div>
+      <button class="btn" onclick="confirmMix()">✅ Оформити замовлення →</button>
+      <button class="btn-ghost btn" style="margin-top:8px;width:100%" onclick="skipMix()">Продовжити без міксу →</button>
     </div>
 
     <!-- Step 4 – Payment -->
@@ -334,12 +353,25 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 <!-- ═══ TAB: ЗАМОВЛЕННЯ ═══ -->
 <div id="tab-orders" class="tab">
   <div class="page" style="padding-top:12px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-      <div class="section-title" style="margin:0">Всі замовлення</div>
-      <button class="btn-ghost btn btn-sm" onclick="loadOrders()">↻ Оновити</button>
+    <div class="sub-tabs" style="margin-bottom:10px">
+      <div class="sub-tab active" onclick="switchOrdersTab(this,'orders')">📦 Замовлення</div>
+      <div class="sub-tab" onclick="switchOrdersTab(this,'cart')">🛒 Кошик</div>
     </div>
-    <div id="ordersList"><div class="empty"><div class="spinner"></div></div></div>
-    <div style="margin-top:10px;padding-left:2px"><span class="hl" style="font-size:13px;transform:rotate(-10deg)">E</span></div>
+    <div id="otab-orders">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <div class="section-title" style="margin:0">Всі замовлення</div>
+        <button class="btn-ghost btn btn-sm" onclick="loadOrders()">↻ Оновити</button>
+      </div>
+      <div id="ordersList"><div class="empty"><div class="spinner"></div></div></div>
+      <div style="margin-top:10px;padding-left:2px"><span class="hl" style="font-size:13px;transform:rotate(-10deg)">E</span></div>
+    </div>
+    <div id="otab-cart" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="section-title" style="margin:0">🛒 Кошик (збережені паки)</div>
+        <button class="btn-ghost btn btn-sm" onclick="loadCart()">↻</button>
+      </div>
+      <div id="cartList"><div class="empty"><div class="spinner"></div></div></div>
+    </div>
   </div>
 </div>
 
@@ -597,6 +629,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div class="sub-tab" data-atab="afind">🔍 Знайти</div>
         <div class="sub-tab" data-atab="abroadcast">📢 Розсилка</div>
         <div class="sub-tab" data-atab="awheel">🎰 Колесо</div>
+        <div class="sub-tab" data-atab="acart">🛒 Кошики</div>
       </div>
 
       <!-- Orders -->
@@ -794,6 +827,16 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         </div>
       </div>
 
+      <!-- Admin Carts -->
+      <div class="atab" id="atab-acart" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div class="section-title" style="margin:0">🛒 Кошики користувачів</div>
+          <button class="btn-ghost btn btn-sm" onclick="loadAdminCarts()">↻</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Що користувачі зберегли на потім</div>
+        <div id="adminCartList"><div class="empty"><div class="spinner"></div></div></div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -855,6 +898,7 @@ let spinning = false;
 let freePrizes = [], paidPrizes = [];
 let prices = {};
 let curCat = null, curPack = null;
+let mixExtra = [], mixFinalPack = '', mixFinalAmount = 0;
 let userBonuses = [];
 
 async function loadUserBonuses() {
@@ -1104,6 +1148,8 @@ async function selectPack(p) {
   }
   document.getElementById('shopPacks').style.display = 'none';
   document.getElementById('shopCats').style.display = 'none';
+  const cartBtn = document.getElementById('addToCartBtn');
+  if (cartBtn) cartBtn.style.display = curCat === 'uc' ? '' : 'none';
   showWithAnim(document.getElementById('shopId'));
 }
 
@@ -1121,19 +1167,91 @@ function backToId() {
 function goToPayment() {
   const gid = document.getElementById('gameIdInput').value.trim();
   if (!gid || gid.length < 5) { toast('Введіть правильний ігровий ID', 'error'); return; }
-  document.getElementById('payPackName').textContent = curPack;
-  document.getElementById('payPid').textContent = gid;
-  const base = prices[curPack] || 0;
-  const pct = getPackDiscount(curPack, userBonuses);
-  if (pct > 0) {
-    const dp = discountedPrice(base, pct);
-    document.getElementById('payAmt').textContent = dp + ' грн';
-    document.getElementById('payDisc').textContent = `✂️ Знижка ${pct}% (було ${base} грн)`;
+  if (curCat === 'uc') {
+    mixExtra = [];
+    document.getElementById('mixBase').textContent = `📦 Базовий: ${curPack}  —  ${prices[curPack] || 0} грн`;
+    const ucPacks = Object.keys(prices).filter(k => CAT_FILTER.uc(k) && k !== curPack);
+    document.getElementById('mixOptions').innerHTML = ucPacks.map(p => `
+      <label style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;cursor:pointer;margin-bottom:6px;background:var(--card);border:1px solid var(--border)">
+        <input type="checkbox" value="${esc(p)}" onchange="toggleMixPack(this)" style="width:18px;height:18px;accent-color:var(--acc);flex-shrink:0">
+        <span style="flex:1;font-size:13px">${esc(p)}</span>
+        <span style="font-size:12px;color:var(--acc);font-weight:700">${prices[p]} грн</span>
+      </label>`).join('');
+    updateMixTotals();
+    document.getElementById('shopId').style.display = 'none';
+    showWithAnim(document.getElementById('shopMix'));
   } else {
-    document.getElementById('payAmt').textContent = base + ' грн';
-    document.getElementById('payDisc').textContent = '';
+    goToPaymentDirect();
   }
+}
+
+function toggleMixPack(cb) {
+  const pack = cb.value;
+  if (cb.checked) { if (!mixExtra.includes(pack)) mixExtra.push(pack); }
+  else { mixExtra = mixExtra.filter(p => p !== pack); }
+  updateMixTotals();
+}
+
+function updateMixTotals() {
+  const allPacks = [curPack, ...mixExtra];
+  const totalPrice = allPacks.reduce((s, p) => s + (prices[p] || 0), 0);
+  const totalUC = allPacks.reduce((s, p) => {
+    const m = p.match(/(\d+)\s*UC/);
+    return s + (m ? parseInt(m[1]) : 0);
+  }, 0);
+  const totEl = document.getElementById('mixTotals');
+  if (mixExtra.length > 0) {
+    totEl.style.display = '';
+    document.getElementById('mixTotalUC').textContent = totalUC + ' UC разом';
+    document.getElementById('mixTotalPrice').textContent = totalPrice + ' грн';
+  } else {
+    totEl.style.display = 'none';
+  }
+}
+
+function backMixToId() {
+  mixExtra = [];
+  document.getElementById('shopMix').style.display = 'none';
+  showWithAnim(document.getElementById('shopId'));
+}
+
+function skipMix() { mixExtra = []; goToPaymentDirect(); }
+function confirmMix() { goToPaymentDirect(); }
+
+function goToPaymentDirect() {
+  const gid = document.getElementById('gameIdInput').value.trim();
+  const allPacks = [curPack, ...mixExtra];
+  const totalPrice = allPacks.reduce((s, p) => s + (prices[p] || 0), 0);
+  if (mixExtra.length > 0) {
+    const ucLabels = allPacks.map(p => {
+      const m = p.match(/(\d+)\s*UC/);
+      return m ? m[1] + ' UC' : p.split(' - ')[0];
+    });
+    const totalUC = allPacks.reduce((s, p) => {
+      const m = p.match(/(\d+)\s*UC/); return s + (m ? parseInt(m[1]) : 0);
+    }, 0);
+    mixFinalPack = `🎮 Мікс UC: ${ucLabels.join(' + ')} (${totalUC} UC)`;
+    mixFinalAmount = totalPrice;
+    document.getElementById('payPackName').textContent = mixFinalPack;
+    document.getElementById('payAmt').textContent = totalPrice + ' грн';
+    document.getElementById('payDisc').textContent = `💎 ${allPacks.length} паки в одному замовленні`;
+  } else {
+    mixFinalPack = ''; mixFinalAmount = 0;
+    const base = prices[curPack] || 0;
+    const pct = getPackDiscount(curPack, userBonuses);
+    document.getElementById('payPackName').textContent = curPack;
+    if (pct > 0) {
+      const dp = discountedPrice(base, pct);
+      document.getElementById('payAmt').textContent = dp + ' грн';
+      document.getElementById('payDisc').textContent = `✂️ Знижка ${pct}% (було ${base} грн)`;
+    } else {
+      document.getElementById('payAmt').textContent = base + ' грн';
+      document.getElementById('payDisc').textContent = '';
+    }
+  }
+  document.getElementById('payPid').textContent = gid;
   document.getElementById('shopId').style.display = 'none';
+  document.getElementById('shopMix').style.display = 'none';
   showWithAnim(document.getElementById('shopPay'));
 }
 
@@ -1148,13 +1266,15 @@ async function submitOrder() {
   btn.disabled = true; btn.textContent = 'Відправляємо...';
   const gid = document.getElementById('payPid').textContent;
   const isFlash = (Date.now() - visitTs) < 90000;
+  const submitPack = mixFinalPack || curPack;
+  const submitAmount = mixFinalPack ? mixFinalAmount : (prices[curPack] || 0);
   const r = await api('/api/submit-order', 'POST', {
-    user_id: uid, username: uname, pack: curPack,
-    player_id: gid, amount: prices[curPack] || 0, flash_order: isFlash
+    user_id: uid, username: uname, pack: submitPack,
+    player_id: gid, amount: submitAmount, flash_order: isFlash
   });
   btn.disabled = false; btn.textContent = '✅ Я оплатив';
   if (r.ok) {
-    if (r.final_price && r.final_price !== prices[curPack]) {
+    if (r.final_price && !mixFinalPack && r.final_price !== prices[curPack]) {
       document.getElementById('payAmt').textContent = r.final_price + ' грн';
       if (r.discount) document.getElementById('payDisc').textContent = `✂️ Знижка ${r.discount}% застосована!`;
     }
@@ -1168,11 +1288,88 @@ async function submitOrder() {
 function resetShop() {
   document.getElementById('shopDone').style.display = 'none';
   document.getElementById('shopId').style.display = 'none';
+  document.getElementById('shopMix').style.display = 'none';
   document.getElementById('shopPacks').style.display = 'none';
   showWithAnim(document.getElementById('shopCats'));
   document.getElementById('gameIdInput').value = '';
   curPack = null; curCat = null;
+  mixExtra = []; mixFinalPack = ''; mixFinalAmount = 0;
   api('/api/prices').then(r => { if (r.ok) { prices = r.prices; renderPopular(); } });
+}
+
+// ─── CART ────────────────────────────────────────────────────────────────────
+async function addToCart(pack) {
+  if (!uid) { toast('Відкрийте через Telegram', 'error'); return; }
+  if (!pack) return;
+  const r = await api('/api/cart/add', 'POST', { user_id: uid, pack });
+  if (r.ok) toast('💾 Збережено в кошику!', 'success');
+  else toast(r.error || 'Помилка', 'error');
+}
+
+async function loadCart() {
+  const el = document.getElementById('cartList');
+  if (!el) return;
+  if (!uid) { el.innerHTML = '<div class="empty">Відкрийте через Telegram</div>'; return; }
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api(`/api/cart?user_id=${uid}`);
+  const items = r.items || [];
+  if (!items.length) {
+    el.innerHTML = '<div class="empty">🛒 Кошик порожній<br><span style="font-size:11px;color:var(--muted)">Зберігай паки кнопкою «В кошик» у магазині</span></div>';
+    return;
+  }
+  el.innerHTML = items.map(item => `
+    <div class="order-card">
+      <div style="font-size:13px;font-weight:600;margin-bottom:4px">${esc(item.pack)}</div>
+      <div style="font-size:20px;font-weight:800;color:var(--acc);margin-bottom:6px">${prices[item.pack] || '?'} грн</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Збережено: ${esc(item.added_at)}</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" style="flex:1" onclick="buyFromCart('${esc(item.pack)}')">💳 Купити зараз</button>
+        <button class="btn-ghost btn btn-sm" onclick="removeFromCart(${item.id})">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+async function removeFromCart(id) {
+  const r = await api('/api/cart/remove', 'POST', { id, user_id: uid });
+  if (r.ok) { toast('Видалено з кошика', 'success'); loadCart(); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+function buyFromCart(pack) {
+  document.querySelectorAll('.tab').forEach(t => t.style.display = 'none');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const shopNav = document.querySelector('.nav-item[data-tab="shop"]');
+  if (shopNav) shopNav.classList.add('active');
+  showWithAnim(document.getElementById('tab-shop'));
+  curCat = 'uc';
+  selectPack(pack);
+}
+
+function switchOrdersTab(el, tab) {
+  document.querySelectorAll('#tab-orders .sub-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('otab-orders').style.display = tab === 'orders' ? '' : 'none';
+  document.getElementById('otab-cart').style.display = tab === 'cart' ? '' : 'none';
+  if (tab === 'cart') loadCart();
+}
+
+async function loadAdminCarts() {
+  const el = document.getElementById('adminCartList');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api(`/api/admin/carts?password=${adminPass}`);
+  const items = r.items || [];
+  if (!items.length) { el.innerHTML = '<div class="empty">🛒 Кошики порожні</div>'; return; }
+  const byUser = {};
+  items.forEach(item => { if (!byUser[item.user_id]) byUser[item.user_id] = []; byUser[item.user_id].push(item); });
+  el.innerHTML = Object.entries(byUser).map(([userId, userItems]) => `
+    <div class="card" style="margin-bottom:8px">
+      <div style="font-size:12px;font-weight:700;color:var(--acc);margin-bottom:8px">👤 User ID: ${userId} · ${userItems.length} товар${userItems.length > 1 ? 'и' : ''}</div>
+      ${userItems.map(item => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:12px;flex:1">${esc(item.pack)}</span>
+          <span style="font-size:12px;color:var(--acc);font-weight:700;margin-left:8px">${prices[item.pack] || '?'} грн</span>
+        </div>`).join('')}
+    </div>`).join('');
 }
 
 // ─── ORDERS ──────────────────────────────────────────────────────────────────

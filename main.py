@@ -83,6 +83,7 @@ def run_migrations(connection):
     c.execute("CREATE TABLE IF NOT EXISTS user_profile (user_id INTEGER PRIMARY KEY, first_seen TEXT, last_seen TEXT, consecutive_days INTEGER DEFAULT 0, last_login_date TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS price_overrides (pack_name TEXT PRIMARY KEY, price INTEGER, updated_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS banned_users (user_id INTEGER PRIMARY KEY, reason TEXT, banned_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS cart (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, pack TEXT, added_at TEXT)")
     connection.commit()
 
 run_migrations(conn)
@@ -777,6 +778,22 @@ class PolicyHandler(BaseHTTPRequestHandler):
                         "prize": prize_map.get(r[5] or "", r[5] or "—")} for r in rows]
             _json_response(self, {"ok": True, "history": history}); return
 
+        if path == "/api/cart":
+            user_id = int(params.get("user_id", 0))
+            if not user_id:
+                _json_response(self, {"ok": False, "error": "user_id required"}); return
+            rows = db_query("SELECT id, pack, added_at FROM cart WHERE user_id=? ORDER BY id DESC", (user_id,))
+            items = [{"id": r[0], "pack": r[1], "added_at": (r[2] or "")[:16]} for r in rows]
+            _json_response(self, {"ok": True, "items": items}); return
+
+        if path == "/api/admin/carts":
+            pwd = params.get("password", "")
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            rows = db_query("SELECT id, user_id, pack, added_at FROM cart ORDER BY id DESC LIMIT 200")
+            items = [{"id": r[0], "user_id": r[1], "pack": r[2], "added_at": (r[3] or "")[:16]} for r in rows]
+            _json_response(self, {"ok": True, "items": items}); return
+
         self.send_response(404); self.end_headers()
 
     def do_POST(self):
@@ -848,6 +865,25 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 grant_achievement(user_id, "flash")
             _json_response(self, {"ok": True, "order_id": order_id, "final_price": final_price,
                                   "discount": disc_pct}); return
+
+        if path == "/api/cart/add":
+            user_id = int(data.get("user_id", 0))
+            pack = str(data.get("pack", ""))
+            if not user_id or not pack:
+                _json_response(self, {"ok": False, "error": "Невірні дані"}); return
+            if pack not in ALL_PACKS:
+                _json_response(self, {"ok": False, "error": "Пак не знайдено"}); return
+            existing = db_query_one("SELECT id FROM cart WHERE user_id=? AND pack=?", (user_id, pack))
+            if existing:
+                _json_response(self, {"ok": False, "error": "Вже є в кошику"}); return
+            db_exec("INSERT INTO cart (user_id, pack, added_at) VALUES (?,?,?)", (user_id, pack, created_at_now()))
+            _json_response(self, {"ok": True, "message": "Додано до кошика"}); return
+
+        if path == "/api/cart/remove":
+            item_id = int(data.get("id", 0))
+            user_id = int(data.get("user_id", 0))
+            db_exec("DELETE FROM cart WHERE id=? AND user_id=?", (item_id, user_id))
+            _json_response(self, {"ok": True}); return
 
         if path == "/api/promo":
             user_id = int(data.get("user_id", 0))
