@@ -844,16 +844,30 @@ class PolicyHandler(BaseHTTPRequestHandler):
             player_id = str(data.get("player_id", ""))
             base_amount = int(data.get("amount", 0))
             flash_order = bool(data.get("flash_order", False))
+            mix_packs = data.get("mix_packs", None)
             if not pack or not player_id:
                 _json_response(self, {"ok": False, "error": "Відсутні дані"}); return
-            # Apply discount (fix)
-            disc_pct, disc_src, disc_id = get_user_discount(user_id, pack)
-            price = get_pack_price(pack) or base_amount
-            final_price = apply_discount(price, disc_pct) if disc_pct else price
-            if disc_pct and disc_src == "promo":
-                db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (disc_id,))
-            elif disc_pct and disc_src == "ref":
-                db_exec("DELETE FROM ref_discounts WHERE id=?", (disc_id,))
+            # Mix order validation
+            if mix_packs is not None:
+                if not isinstance(mix_packs, list) or len(mix_packs) < 2:
+                    _json_response(self, {"ok": False, "error": "Невірний мікс"}); return
+                for mp in mix_packs:
+                    if mp not in ALL_PACKS:
+                        _json_response(self, {"ok": False, "error": f"Пак не знайдено: {mp}"}); return
+                true_sum = sum(get_pack_price(mp) for mp in mix_packs)
+                if true_sum != base_amount:
+                    _json_response(self, {"ok": False, "error": f"Невірна сума. Очікується {true_sum} грн"}); return
+                final_price = true_sum
+                disc_pct = 0
+            else:
+                # Single pack — apply discount as before
+                disc_pct, disc_src, disc_id = get_user_discount(user_id, pack)
+                price = get_pack_price(pack) or base_amount
+                final_price = apply_discount(price, disc_pct) if disc_pct else price
+                if disc_pct and disc_src == "promo":
+                    db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (disc_id,))
+                elif disc_pct and disc_src == "ref":
+                    db_exec("DELETE FROM ref_discounts WHERE id=?", (disc_id,))
             order_id = str(uuid.uuid4())[:8].upper()
             db_exec(
                 "INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount) VALUES (?,?,?,?,?,?,?,?)",

@@ -1268,10 +1268,10 @@ async function submitOrder() {
   const isFlash = (Date.now() - visitTs) < 90000;
   const submitPack = mixFinalPack || curPack;
   const submitAmount = mixFinalPack ? mixFinalAmount : (prices[curPack] || 0);
-  const r = await api('/api/submit-order', 'POST', {
-    user_id: uid, username: uname, pack: submitPack,
-    player_id: gid, amount: submitAmount, flash_order: isFlash
-  });
+  const payload = { user_id: uid, username: uname, pack: submitPack,
+    player_id: gid, amount: submitAmount, flash_order: isFlash };
+  if (mixFinalPack) payload.mix_packs = [curPack, ...mixExtra];
+  const r = await api('/api/submit-order', 'POST', payload);
   btn.disabled = false; btn.textContent = '✅ Я оплатив';
   if (r.ok) {
     if (r.final_price && !mixFinalPack && r.final_price !== prices[curPack]) {
