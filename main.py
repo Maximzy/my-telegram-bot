@@ -1812,13 +1812,37 @@ async def importdb_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-def reconnect_db(new_path: str):
+def reconnect_db(new_path: str, source_path: str = None):
+    """Close current connection, optionally replace DB file, then reopen.
+    
+    source_path: if given, copy this file to new_path AFTER safely closing
+                 the old connection (prevents old WAL from corrupting new DB).
+    """
     global conn
     with db_lock:
+        # Checkpoint WAL so pending writes are flushed before we close
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.commit()
+        except Exception:
+            pass
         try:
             conn.close()
         except Exception:
             pass
+        # Remove WAL/SHM files left from the old connection so they cannot
+        # be replayed onto the newly imported database file
+        for _ext in ("-wal", "-shm"):
+            _p = new_path + _ext
+            if os.path.exists(_p):
+                try:
+                    os.remove(_p)
+                except Exception:
+                    pass
+        # Now it is safe to place the new DB file — no old WAL remains
+        if source_path:
+            import shutil as _shutil
+            _shutil.copy2(source_path, new_path)
         conn = sqlite3.connect(new_path, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=FULL")
@@ -1881,7 +1905,7 @@ async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_T
                     "Спробуйте ще раз — надішліть правильний .db файл."
                 )
                 return  # state stays WAIT_DB_FILE — user can retry
-            # Backup current db
+            # Backup current db using sqlite3.backup API (safe, respects WAL)
             ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             backup_path = os.path.join(os.path.dirname(DB_PATH), f"backup_before_import_{ts}.db")
             with db_lock:
@@ -1890,12 +1914,12 @@ async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_T
                 src.backup(dst)
                 dst.close()
                 src.close()
-            # Replace db file under lock so no other thread reads mid-copy
-            with db_lock:
-                shutil.copy2(tmp.name, DB_PATH)
+            # reconnect_db checkpoints WAL, closes old conn, removes WAL/SHM,
+            # copies source_path → DB_PATH, then opens a fresh connection.
+            # This is the only correct order — copying BEFORE closing causes
+            # the old WAL to overwrite the new DB on the next checkpoint.
+            reconnect_db(DB_PATH, source_path=tmp.name)
             os.remove(tmp.name)
-            # Reconnect (closes old conn, opens new one — also under db_lock inside)
-            reconnect_db(DB_PATH)
             # Success — only NOW clear the state
             user_states[uid] = None
             await update.message.reply_text(
