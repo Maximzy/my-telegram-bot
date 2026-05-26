@@ -15,3 +15,6 @@ idna==3.14
 python-telegram-bot[job-queue]==21.0.1
 telegram
 typing_extensions==4.15.0
+anyio==4.13.0
+httpx==0.28.1
+python-telegram-bot[job-queue]==21.0.1
