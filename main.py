@@ -530,8 +530,8 @@ class PolicyHandler(BaseHTTPRequestHandler):
         if path == "/favicon.ico":
             self.send_response(204); self.end_headers(); return
 
-        if path in ("/nezuko.png", "/nezuko_bg.png", "/uc_icon.png", "/prime_crown.png", "/points_coin.png", "/nezuko_love.png"):
-            fname = {"nezuko_bg.png":"nezuko_bg.png","nezuko.png":"nezuko.png","uc_icon.png":"uc_icon.png","prime_crown.png":"prime_crown.png","points_coin.png":"points_coin.png","nezuko_love.png":"nezuko_love.png"}.get(path.lstrip("/"), "nezuko.png")
+        if path in ("/nezuko.png", "/nezuko_bg.png", "/uc_icon.png", "/prime_crown.png", "/points_coin.png", "/nezuko_love.png", "/crate_icon.png"):
+            fname = {"nezuko_bg.png":"nezuko_bg.png","nezuko.png":"nezuko.png","uc_icon.png":"uc_icon.png","prime_crown.png":"prime_crown.png","points_coin.png":"points_coin.png","nezuko_love.png":"nezuko_love.png","crate_icon.png":"crate_icon.png"}.get(path.lstrip("/"), "nezuko.png")
             img_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "attached_assets", fname)
             if os.path.exists(img_path):
                 with open(img_path, "rb") as f:
