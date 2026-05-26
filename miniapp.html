@@ -363,11 +363,11 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
           <div class="category-label">UC</div>
         </div>
         <div class="category-card" onclick="showPacks('prime')">
-          <div class="category-icon">👑</div>
+          <div class="category-icon"><img src="/prime_crown.png" style="width:48px;height:48px;object-fit:contain;filter:drop-shadow(0 0 8px #ffd16699)" draggable="false"></div>
           <div class="category-label">Prime</div>
         </div>
         <div class="category-card" style="grid-column:1/-1;position:relative" onclick="showPacks('primeplus')">
-          <div class="category-icon">✨</div>
+          <div class="category-icon"><img src="/prime_crown.png" style="width:48px;height:48px;object-fit:contain;filter:drop-shadow(0 0 12px #ffd166cc) drop-shadow(0 0 4px #fff8)" draggable="false"></div>
           <div class="category-label">Prime Plus</div>
           <span class="hl" style="position:absolute;bottom:5px;right:10px;font-size:12px;transform:rotate(8deg)">N</span>
         </div>
@@ -1200,7 +1200,7 @@ const CAT_FILTER = {
   primeplus: k => k.includes('Prime Plus'),
   rise: k => k.includes('⭐️ Набір Підйом')
 };
-const CAT_LABEL = { uc: '<img src="/uc_icon.png" style="width:16px;height:16px;object-fit:contain;vertical-align:middle"> UC Паки', prime: '👑 Prime Паки', primeplus: '✨ Prime Plus Паки', rise: '⭐️ Набори Підйом' };
+const CAT_LABEL = { uc: '<img src="/uc_icon.png" style="width:16px;height:16px;object-fit:contain;vertical-align:middle"> UC Паки', prime: '<img src="/prime_crown.png" style="width:16px;height:16px;object-fit:contain;vertical-align:middle"> Prime Паки', primeplus: '<img src="/prime_crown.png" style="width:16px;height:16px;object-fit:contain;vertical-align:middle"> Prime Plus Паки', rise: '⭐️ Набори Підйом' };
 
 async function showPacks(cat) {
   curCat = cat;
@@ -1212,6 +1212,13 @@ async function showPacks(cat) {
         <div style="font-size:13px;font-weight:700;color:#ffd166;margin-bottom:4px">⚠️ Важливо!</div>
         <div style="font-size:12px;color:rgba(255,255,255,.7);line-height:1.5">Кожний набір купується лише <b>1 раз</b>.<br>Перед покупкою перевірте чи він у вас куплений. Після — пишіть нам чи можна його купити 💸</div>
       </div>` : '';
+  const crownImg = '<img src="/prime_crown.png" style="width:15px;height:15px;object-fit:contain;vertical-align:middle;margin-right:2px">';
+  const ucImg = '<img src="/uc_icon.png" style="width:15px;height:15px;object-fit:contain;vertical-align:middle;margin-right:2px">';
+  function packNameHtml(name) {
+    return esc(name)
+      .replace(/👑\s*/g, crownImg)
+      .replace(/💎\s*/g, ucImg);
+  }
   document.getElementById('packList').innerHTML = riseNote + packs.map(p => {
     const base = prices[p];
     const pct = getPackDiscount(p, userBonuses);
@@ -1219,7 +1226,7 @@ async function showPacks(cat) {
       ? `<span class="pack-price"><s style="opacity:.5;font-size:.85em">${base}</s> <span style="color:#f9a8d4">${discountedPrice(base, pct)} грн</span> <span style="font-size:.75em;color:#a78bfa">-${pct}%</span></span>`
       : `<span class="pack-price">${base} грн</span>`;
     return `<div class="pack-item" onclick="selectPack(${JSON.stringify(p).replace(/"/g, '&quot;')})">
-       <span class="pack-name">${esc(p)}</span>
+       <span class="pack-name">${packNameHtml(p)}</span>
        ${priceHtml}
      </div>`;
   }).join('');
@@ -2274,7 +2281,7 @@ document.addEventListener('visibilitychange', () => {
   const container = document.getElementById('uc-coins-container');
   if (!container) return;
   function makeCoins() {
-    const count = 8 + Math.floor(Math.random() * 5);
+    const count = 3 + Math.floor(Math.random() * 3);
     for (let i = 0; i < count; i++) {
       const el = document.createElement('div');
       el.className = 'uc-coin';
@@ -2295,7 +2302,7 @@ document.addEventListener('visibilitychange', () => {
       container.appendChild(el);
       setTimeout(() => el.remove(), (delay + dur + 0.5) * 1000);
     }
-    setTimeout(makeCoins, 3500 + Math.random() * 2000);
+    setTimeout(makeCoins, 7000 + Math.random() * 4000);
   }
   makeCoins();
 })();
