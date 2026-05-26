@@ -72,6 +72,7 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 .nav-item.active::after{content:'';position:absolute;bottom:3px;width:4px;height:4px;border-radius:50%;background:var(--acc);box-shadow:0 0 6px var(--acc)}
 .nav-icon{font-size:20px;line-height:1;transition:transform .15s ease}
 .nav-item:active .nav-icon{transform:scale(.82)}
+.nav-badge{position:absolute;top:4px;right:calc(50% - 16px);min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#e53935;color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center;display:none;box-shadow:0 1px 4px rgba(0,0,0,.4)}
 
 /* ── TABS ───────────────────────────────── */
 @keyframes tabFadeUp{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:translateY(0)}}
@@ -1048,7 +1049,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
   <div class="nav-item" data-tab="orders"><div class="nav-icon">📦</div><span>Замовлення</span></div>
   <div class="nav-item" data-tab="services"><div class="nav-icon">🎁</div><span>Сервіси</span></div>
   <div class="nav-item" data-tab="profile"><div class="nav-icon">👤</div><span>Профіль</span></div>
-  <div class="nav-item" data-tab="admin"><div class="nav-icon">⚙️</div><span>Адмін</span></div>
+  <div class="nav-item" data-tab="admin"><div class="nav-icon">⚙️</div><span class="nav-badge" id="adminTicketBadge"></span><span>Адмін</span></div>
 </nav>
 
 <script>
@@ -1988,15 +1989,32 @@ function aLogin() {
   });
 }
 
+let adminBadgeInterval = null;
+
+async function updateAdminBadge() {
+  if (!adminPass) return;
+  const r = await api(`/api/admin/stats?password=${adminPass}`);
+  const badge = document.getElementById('adminTicketBadge');
+  if (!badge) return;
+  const cnt = (r && r.ok && r.open_tickets > 0) ? r.open_tickets : 0;
+  if (cnt > 0) { badge.textContent = cnt > 99 ? '99+' : cnt; badge.style.display = 'block'; }
+  else { badge.style.display = 'none'; }
+}
+
 function showAdminPanel() {
   document.getElementById('adminLogin').style.display = 'none';
   document.getElementById('adminPanel').style.display = '';
+  updateAdminBadge();
+  if (!adminBadgeInterval) adminBadgeInterval = setInterval(updateAdminBadge, 30000);
 }
 
 function aLogout() {
   adminPass = ''; sessionStorage.removeItem('ap');
   document.getElementById('adminLogin').style.display = '';
   document.getElementById('adminPanel').style.display = 'none';
+  if (adminBadgeInterval) { clearInterval(adminBadgeInterval); adminBadgeInterval = null; }
+  const badge = document.getElementById('adminTicketBadge');
+  if (badge) badge.style.display = 'none';
 }
 
 async function loadAOrders() {
@@ -2033,6 +2051,7 @@ async function loadAStats() {
       <div class="stat-box"><div class="stat-val" style="color:var(--err)">${r.canceled}</div><div class="stat-lbl">❌ Відхилено</div></div>
       <div class="stat-box"><div class="stat-val" style="color:var(--warn)">${r.pending}</div><div class="stat-lbl">⏳ Очікують</div></div>
       <div class="stat-box"><div class="stat-val" style="color:var(--pts)">${r.users}</div><div class="stat-lbl">👥 Користувачів</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--acc)">${r.open_tickets ?? 0}</div><div class="stat-lbl">🎫 Відкриті тікети</div></div>
       <div class="stat-box" style="grid-column:1/-1"><div class="stat-val" style="font-size:26px">${r.total_sum} грн</div><div class="stat-lbl">💰 Загальні продажі</div></div>
       <div class="stat-box" style="grid-column:1/-1"><div class="stat-val" style="font-size:26px;color:var(--success)">${r.today_sum} грн</div><div class="stat-lbl">📅 Сьогодні</div></div>
     </div>`;
@@ -2482,7 +2501,7 @@ async function setAdminTicketStatus(status) {
   const r = await api('/api/admin/ticket/status', 'POST', {
     password: adminPass, ticket_id: currentAdminTicketId, status
   });
-  if (r.ok) toast('✅ Статус змінено', 'success');
+  if (r.ok) { toast('✅ Статус змінено', 'success'); updateAdminBadge(); }
   else toast(r.error || 'Помилка', 'error');
 }
 
@@ -2497,6 +2516,7 @@ async function sendAdminTicketMessage() {
     document.getElementById('aTicketReplyText').value = '';
     toast('✅ Надіслано', 'success');
     openAdminTicketChat(currentAdminTicketId);
+    updateAdminBadge();
   } else toast(r.error || 'Помилка', 'error');
 }
 

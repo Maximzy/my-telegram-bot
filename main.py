@@ -696,8 +696,10 @@ class PolicyHandler(BaseHTTPRequestHandler):
             total_users = db_query_one("SELECT COUNT(DISTINCT user_id) FROM user_profile")[0] or 0
             total_sum = get_done_sum()
             today_sum = get_done_sum(today_only=True)
+            open_tickets = db_query_one("SELECT COUNT(*) FROM tickets WHERE status IN ('open','answered','waiting')")[0]
             _json_response(self, {"ok": True, "done": done, "canceled": canceled, "pending": pending,
-                                  "total_sum": total_sum, "today_sum": today_sum, "users": total_users}); return
+                                  "total_sum": total_sum, "today_sum": today_sum, "users": total_users,
+                                  "open_tickets": open_tickets}); return
 
         if path == "/api/admin/admins":
             pwd = params.get("password", "")
