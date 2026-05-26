@@ -87,6 +87,7 @@ def run_migrations(connection):
     c.execute("CREATE TABLE IF NOT EXISTS price_overrides (pack_name TEXT PRIMARY KEY, price INTEGER, updated_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS banned_users (user_id INTEGER PRIMARY KEY, reason TEXT, banned_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS cart (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, pack TEXT, added_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, chat_id INTEGER, username TEXT, category TEXT, message TEXT, status TEXT DEFAULT 'open', admin_reply TEXT, created_at TEXT, replied_at TEXT)")
     connection.commit()
 
 run_migrations(conn)
@@ -340,6 +341,20 @@ def _notify_admin_order(order_id, pack, player_id, amount, user_id, username, mi
         urllib.request.urlopen(req, timeout=5)
     except Exception as e:
         logging.warning(f"Не вдалося повідомити адміна: {e}")
+
+def _notify_admin_ticket(ticket_id, user_id, username, category, message):
+    try:
+        user_label_str = f"@{username}" if username else str(user_id)
+        text = (f"🎫 ТІКЕТ #{ticket_id}\n📂 Категорія: {category}\n"
+                f"👤 {user_label_str} (ID: {user_id})\n\n💬 Повідомлення:\n{message}")
+        reply_btn = json.dumps({"inline_keyboard": [[
+            {"text": "✏️ Відповісти", "callback_data": f"tkt_reply_{ticket_id}"}
+        ]]})
+        params = urllib.parse.urlencode({"chat_id": MY_ID, "text": text, "reply_markup": reply_btn}).encode()
+        req = urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=params)
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        logging.warning(f"ticket notify error: {e}")
 
 # --- ДОСЯГНЕННЯ + БАЛИ: ХЕЛПЕРИ ---
 def add_points(user_id, delta, reason=""):
@@ -939,6 +954,52 @@ class PolicyHandler(BaseHTTPRequestHandler):
             db_exec("DELETE FROM cart WHERE id=? AND user_id=?", (item_id, user_id))
             _json_response(self, {"ok": True}); return
 
+        if path == "/api/ticket" and method == "GET":
+            user_id = int(params.get("user_id", ["0"])[0])
+            if not user_id:
+                _json_response(self, {"tickets": []}); return
+            rows = db_query("SELECT id, category, message, status, admin_reply, created_at FROM tickets WHERE user_id=? ORDER BY created_at DESC LIMIT 20", (user_id,))
+            tickets = [{"id": r[0], "category": r[1], "message": r[2], "status": r[3], "admin_reply": r[4], "created_at": r[5]} for r in rows]
+            _json_response(self, {"tickets": tickets}); return
+
+        if path == "/api/ticket" and method == "POST":
+            user_id = int(data.get("user_id", 0))
+            category = str(data.get("category", "")).strip()
+            message = str(data.get("message", "")).strip()
+            username = str(data.get("username", "")).strip()
+            if not user_id or not category or not message:
+                _json_response(self, {"ok": False, "error": "Невірні дані"}); return
+            if len(message) > 1000:
+                _json_response(self, {"ok": False, "error": "Повідомлення занадто довге (макс 1000 символів)"}); return
+            open_count = db_query_one("SELECT COUNT(*) FROM tickets WHERE user_id=? AND status='open'", (user_id,))
+            if open_count and open_count[0] >= 5:
+                _json_response(self, {"ok": False, "error": "Забагато відкритих тікетів. Зачекайте відповіді адміна."}); return
+            cur = db_exec("INSERT INTO tickets (user_id, chat_id, username, category, message, status, created_at) VALUES (?,?,?,?,?,?,?)",
+                          (user_id, user_id, username, category, message, "open", created_at_now()))
+            tid = cur.lastrowid
+            _notify_admin_ticket(tid, user_id, username, category, message)
+            _json_response(self, {"ok": True, "ticket_id": tid}); return
+
+        if path == "/api/ticket/reply":
+            pwd = data.get("password", "")
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}); return
+            ticket_id = int(data.get("ticket_id", 0))
+            reply = str(data.get("reply", "")).strip()
+            if not ticket_id or not reply:
+                _json_response(self, {"ok": False, "error": "Невірні дані"}); return
+            ticket = db_query_one("SELECT user_id, category FROM tickets WHERE id=?", (ticket_id,))
+            if not ticket:
+                _json_response(self, {"ok": False, "error": "Тікет не знайдено"}); return
+            db_exec("UPDATE tickets SET admin_reply=?, status='answered', replied_at=? WHERE id=?", (reply, created_at_now(), ticket_id))
+            try:
+                msg_txt = f"🎫 Відповідь по тікету #{ticket_id} [{ticket[1]}]:\n\n{reply}"
+                p = urllib.parse.urlencode({"chat_id": ticket[0], "text": msg_txt}).encode()
+                urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=p), timeout=5)
+            except Exception as e:
+                logging.warning(f"ticket reply send error: {e}")
+            _json_response(self, {"ok": True}); return
+
         if path == "/api/promo":
             user_id = int(data.get("user_id", 0))
             code = str(data.get("code", "")).strip().upper()
@@ -1511,7 +1572,17 @@ async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Оберіть пакет:", reply_markup=ReplyKeyboardMarkup([[p] for p in PACKS.keys()], resize_keyboard=True))
 
 async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🆘 Підтримка 24/7\n👨‍💻 Менеджер: @Manager_Nezuko")
+    btns = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💬 Питання/Спілкування", callback_data="tkt_cat_💬 Питання/Спілкування")],
+        [InlineKeyboardButton("🐛 Баг", callback_data="tkt_cat_🐛 Баг")],
+        [InlineKeyboardButton("📦 Проблема з замовленням", callback_data="tkt_cat_📦 Проблема з замовленням")],
+        [InlineKeyboardButton("💳 Питання по оплаті", callback_data="tkt_cat_💳 Питання по оплаті")],
+        [InlineKeyboardButton("💬 Написати @Manager_Nezuko", url="https://t.me/Manager_Nezuko")],
+    ])
+    await update.message.reply_text(
+        "🎫 *Підтримка 24/7*\n\nОберіть категорію тікету або напишіть напряму менеджеру:",
+        reply_markup=btns, parse_mode="Markdown"
+    )
 
 async def policy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     policy_text = (
@@ -2169,7 +2240,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ); return
 
     if text == "🆘 Підтримка":
-        await update.message.reply_text("🆘 Підтримка 24/7\n👨‍💻 Менеджер: @Manager_Nezuko"); return
+        await support_command(update, context); return
 
     if text == "📋 Мої замовлення":
         await history_command(update, context); return
@@ -2192,6 +2263,51 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price = get_pack_price(text)
         user_states[uid] = {"pack": text, "step": "ID", "price": price}
         await update.message.reply_text(f"🎮 Введіть ваш ігровий ID:", reply_markup=ReplyKeyboardRemove()); return
+
+    # ── Тікет: повідомлення від юзера ──────────────────────────────────────────
+
+    if isinstance(state, dict) and state.get("step") == "TICKET_MSG":
+        msg_text = text.strip()
+        if len(msg_text) < 3:
+            await update.message.reply_text("❌ Повідомлення занадто коротке."); return
+        if len(msg_text) > 1000:
+            await update.message.reply_text("❌ Повідомлення занадто довге (макс 1000 символів)."); return
+        category = state.get("category", "Інше")
+        uname = update.effective_user.username or ""
+        open_count = db_query_one("SELECT COUNT(*) FROM tickets WHERE user_id=? AND status='open'", (uid,))
+        if open_count and open_count[0] >= 5:
+            await update.message.reply_text("❌ Забагато відкритих тікетів. Зачекайте відповіді адміна.",
+                                             reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
+            user_states[uid] = None; return
+        cur = db_exec("INSERT INTO tickets (user_id, chat_id, username, category, message, status, created_at) VALUES (?,?,?,?,?,?,?)",
+                      (uid, uid, uname, category, msg_text, "open", created_at_now()))
+        tid = cur.lastrowid
+        _notify_admin_ticket(tid, uid, uname, category, msg_text)
+        user_states[uid] = None
+        await update.message.reply_text(
+            f"✅ Тікет *#{tid}* створено!\n\nАдмін відповість найближчим часом. Ви отримаєте сповіщення тут 🌸",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)
+        ); return
+
+    if isinstance(state, dict) and state.get("step") == "TICKET_REPLY":
+        if not is_admin(uid):
+            user_states[uid] = None; return
+        reply_text = text.strip()
+        ticket_id = state.get("ticket_id")
+        ticket_user_id = state.get("ticket_user_id")
+        ticket = db_query_one("SELECT category FROM tickets WHERE id=?", (ticket_id,))
+        if ticket:
+            db_exec("UPDATE tickets SET admin_reply=?, status='answered', replied_at=? WHERE id=?",
+                    (reply_text, created_at_now(), ticket_id))
+            try:
+                await context.bot.send_message(ticket_user_id,
+                    f"🎫 Відповідь по тікету *#{ticket_id}* [{ticket[0]}]:\n\n{reply_text}",
+                    parse_mode="Markdown")
+            except Exception as e:
+                logging.warning(f"ticket reply send error: {e}")
+        user_states[uid] = None
+        await update.message.reply_text(f"✅ Відповідь надіслано на тікет #{ticket_id}!"); return
 
     # ── Флоу замовлення ────────────────────────────────────────────────────────
 
@@ -2348,6 +2464,31 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(q.from_user.id, "🎁 Введіть назву промокоду:")
         return
 
+    if data.startswith("tkt_cat_"):
+        category = data[8:]
+        user_states[q.from_user.id] = {"step": "TICKET_MSG", "category": category}
+        await context.bot.send_message(
+            q.from_user.id,
+            f"✍️ Ви обрали: *{category}*\n\nНапишіть ваше повідомлення (до 1000 символів):",
+            parse_mode="Markdown"
+        )
+        return
+
+    if data.startswith("tkt_reply_"):
+        if not is_admin(q.from_user.id): return
+        ticket_id = int(data[10:])
+        ticket = db_query_one("SELECT user_id, username, category, message FROM tickets WHERE id=?", (ticket_id,))
+        if not ticket:
+            await q.answer("Тікет не знайдено."); return
+        user_label_str = f"@{ticket[1]}" if ticket[1] else str(ticket[0])
+        user_states[q.from_user.id] = {"step": "TICKET_REPLY", "ticket_id": ticket_id, "ticket_user_id": ticket[0]}
+        await context.bot.send_message(
+            q.from_user.id,
+            f"✏️ Відповідь на тікет *#{ticket_id}*\n📂 {ticket[2]}\n👤 {user_label_str}\n\n💬 _{ticket[3]}_\n\nВведіть вашу відповідь:",
+            parse_mode="Markdown"
+        )
+        return
+
     if data.startswith("promo_del_"):
         if is_admin(q.from_user.id):
             code = data[10:]
@@ -2399,6 +2540,7 @@ def main():
     app.add_handler(CommandHandler("shop", shop_command))
     app.add_handler(CommandHandler("buy", buy_command))
     app.add_handler(CommandHandler("support", support_command))
+    app.add_handler(CommandHandler("ticket", support_command))
     app.add_handler(CommandHandler("policy", policy_command))
     app.add_handler(CommandHandler("reviews", reviews_command))
     app.add_handler(CommandHandler("status", status_command))
