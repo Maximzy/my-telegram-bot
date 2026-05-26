@@ -89,6 +89,10 @@ def run_migrations(connection):
     c.execute("CREATE TABLE IF NOT EXISTS cart (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, pack TEXT, added_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, chat_id INTEGER, username TEXT, category TEXT, message TEXT, status TEXT DEFAULT 'open', admin_reply TEXT, created_at TEXT, replied_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS ticket_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER, sender TEXT, message TEXT, created_at TEXT)")
+    c.execute("PRAGMA table_info(tickets)")
+    _tkt_cols = [r[1] for r in c.fetchall()]
+    if "rating" not in _tkt_cols:
+        c.execute("ALTER TABLE tickets ADD COLUMN rating INTEGER")
     c.execute("CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, type TEXT, message TEXT, read INTEGER DEFAULT 0, created_at TEXT)")
     connection.commit()
 
@@ -824,8 +828,8 @@ class PolicyHandler(BaseHTTPRequestHandler):
             user_id = int(params.get("user_id", 0) or 0)
             if not user_id:
                 _json_response(self, {"tickets": []}); return
-            rows = db_query("SELECT id, category, message, status, admin_reply, created_at FROM tickets WHERE user_id=? ORDER BY created_at DESC LIMIT 20", (user_id,))
-            tickets = [{"id": r[0], "category": r[1], "message": r[2], "status": r[3], "admin_reply": r[4], "created_at": r[5]} for r in rows]
+            rows = db_query("SELECT id, category, message, status, admin_reply, created_at, rating FROM tickets WHERE user_id=? ORDER BY created_at DESC LIMIT 20", (user_id,))
+            tickets = [{"id": r[0], "category": r[1], "message": r[2], "status": r[3], "admin_reply": r[4], "created_at": r[5], "rating": r[6]} for r in rows]
             _json_response(self, {"tickets": tickets}); return
 
         if path == "/api/ticket/messages":
@@ -833,12 +837,14 @@ class PolicyHandler(BaseHTTPRequestHandler):
             user_id = int(params.get("user_id", 0) or 0)
             if not ticket_id or not user_id:
                 _json_response(self, {"ok": False, "messages": []}); return
-            t = db_query_one("SELECT user_id FROM tickets WHERE id=?", (ticket_id,))
+            t = db_query_one("SELECT user_id, category, status, rating FROM tickets WHERE id=?", (ticket_id,))
             if not t or t[0] != user_id:
                 _json_response(self, {"ok": False, "error": "Доступ заборонено"}); return
             msgs = db_query("SELECT sender, message, created_at FROM ticket_messages WHERE ticket_id=? ORDER BY id ASC", (ticket_id,))
             messages = [{"sender": r[0], "message": r[1], "created_at": (r[2] or "")[:16]} for r in msgs]
-            _json_response(self, {"ok": True, "messages": messages}); return
+            _json_response(self, {"ok": True, "messages": messages, "ticket": {
+                "category": t[1], "status": t[2], "rating": t[3]
+            }}); return
 
         if path == "/api/admin/tickets":
             pwd = params.get("password", "")
@@ -846,13 +852,13 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             status_filter = params.get("status", "all")
             if status_filter == "all":
-                rows = db_query("SELECT id, user_id, username, category, message, status, created_at FROM tickets ORDER BY id DESC LIMIT 200")
+                rows = db_query("SELECT id, user_id, username, category, message, status, created_at, rating FROM tickets ORDER BY id DESC LIMIT 200")
             else:
-                rows = db_query("SELECT id, user_id, username, category, message, status, created_at FROM tickets WHERE status=? ORDER BY id DESC LIMIT 200", (status_filter,))
+                rows = db_query("SELECT id, user_id, username, category, message, status, created_at, rating FROM tickets WHERE status=? ORDER BY id DESC LIMIT 200", (status_filter,))
             tickets = [{"id": r[0], "user_id": r[1],
                         "user": f"@{r[2]}" if r[2] else str(r[1]),
                         "category": r[3], "message": r[4], "status": r[5],
-                        "created_at": (r[6] or "")[:16]} for r in rows]
+                        "created_at": (r[6] or "")[:16], "rating": r[7]} for r in rows]
             _json_response(self, {"ok": True, "tickets": tickets}); return
 
         if path == "/api/admin/ticket/messages":
@@ -1044,6 +1050,8 @@ class PolicyHandler(BaseHTTPRequestHandler):
             if not ticket:
                 _json_response(self, {"ok": False, "error": "Тікет не знайдено"}); return
             db_exec("UPDATE tickets SET status=? WHERE id=?", (status, ticket_id))
+            if status == "closed":
+                push_notification(ticket[0], "ticket_closed", f"⬜ Тікет #{ticket_id} закрито адміном. Оцініть будь ласка підтримку!")
             _json_response(self, {"ok": True}); return
 
         if path == "/api/admin/ticket/message":
@@ -1068,6 +1076,21 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=p), timeout=5)
             except Exception as e:
                 logging.warning(f"ticket admin msg send error: {e}")
+            _json_response(self, {"ok": True}); return
+
+        if path == "/api/ticket/close":
+            user_id = int(data.get("user_id", 0))
+            ticket_id = int(data.get("ticket_id", 0))
+            rating = int(data.get("rating", 0) or 0)
+            if not user_id or not ticket_id:
+                _json_response(self, {"ok": False, "error": "Невірні дані"}); return
+            ticket = db_query_one("SELECT user_id FROM tickets WHERE id=?", (ticket_id,))
+            if not ticket or ticket[0] != user_id:
+                _json_response(self, {"ok": False, "error": "Доступ заборонено"}); return
+            if 1 <= rating <= 5:
+                db_exec("UPDATE tickets SET status='closed', rating=? WHERE id=?", (rating, ticket_id))
+            else:
+                db_exec("UPDATE tickets SET status='closed' WHERE id=?", (ticket_id,))
             _json_response(self, {"ok": True}); return
 
         if path == "/api/ticket/message":
