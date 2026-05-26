@@ -799,6 +799,59 @@ class PolicyHandler(BaseHTTPRequestHandler):
             items = [{"id": r[0], "user_id": r[1], "pack": r[2], "added_at": (r[3] or "")[:16]} for r in rows]
             _json_response(self, {"ok": True, "items": items}); return
 
+        if path == "/api/ticket":
+            user_id = int(params.get("user_id", 0) or 0)
+            if not user_id:
+                _json_response(self, {"tickets": []}); return
+            rows = db_query("SELECT id, category, message, status, admin_reply, created_at FROM tickets WHERE user_id=? ORDER BY created_at DESC LIMIT 20", (user_id,))
+            tickets = [{"id": r[0], "category": r[1], "message": r[2], "status": r[3], "admin_reply": r[4], "created_at": r[5]} for r in rows]
+            _json_response(self, {"tickets": tickets}); return
+
+        if path == "/api/ticket/messages":
+            ticket_id = int(params.get("ticket_id", 0) or 0)
+            user_id = int(params.get("user_id", 0) or 0)
+            if not ticket_id or not user_id:
+                _json_response(self, {"ok": False, "messages": []}); return
+            t = db_query_one("SELECT user_id FROM tickets WHERE id=?", (ticket_id,))
+            if not t or t[0] != user_id:
+                _json_response(self, {"ok": False, "error": "Доступ заборонено"}); return
+            msgs = db_query("SELECT sender, message, created_at FROM ticket_messages WHERE ticket_id=? ORDER BY id ASC", (ticket_id,))
+            messages = [{"sender": r[0], "message": r[1], "created_at": (r[2] or "")[:16]} for r in msgs]
+            _json_response(self, {"ok": True, "messages": messages}); return
+
+        if path == "/api/admin/tickets":
+            pwd = params.get("password", "")
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            status_filter = params.get("status", "all")
+            if status_filter == "all":
+                rows = db_query("SELECT id, user_id, username, category, message, status, created_at FROM tickets ORDER BY id DESC LIMIT 200")
+            else:
+                rows = db_query("SELECT id, user_id, username, category, message, status, created_at FROM tickets WHERE status=? ORDER BY id DESC LIMIT 200", (status_filter,))
+            tickets = [{"id": r[0], "user_id": r[1],
+                        "user": f"@{r[2]}" if r[2] else str(r[1]),
+                        "category": r[3], "message": r[4], "status": r[5],
+                        "created_at": (r[6] or "")[:16]} for r in rows]
+            _json_response(self, {"ok": True, "tickets": tickets}); return
+
+        if path == "/api/admin/ticket/messages":
+            pwd = params.get("password", "")
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            ticket_id = int(params.get("ticket_id", 0) or 0)
+            if not ticket_id:
+                _json_response(self, {"ok": False, "messages": []}); return
+            ticket = db_query_one("SELECT user_id, username, category, status FROM tickets WHERE id=?", (ticket_id,))
+            if not ticket:
+                _json_response(self, {"ok": False, "error": "Тікет не знайдено"}); return
+            msgs = db_query("SELECT sender, message, created_at FROM ticket_messages WHERE ticket_id=? ORDER BY id ASC", (ticket_id,))
+            messages = [{"sender": r[0], "message": r[1], "created_at": (r[2] or "")[:16]} for r in msgs]
+            _json_response(self, {"ok": True, "messages": messages, "ticket": {
+                "user_id": ticket[0],
+                "user": f"@{ticket[1]}" if ticket[1] else str(ticket[0]),
+                "category": ticket[2], "status": ticket[3]
+            }}); return
+
         self.send_response(404); self.end_headers()
 
     def do_POST(self):
@@ -914,60 +967,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
             db_exec("DELETE FROM cart WHERE id=? AND user_id=?", (item_id, user_id))
             _json_response(self, {"ok": True}); return
 
-        if path == "/api/ticket" and method == "GET":
-            user_id = int(params.get("user_id", ["0"])[0])
-            if not user_id:
-                _json_response(self, {"tickets": []}); return
-            rows = db_query("SELECT id, category, message, status, admin_reply, created_at FROM tickets WHERE user_id=? ORDER BY created_at DESC LIMIT 20", (user_id,))
-            tickets = [{"id": r[0], "category": r[1], "message": r[2], "status": r[3], "admin_reply": r[4], "created_at": r[5]} for r in rows]
-            _json_response(self, {"tickets": tickets}); return
-
-        if path == "/api/ticket/messages":
-            ticket_id = int(params.get("ticket_id", 0))
-            user_id = int(params.get("user_id", 0))
-            if not ticket_id or not user_id:
-                _json_response(self, {"ok": False, "messages": []}); return
-            t = db_query_one("SELECT user_id FROM tickets WHERE id=?", (ticket_id,))
-            if not t or t[0] != user_id:
-                _json_response(self, {"ok": False, "error": "Доступ заборонено"}); return
-            msgs = db_query("SELECT sender, message, created_at FROM ticket_messages WHERE ticket_id=? ORDER BY id ASC", (ticket_id,))
-            messages = [{"sender": r[0], "message": r[1], "created_at": (r[2] or "")[:16]} for r in msgs]
-            _json_response(self, {"ok": True, "messages": messages}); return
-
-        if path == "/api/admin/tickets":
-            pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
-            status_filter = params.get("status", "all")
-            if status_filter == "all":
-                rows = db_query("SELECT id, user_id, username, category, message, status, created_at FROM tickets ORDER BY id DESC LIMIT 200")
-            else:
-                rows = db_query("SELECT id, user_id, username, category, message, status, created_at FROM tickets WHERE status=? ORDER BY id DESC LIMIT 200", (status_filter,))
-            tickets = [{"id": r[0], "user_id": r[1],
-                        "user": f"@{r[2]}" if r[2] else str(r[1]),
-                        "category": r[3], "message": r[4], "status": r[5],
-                        "created_at": (r[6] or "")[:16]} for r in rows]
-            _json_response(self, {"ok": True, "tickets": tickets}); return
-
-        if path == "/api/admin/ticket/messages":
-            pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
-            ticket_id = int(params.get("ticket_id", 0))
-            if not ticket_id:
-                _json_response(self, {"ok": False, "messages": []}); return
-            ticket = db_query_one("SELECT user_id, username, category, status FROM tickets WHERE id=?", (ticket_id,))
-            if not ticket:
-                _json_response(self, {"ok": False, "error": "Тікет не знайдено"}); return
-            msgs = db_query("SELECT sender, message, created_at FROM ticket_messages WHERE ticket_id=? ORDER BY id ASC", (ticket_id,))
-            messages = [{"sender": r[0], "message": r[1], "created_at": (r[2] or "")[:16]} for r in msgs]
-            _json_response(self, {"ok": True, "messages": messages, "ticket": {
-                "user_id": ticket[0],
-                "user": f"@{ticket[1]}" if ticket[1] else str(ticket[0]),
-                "category": ticket[2], "status": ticket[3]
-            }}); return
-
-        if path == "/api/ticket" and method == "POST":
+        if path == "/api/ticket":
             user_id = int(data.get("user_id", 0))
             category = str(data.get("category", "")).strip()
             message = str(data.get("message", "")).strip()
