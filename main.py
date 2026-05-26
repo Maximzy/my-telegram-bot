@@ -1747,10 +1747,9 @@ async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_T
     if is_banned(uid): return
 
     if user_states.get(uid) == "WAIT_DB_FILE" and uid == MY_ID:
-        user_states[uid] = None
         doc = update.message.document
         if not doc:
-            await update.message.reply_text("❌ Надішліть файл бази даних"); return
+            await update.message.reply_text("❌ Надішліть файл бази даних (.db)"); return
         await update.message.reply_text("⏳ Завантажую файл та перевіряю...")
         try:
             import shutil, tempfile
@@ -1763,7 +1762,11 @@ async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_T
                 magic = f.read(16)
             if not magic.startswith(b"SQLite format 3"):
                 os.remove(tmp.name)
-                await update.message.reply_text("❌ Файл не є базою SQLite. Операцію скасовано."); return
+                await update.message.reply_text(
+                    "❌ Файл не є базою SQLite. Операцію скасовано.\n"
+                    "Спробуйте ще раз — надішліть правильний .db файл."
+                )
+                return  # state stays WAIT_DB_FILE — user can retry
             # Backup current db
             ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             backup_path = os.path.join(os.path.dirname(DB_PATH), f"backup_before_import_{ts}.db")
@@ -1773,11 +1776,14 @@ async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_T
                 src.backup(dst)
                 dst.close()
                 src.close()
-            # Replace db file
-            shutil.copy2(tmp.name, DB_PATH)
+            # Replace db file under lock so no other thread reads mid-copy
+            with db_lock:
+                shutil.copy2(tmp.name, DB_PATH)
             os.remove(tmp.name)
-            # Reconnect
+            # Reconnect (closes old conn, opens new one — also under db_lock inside)
             reconnect_db(DB_PATH)
+            # Success — only NOW clear the state
+            user_states[uid] = None
             await update.message.reply_text(
                 f"✅ База даних успішно замінена!\n\n"
                 f"📦 Резервна копія збережена:\n`backup_before_import_{ts}.db`\n\n"
@@ -1786,7 +1792,11 @@ async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_T
             )
             logging.info(f"DB imported by owner {uid}, backup: {backup_path}")
         except Exception as e:
-            await update.message.reply_text(f"❌ Помилка імпорту: {e}")
+            # State stays WAIT_DB_FILE so user can retry without /importdb
+            await update.message.reply_text(
+                f"❌ Помилка імпорту: {e}\n\n"
+                f"Надішліть файл ще раз — повторювати /importdb не потрібно."
+            )
             logging.error(f"DB import error: {e}")
         return
 
