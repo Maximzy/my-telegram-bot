@@ -88,6 +88,7 @@ def run_migrations(connection):
     c.execute("CREATE TABLE IF NOT EXISTS banned_users (user_id INTEGER PRIMARY KEY, reason TEXT, banned_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS cart (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, pack TEXT, added_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, chat_id INTEGER, username TEXT, category TEXT, message TEXT, status TEXT DEFAULT 'open', admin_reply TEXT, created_at TEXT, replied_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS ticket_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER, sender TEXT, message TEXT, created_at TEXT)")
     connection.commit()
 
 run_migrations(conn)
@@ -921,6 +922,51 @@ class PolicyHandler(BaseHTTPRequestHandler):
             tickets = [{"id": r[0], "category": r[1], "message": r[2], "status": r[3], "admin_reply": r[4], "created_at": r[5]} for r in rows]
             _json_response(self, {"tickets": tickets}); return
 
+        if path == "/api/ticket/messages":
+            ticket_id = int(params.get("ticket_id", 0))
+            user_id = int(params.get("user_id", 0))
+            if not ticket_id or not user_id:
+                _json_response(self, {"ok": False, "messages": []}); return
+            t = db_query_one("SELECT user_id FROM tickets WHERE id=?", (ticket_id,))
+            if not t or t[0] != user_id:
+                _json_response(self, {"ok": False, "error": "Доступ заборонено"}); return
+            msgs = db_query("SELECT sender, message, created_at FROM ticket_messages WHERE ticket_id=? ORDER BY id ASC", (ticket_id,))
+            messages = [{"sender": r[0], "message": r[1], "created_at": (r[2] or "")[:16]} for r in msgs]
+            _json_response(self, {"ok": True, "messages": messages}); return
+
+        if path == "/api/admin/tickets":
+            pwd = params.get("password", "")
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            status_filter = params.get("status", "all")
+            if status_filter == "all":
+                rows = db_query("SELECT id, user_id, username, category, message, status, created_at FROM tickets ORDER BY id DESC LIMIT 200")
+            else:
+                rows = db_query("SELECT id, user_id, username, category, message, status, created_at FROM tickets WHERE status=? ORDER BY id DESC LIMIT 200", (status_filter,))
+            tickets = [{"id": r[0], "user_id": r[1],
+                        "user": f"@{r[2]}" if r[2] else str(r[1]),
+                        "category": r[3], "message": r[4], "status": r[5],
+                        "created_at": (r[6] or "")[:16]} for r in rows]
+            _json_response(self, {"ok": True, "tickets": tickets}); return
+
+        if path == "/api/admin/ticket/messages":
+            pwd = params.get("password", "")
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            ticket_id = int(params.get("ticket_id", 0))
+            if not ticket_id:
+                _json_response(self, {"ok": False, "messages": []}); return
+            ticket = db_query_one("SELECT user_id, username, category, status FROM tickets WHERE id=?", (ticket_id,))
+            if not ticket:
+                _json_response(self, {"ok": False, "error": "Тікет не знайдено"}); return
+            msgs = db_query("SELECT sender, message, created_at FROM ticket_messages WHERE ticket_id=? ORDER BY id ASC", (ticket_id,))
+            messages = [{"sender": r[0], "message": r[1], "created_at": (r[2] or "")[:16]} for r in msgs]
+            _json_response(self, {"ok": True, "messages": messages, "ticket": {
+                "user_id": ticket[0],
+                "user": f"@{ticket[1]}" if ticket[1] else str(ticket[0]),
+                "category": ticket[2], "status": ticket[3]
+            }}); return
+
         if path == "/api/ticket" and method == "POST":
             user_id = int(data.get("user_id", 0))
             category = str(data.get("category", "")).strip()
@@ -936,6 +982,8 @@ class PolicyHandler(BaseHTTPRequestHandler):
             cur = db_exec("INSERT INTO tickets (user_id, chat_id, username, category, message, status, created_at) VALUES (?,?,?,?,?,?,?)",
                           (user_id, user_id, username, category, message, "open", created_at_now()))
             tid = cur.lastrowid
+            db_exec("INSERT INTO ticket_messages (ticket_id, sender, message, created_at) VALUES (?,?,?,?)",
+                    (tid, "user", message, created_at_now()))
             _notify_admin_ticket(tid, user_id, username, category, message)
             _json_response(self, {"ok": True, "ticket_id": tid}); return
 
@@ -951,12 +999,78 @@ class PolicyHandler(BaseHTTPRequestHandler):
             if not ticket:
                 _json_response(self, {"ok": False, "error": "Тікет не знайдено"}); return
             db_exec("UPDATE tickets SET admin_reply=?, status='answered', replied_at=? WHERE id=?", (reply, created_at_now(), ticket_id))
+            db_exec("INSERT INTO ticket_messages (ticket_id, sender, message, created_at) VALUES (?,?,?,?)",
+                    (ticket_id, "admin", reply, created_at_now()))
             try:
                 msg_txt = f"🎫 Відповідь по тікету #{ticket_id} [{ticket[1]}]:\n\n{reply}"
                 p = urllib.parse.urlencode({"chat_id": ticket[0], "text": msg_txt}).encode()
                 urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=p), timeout=5)
             except Exception as e:
                 logging.warning(f"ticket reply send error: {e}")
+            _json_response(self, {"ok": True}); return
+
+        if path == "/api/admin/ticket/status":
+            pwd = str(data.get("password", ""))
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            ticket_id = int(data.get("ticket_id", 0))
+            status = str(data.get("status", "")).strip()
+            valid_statuses = ("open", "waiting", "closed", "answered")
+            if not ticket_id or status not in valid_statuses:
+                _json_response(self, {"ok": False, "error": "Невірні дані"}); return
+            ticket = db_query_one("SELECT user_id FROM tickets WHERE id=?", (ticket_id,))
+            if not ticket:
+                _json_response(self, {"ok": False, "error": "Тікет не знайдено"}); return
+            db_exec("UPDATE tickets SET status=? WHERE id=?", (status, ticket_id))
+            _json_response(self, {"ok": True}); return
+
+        if path == "/api/admin/ticket/message":
+            pwd = str(data.get("password", ""))
+            if pwd != ADMIN_PASSWORD:
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            ticket_id = int(data.get("ticket_id", 0))
+            message = str(data.get("message", "")).strip()
+            if not ticket_id or not message:
+                _json_response(self, {"ok": False, "error": "Невірні дані"}); return
+            ticket = db_query_one("SELECT user_id, category FROM tickets WHERE id=?", (ticket_id,))
+            if not ticket:
+                _json_response(self, {"ok": False, "error": "Тікет не знайдено"}); return
+            db_exec("INSERT INTO ticket_messages (ticket_id, sender, message, created_at) VALUES (?,?,?,?)",
+                    (ticket_id, "admin", message, created_at_now()))
+            db_exec("UPDATE tickets SET status='answered', admin_reply=?, replied_at=? WHERE id=?",
+                    (message, created_at_now(), ticket_id))
+            try:
+                msg_txt = f"🎫 Відповідь по тікету #{ticket_id} [{ticket[1]}]:\n\n{message}"
+                p = urllib.parse.urlencode({"chat_id": ticket[0], "text": msg_txt}).encode()
+                urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=p), timeout=5)
+            except Exception as e:
+                logging.warning(f"ticket admin msg send error: {e}")
+            _json_response(self, {"ok": True}); return
+
+        if path == "/api/ticket/message":
+            user_id = int(data.get("user_id", 0))
+            ticket_id = int(data.get("ticket_id", 0))
+            message = str(data.get("message", "")).strip()
+            username = str(data.get("username", "")).strip()
+            if not user_id or not ticket_id or not message:
+                _json_response(self, {"ok": False, "error": "Невірні дані"}); return
+            ticket = db_query_one("SELECT user_id, category FROM tickets WHERE id=? AND user_id=?", (ticket_id, user_id))
+            if not ticket:
+                _json_response(self, {"ok": False, "error": "Тікет не знайдено"}); return
+            db_exec("INSERT INTO ticket_messages (ticket_id, sender, message, created_at) VALUES (?,?,?,?)",
+                    (ticket_id, "user", message, created_at_now()))
+            db_exec("UPDATE tickets SET status='open' WHERE id=?", (ticket_id,))
+            user_label = f"@{username}" if username else str(user_id)
+            try:
+                text = (f"🎫 Нове повідомлення у тікеті #{ticket_id} [{ticket[1]}]\n"
+                        f"👤 {user_label}:\n\n{message}")
+                reply_btn = json.dumps({"inline_keyboard": [[
+                    {"text": "✏️ Відповісти", "callback_data": f"tkt_reply_{ticket_id}"}
+                ]]})
+                p = urllib.parse.urlencode({"chat_id": MY_ID, "text": text, "reply_markup": reply_btn}).encode()
+                urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=p), timeout=5)
+            except Exception as e:
+                logging.warning(f"ticket user msg notify error: {e}")
             _json_response(self, {"ok": True}); return
 
         if path == "/api/promo":
@@ -2251,6 +2365,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cur = db_exec("INSERT INTO tickets (user_id, chat_id, username, category, message, status, created_at) VALUES (?,?,?,?,?,?,?)",
                       (uid, uid, uname, category, msg_text, "open", created_at_now()))
         tid = cur.lastrowid
+        db_exec("INSERT INTO ticket_messages (ticket_id, sender, message, created_at) VALUES (?,?,?,?)",
+                (tid, "user", msg_text, created_at_now()))
         _notify_admin_ticket(tid, uid, uname, category, msg_text)
         user_states[uid] = None
         await update.message.reply_text(
@@ -2269,6 +2385,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if ticket:
             db_exec("UPDATE tickets SET admin_reply=?, status='answered', replied_at=? WHERE id=?",
                     (reply_text, created_at_now(), ticket_id))
+            db_exec("INSERT INTO ticket_messages (ticket_id, sender, message, created_at) VALUES (?,?,?,?)",
+                    (ticket_id, "admin", reply_text, created_at_now()))
             try:
                 await context.bot.send_message(ticket_user_id,
                     f"🎫 Відповідь по тікету *#{ticket_id}* [{ticket[0]}]:\n\n{reply_text}",

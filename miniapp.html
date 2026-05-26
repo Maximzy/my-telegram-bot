@@ -796,6 +796,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div class="sub-tab" data-atab="abroadcast">📢 Розсилка</div>
         <div class="sub-tab" data-atab="awheel">🎰 Колесо</div>
         <div class="sub-tab" data-atab="acart">🛒 Кошики</div>
+        <div class="sub-tab" data-atab="atickets">🎫 Тікети</div>
       </div>
 
       <!-- Orders -->
@@ -1001,6 +1002,40 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         </div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Що користувачі зберегли на потім</div>
         <div id="adminCartList"><div class="empty"><div class="spinner"></div></div></div>
+      </div>
+
+      <!-- Tickets -->
+      <div class="atab" id="atab-atickets" style="display:none">
+        <!-- List view -->
+        <div id="aTicketsListView">
+          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+            <button class="btn btn-sm" id="tFilter-all" onclick="filterAdminTickets('all')">Всі</button>
+            <button class="btn-ghost btn btn-sm" id="tFilter-open" onclick="filterAdminTickets('open')">🟡 Відкриті</button>
+            <button class="btn-ghost btn btn-sm" id="tFilter-waiting" onclick="filterAdminTickets('waiting')">🕐 Очікування</button>
+            <button class="btn-ghost btn btn-sm" id="tFilter-answered" onclick="filterAdminTickets('answered')">✅ Відповідь</button>
+            <button class="btn-ghost btn btn-sm" id="tFilter-closed" onclick="filterAdminTickets('closed')">⬜ Закриті</button>
+            <button class="btn-ghost btn btn-sm" onclick="loadATickets()">↻</button>
+          </div>
+          <div id="aTicketsList"><div class="empty"><div class="spinner"></div></div></div>
+        </div>
+        <!-- Chat view (hidden by default) -->
+        <div id="aTicketChatView" style="display:none">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <button class="btn-ghost btn btn-sm" onclick="closeAdminTicketChat()">← Назад</button>
+            <span id="aTicketChatTitle" style="font-size:12px;font-weight:700;color:var(--acc)"></span>
+          </div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
+            <button class="btn btn-sm" style="font-size:11px" onclick="setAdminTicketStatus('open')">🟡 Відкрити</button>
+            <button class="btn btn-sm" style="font-size:11px" onclick="setAdminTicketStatus('waiting')">🕐 Очікування</button>
+            <button class="btn btn-sm" style="font-size:11px" onclick="setAdminTicketStatus('answered')">✅ Відповіджено</button>
+            <button class="btn-danger btn btn-sm" style="font-size:11px" onclick="setAdminTicketStatus('closed')">⬜ Закрити</button>
+          </div>
+          <div id="aTicketMessages" style="max-height:300px;overflow-y:auto;margin-bottom:10px;border:1px solid var(--border);border-radius:10px;padding:8px;background:var(--card2)"></div>
+          <div style="display:flex;gap:8px">
+            <textarea id="aTicketReplyText" placeholder="Введіть відповідь..." style="flex:1;min-height:60px;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;padding:8px;color:var(--text);font-size:13px;resize:none;box-sizing:border-box;outline:none;font-family:inherit"></textarea>
+            <button class="btn btn-sm" style="align-self:flex-end;white-space:nowrap" onclick="sendAdminTicketMessage()">📨 Надіслати</button>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -1231,6 +1266,7 @@ document.querySelectorAll('#aTabs .sub-tab').forEach(el => {
     else if (tab === 'aprices') loadAPrices();
     else if (tab === 'areviews') loadAReviews();
     else if (tab === 'awheel') loadPendingWheels();
+    else if (tab === 'atickets') loadATickets();
   });
 });
 
@@ -2341,6 +2377,99 @@ function launchConfetti() {
 }
 
 // ── TICKET SYSTEM ────────────────────────────────────────────────
+// ─── ADMIN TICKETS ────────────────────────────────────────────────────────────
+let currentAdminTicketId = null, currentAdminTicketFilter = 'all';
+
+const ticketStatusLabel = {
+  open:     '<span style="color:#fbbf24">🟡 Відкрито</span>',
+  answered: '<span style="color:var(--green)">✅ Відповідь</span>',
+  waiting:  '<span style="color:#a78bfa">🕐 Очікування</span>',
+  closed:   '<span style="color:var(--muted)">⬜ Закрито</span>'
+};
+
+async function loadATickets(filter) {
+  if (filter !== undefined) currentAdminTicketFilter = filter;
+  const el = document.getElementById('aTicketsList');
+  if (!el) return;
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api(`/api/admin/tickets?password=${encodeURIComponent(adminPass)}&status=${currentAdminTicketFilter}`);
+  if (!r.ok) { el.innerHTML = `<div class="empty">${r.error || 'Помилка'}</div>`; return; }
+  if (!r.tickets.length) { el.innerHTML = '<div class="empty">Тікетів немає</div>'; return; }
+  el.innerHTML = r.tickets.map(t => `
+    <div class="card" style="cursor:pointer;margin-bottom:8px;border-left:3px solid ${t.status==='open'?'#fbbf24':t.status==='waiting'?'#a78bfa':t.status==='answered'?'var(--green)':'var(--muted)'}" onclick="openAdminTicketChat(${t.id})">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-size:12px;font-weight:700;color:var(--acc)">#${t.id} ${t.category}</span>
+        ${ticketStatusLabel[t.status] || `<span style="font-size:11px">${t.status}</span>`}
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:2px">👤 ${t.user}</div>
+      <div style="font-size:12px">${(t.message||'').substring(0,80)}${(t.message||'').length>80?'…':''}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:3px">${t.created_at}</div>
+    </div>`).join('');
+}
+
+function filterAdminTickets(filter) {
+  currentAdminTicketFilter = filter;
+  ['all','open','waiting','answered','closed'].forEach(f => {
+    const b = document.getElementById('tFilter-' + f);
+    if (b) b.className = f === filter ? 'btn btn-sm' : 'btn-ghost btn btn-sm';
+  });
+  loadATickets(filter);
+}
+
+async function openAdminTicketChat(id) {
+  currentAdminTicketId = id;
+  document.getElementById('aTicketsListView').style.display = 'none';
+  document.getElementById('aTicketChatView').style.display = 'block';
+  document.getElementById('aTicketMessages').innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api(`/api/admin/ticket/messages?password=${encodeURIComponent(adminPass)}&ticket_id=${id}`);
+  if (!r.ok) { document.getElementById('aTicketMessages').innerHTML = `<div class="empty">${r.error||'Помилка'}</div>`; return; }
+  const t = r.ticket || {};
+  document.getElementById('aTicketChatTitle').textContent = `#${id} ${t.category||''} — ${t.user||''}`;
+  renderAdminTicketMessages(r.messages || []);
+}
+
+function renderAdminTicketMessages(msgs) {
+  const el = document.getElementById('aTicketMessages');
+  if (!msgs.length) { el.innerHTML = '<div class="empty" style="font-size:12px">Повідомлень ще немає</div>'; return; }
+  el.innerHTML = msgs.map(m => {
+    const isAdmin = m.sender === 'admin';
+    return `<div style="display:flex;flex-direction:column;align-items:${isAdmin?'flex-end':'flex-start'};margin-bottom:8px">
+      <div style="max-width:85%;background:${isAdmin?'var(--acc)':'var(--card)'};color:${isAdmin?'#fff':'var(--text)'};border-radius:${isAdmin?'12px 12px 3px 12px':'12px 12px 12px 3px'};padding:7px 11px;font-size:12px;word-break:break-word">${m.message.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:2px">${isAdmin?'🛡 Адмін':'👤 Юзер'} · ${m.created_at}</div>
+    </div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function closeAdminTicketChat() {
+  currentAdminTicketId = null;
+  document.getElementById('aTicketChatView').style.display = 'none';
+  document.getElementById('aTicketsListView').style.display = 'block';
+}
+
+async function setAdminTicketStatus(status) {
+  if (!currentAdminTicketId) return;
+  const r = await api('/api/admin/ticket/status', 'POST', {
+    password: adminPass, ticket_id: currentAdminTicketId, status
+  });
+  if (r.ok) toast('✅ Статус змінено', 'success');
+  else toast(r.error || 'Помилка', 'error');
+}
+
+async function sendAdminTicketMessage() {
+  const msg = (document.getElementById('aTicketReplyText').value || '').trim();
+  if (!msg) { toast('Введіть повідомлення', 'error'); return; }
+  if (!currentAdminTicketId) return;
+  const r = await api('/api/admin/ticket/message', 'POST', {
+    password: adminPass, ticket_id: currentAdminTicketId, message: msg
+  });
+  if (r.ok) {
+    document.getElementById('aTicketReplyText').value = '';
+    toast('✅ Надіслано', 'success');
+    openAdminTicketChat(currentAdminTicketId);
+  } else toast(r.error || 'Помилка', 'error');
+}
+
 let selectedTicketCat = '';
 
 function selectTicketCat(el) {
@@ -2355,7 +2484,7 @@ async function submitTicket() {
   if (msg.length < 3) { toast('Напишіть повідомлення', 'error'); return; }
   if (msg.length > 1000) { toast('Повідомлення занадто довге (макс 1000)', 'error'); return; }
   const r = await api('/api/ticket', 'POST', {
-    user_id: uid, username: username || '', category: selectedTicketCat, message: msg
+    user_id: uid, username: uname || '', category: selectedTicketCat, message: msg
   });
   if (r.ok) {
     toast(`✅ Тікет #${r.ticket_id} створено!`, 'success');
