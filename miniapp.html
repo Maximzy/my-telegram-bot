@@ -201,6 +201,58 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 .sakura{position:fixed;top:-10px;pointer-events:none;z-index:500;animation:sfade linear forwards}
 @keyframes sfade{to{transform:translateY(110vh) rotate(540deg);opacity:0}}
 
+/* ── SPLASH SCREEN ───────────────────────── */
+#splash{
+  position:fixed;inset:0;z-index:9999;
+  background:#070711;
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+  padding-bottom:80px;
+  transition:opacity .55s ease, transform .55s ease;
+}
+#splash.hide{opacity:0;transform:scale(1.04);pointer-events:none}
+#splash-nezuko{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;object-position:center top;
+  opacity:0;
+  animation:splash-img-in .7s .15s ease forwards;
+}
+@keyframes splash-img-in{to{opacity:0.92}}
+
+#splash-overlay{
+  position:absolute;inset:0;
+  background:linear-gradient(to top, #070711 18%, rgba(7,7,17,.45) 55%, rgba(7,7,17,.1) 100%);
+}
+#splash-content{
+  position:relative;z-index:2;text-align:center;
+  opacity:0;animation:splash-up .55s .5s ease forwards;
+}
+@keyframes splash-up{
+  from{opacity:0;transform:translateY(22px)}
+  to  {opacity:1;transform:translateY(0)}
+}
+#splash-logo{
+  font-size:32px;font-weight:900;color:#fff;
+  letter-spacing:-1px;margin-bottom:6px;
+  text-shadow:0 0 30px #ff2d78cc, 0 2px 8px rgba(0,0,0,.8);
+}
+#splash-logo span{color:var(--acc)}
+#splash-sub{
+  font-size:13px;font-weight:600;color:rgba(240,240,255,.6);
+  margin-bottom:28px;letter-spacing:.5px;
+}
+#splash-bar-wrap{
+  width:160px;height:3px;background:rgba(255,255,255,.1);
+  border-radius:99px;overflow:hidden;margin:0 auto;
+}
+#splash-bar{
+  height:100%;width:0%;background:linear-gradient(90deg,var(--acc),#ff6ba8);
+  border-radius:99px;
+  animation:splash-fill 1.6s .6s ease forwards;
+  box-shadow:0 0 10px #ff2d78;
+}
+@keyframes splash-fill{to{width:100%}}
+#splash-petals{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+
 /* ── NEZUKO FULLSCREEN BACKGROUND ───────── */
 #nezuko-bg{
   position:fixed;top:0;left:0;
@@ -247,6 +299,18 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
 <!-- Sakura petals overlay -->
 <div id="sakura-container"></div>
+
+<!-- ═══ SPLASH SCREEN ═══ -->
+<div id="splash">
+  <img id="splash-nezuko" src="/nezuko_bg.png" alt="" draggable="false">
+  <div id="splash-overlay"></div>
+  <div id="splash-petals"></div>
+  <div id="splash-content">
+    <div id="splash-logo">🌸 UC&nbsp;<span>Shop</span></div>
+    <div id="splash-sub">PUBG Mobile · Незуко Edition</div>
+    <div id="splash-bar-wrap"><div id="splash-bar"></div></div>
+  </div>
+</div>
 
 <!-- Nezuko fullscreen background -->
 <img id="nezuko-bg" src="/nezuko_bg.png" alt="" draggable="false">
@@ -2170,6 +2234,39 @@ document.addEventListener('visibilitychange', () => {
   for (let i = 0; i < count; i++) makePetal(i);
 
   setTimeout(() => { container.remove(); }, (count * 0.28 + 7.5) * 1000);
+})();
+
+// ── SPLASH SCREEN ───────────────────────────────────────────────
+(function initSplash() {
+  const splash = document.getElementById('splash');
+  const petalsEl = document.getElementById('splash-petals');
+  if (!splash) return;
+
+  // Mini sakura petals on splash
+  const colors = ['#ff2d78','#ff6ba8','#ffadd4','#e91e8c','#ffcce0'];
+  for (let i = 0; i < 18; i++) {
+    const p = document.createElement('div');
+    const size = 7 + Math.random() * 9;
+    const left = Math.random() * 100;
+    const delay = Math.random() * 1.4;
+    const dur = 2.2 + Math.random() * 2;
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    p.style.cssText = [
+      'position:absolute','top:-20px',
+      `left:${left}%`,`width:${size}px`,`height:${size*.82}px`,
+      `background:${color}`,`border-radius:50% 0 50% 0`,
+      `opacity:0`,`box-shadow:0 0 5px ${color}88`,
+      `animation:sakura-fall ${dur}s ${delay}s linear forwards,`+
+               `sakura-sway ${dur*.6}s ${delay}s ease-in-out infinite`
+    ].join(';');
+    petalsEl.appendChild(p);
+  }
+
+  // Hide splash after bar completes (~2.4s)
+  setTimeout(() => {
+    splash.classList.add('hide');
+    setTimeout(() => { splash.remove(); }, 600);
+  }, 2400);
 })();
 
 // ── UC COINS FALLING ────────────────────────────────────────────
