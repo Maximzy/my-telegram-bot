@@ -530,8 +530,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
         if path == "/favicon.ico":
             self.send_response(204); self.end_headers(); return
 
-        if path == "/nezuko.png":
-            img_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "attached_assets", "nezuko.png")
+        if path in ("/nezuko.png", "/nezuko_bg.png"):
+            fname = "nezuko_bg.png" if path == "/nezuko_bg.png" else "nezuko.png"
+            img_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "attached_assets", fname)
             if os.path.exists(img_path):
                 with open(img_path, "rb") as f:
                     data = f.read()

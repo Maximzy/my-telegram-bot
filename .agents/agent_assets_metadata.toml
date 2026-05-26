@@ -6,8 +6,20 @@ uri = "file://attached_assets/nezuko.png"
 type = "image"
 title = "nezuko kamado demon slayer"
 
+[[generated]]
+id = "xms5Suf9G5RlyYg19sVZf"
+uri = "file://attached_assets/nezuko_bg.png"
+type = "image"
+title = "nezuko fullscreen background"
+
 [[outputs]]
 id = "HvEuesN1vTAPtTV58peQ-"
 uri = "file://attached_assets/nezuko.png"
 type = "image"
 title = "Незуко — сгенерированная картинка"
+
+[[outputs]]
+id = "0_7ba1Hhwl5Ht3KPuvwIU"
+uri = "file://attached_assets/nezuko_bg.png"
+type = "image"
+title = "Незуко — новый фон"

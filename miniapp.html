@@ -201,19 +201,34 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 .sakura{position:fixed;top:-10px;pointer-events:none;z-index:500;animation:sfade linear forwards}
 @keyframes sfade{to{transform:translateY(110vh) rotate(540deg);opacity:0}}
 
-/* ── NEZUKO BACKGROUND ──────────────────── */
+/* ── NEZUKO FULLSCREEN BACKGROUND ───────── */
 #nezuko-bg{
-  position:fixed;bottom:0;right:-10px;
-  width:220px;height:auto;
-  pointer-events:none;z-index:1;
-  opacity:0.13;
-  filter:drop-shadow(0 0 30px #ff2d78aa);
-  animation:nezuko-float 6s ease-in-out infinite;
+  position:fixed;top:0;left:0;
+  width:100%;height:100%;
+  object-fit:cover;object-position:center top;
+  pointer-events:none;z-index:0;
+  opacity:0.22;
+  filter:saturate(1.3) brightness(0.85);
   user-select:none;
 }
-@keyframes nezuko-float{
-  0%,100%{transform:translateY(0px) scale(1)}
-  50%{transform:translateY(-14px) scale(1.02)}
+
+/* ── UC COINS FALLING ────────────────────── */
+#uc-coins-container{
+  position:fixed;top:0;left:0;width:100%;height:100vh;
+  pointer-events:none;z-index:2;overflow:hidden;
+}
+.uc-coin{
+  position:absolute;top:-60px;
+  font-size:22px;
+  opacity:0;
+  animation:uc-fall linear forwards;
+  filter:drop-shadow(0 0 6px #ffd16688);
+}
+@keyframes uc-fall{
+  0%  {opacity:0;transform:translateY(0) rotate(0deg) scale(1)}
+  8%  {opacity:0.85}
+  85% {opacity:0.7}
+  100%{opacity:0;transform:translateY(110vh) rotate(540deg) scale(0.5)}
 }
 
 /* ── UTILS ──────────────────────────────── */
@@ -233,8 +248,11 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 <!-- Sakura petals overlay -->
 <div id="sakura-container"></div>
 
-<!-- Nezuko background decoration -->
-<img id="nezuko-bg" src="/nezuko.png" alt="" draggable="false">
+<!-- Nezuko fullscreen background -->
+<img id="nezuko-bg" src="/nezuko_bg.png" alt="" draggable="false">
+
+<!-- UC Coins falling -->
+<div id="uc-coins-container"></div>
 
 <!-- Header -->
 <div class="header">
@@ -2152,6 +2170,36 @@ document.addEventListener('visibilitychange', () => {
   for (let i = 0; i < count; i++) makePetal(i);
 
   setTimeout(() => { container.remove(); }, (count * 0.28 + 7.5) * 1000);
+})();
+
+// ── UC COINS FALLING ────────────────────────────────────────────
+(function spawnUCCoins() {
+  const container = document.getElementById('uc-coins-container');
+  if (!container) return;
+  const symbols = ['💎','💎','💎','✨','💠','🔷'];
+
+  function makeCoins() {
+    const count = 8 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < count; i++) {
+      const el = document.createElement('div');
+      el.className = 'uc-coin';
+      const left  = Math.random() * 100;
+      const delay = i * 0.35 + Math.random() * 0.6;
+      const dur   = 4 + Math.random() * 4;
+      const size  = 16 + Math.floor(Math.random() * 18);
+      el.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+      el.style.cssText = [
+        `left:${left}%`,
+        `font-size:${size}px`,
+        `animation-duration:${dur}s`,
+        `animation-delay:${delay}s`,
+      ].join(';');
+      container.appendChild(el);
+      setTimeout(() => el.remove(), (delay + dur + 0.5) * 1000);
+    }
+    setTimeout(makeCoins, 3500 + Math.random() * 2000);
+  }
+  makeCoins();
 })();
 </script>
 </body>
