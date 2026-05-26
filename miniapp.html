@@ -177,6 +177,14 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 .toast.success{border-color:rgba(74,222,128,.4);color:var(--green);background:rgba(74,222,128,.08)}
 .toast.error{border-color:rgba(248,113,113,.4);color:#f87171;background:rgba(248,113,113,.08)}
 .toast.info{border-color:rgba(255,45,120,.35);color:var(--acc);background:rgba(255,45,120,.08)}
+/* ── PUSH NOTIFICATIONS ──────────────────── */
+.pn-wrap{position:fixed;top:0;left:0;right:0;z-index:9990;padding:8px 10px;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.pn{background:rgba(14,14,28,.96);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid var(--border);border-radius:18px;padding:10px 14px;display:flex;align-items:center;gap:10px;pointer-events:auto;transform:translateY(-110%);opacity:0;transition:transform .35s cubic-bezier(.4,0,.2,1),opacity .35s}
+.pn.show{transform:translateY(0);opacity:1}
+.pn-icon{font-size:22px;flex-shrink:0}
+.pn-body{flex:1;min-width:0}
+.pn-app{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin-bottom:1px}
+.pn-msg{font-size:12px;font-weight:600;color:var(--text);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 
 /* ── MODAL ──────────────────────────────── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:200;display:flex;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .22s}
@@ -381,6 +389,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
 <!-- Toast -->
 <div id="toast" class="toast"></div>
+<div class="pn-wrap" id="pnWrap"></div>
 
 <!-- Prize Modal -->
 <div id="prizeModal" class="modal-overlay">
@@ -1168,6 +1177,33 @@ function toast(msg, type = 'info', dur = 3200) {
   el.className = `toast ${type} show`;
   toastTimer = setTimeout(() => el.classList.remove('show'), dur);
 }
+
+// ─── PUSH NOTIFICATIONS ──────────────────────────────────────────────────────
+const PN_ICONS = { order_done: '✅', order_canceled: '❌', ticket_reply: '🎫' };
+const PN_TITLES = { order_done: 'Замовлення виконано', order_canceled: 'Замовлення відхилено', ticket_reply: 'Новий тікет' };
+
+function showPushNotif(message, type) {
+  const wrap = document.getElementById('pnWrap');
+  const icon = PN_ICONS[type] || '🔔';
+  const title = PN_TITLES[type] || 'Сповіщення';
+  const el = document.createElement('div');
+  el.className = 'pn';
+  el.innerHTML = `<div class="pn-icon">${icon}</div><div class="pn-body"><div class="pn-app">UC SHOP · ${title.toUpperCase()}</div><div class="pn-msg">${message.replace(/</g,'&lt;')}</div></div>`;
+  wrap.appendChild(el);
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+  setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 400); }, 5000);
+}
+
+async function pollNotifications() {
+  if (!uid) return;
+  try {
+    const r = await api('/api/notifications?user_id=' + uid);
+    if (r.notifications && r.notifications.length) {
+      r.notifications.forEach(n => showPushNotif(n.message, n.type));
+    }
+  } catch (_) {}
+}
+setInterval(pollNotifications, 15000);
 
 // ─── SAKURA ──────────────────────────────────────────────────────────────────
 function sakura() {

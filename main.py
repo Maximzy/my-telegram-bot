@@ -89,6 +89,7 @@ def run_migrations(connection):
     c.execute("CREATE TABLE IF NOT EXISTS cart (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, pack TEXT, added_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, chat_id INTEGER, username TEXT, category TEXT, message TEXT, status TEXT DEFAULT 'open', admin_reply TEXT, created_at TEXT, replied_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS ticket_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER, sender TEXT, message TEXT, created_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, type TEXT, message TEXT, read INTEGER DEFAULT 0, created_at TEXT)")
     connection.commit()
 
 run_migrations(conn)
@@ -278,6 +279,13 @@ def _send_tg_message(chat_id, text):
         urllib.request.urlopen(req, timeout=5)
     except Exception as e:
         logging.warning(f"_send_tg_message failed: {e}")
+
+def push_notification(user_id, ntype, message):
+    try:
+        db_exec("INSERT INTO notifications (user_id, type, message, created_at) VALUES (?,?,?,?)",
+                (user_id, ntype, message, created_at_now()))
+    except Exception as e:
+        logging.warning(f"push_notification error: {e}")
 
 def _notify_admin_order(order_id, pack, player_id, amount, user_id, username, mix_packs_list=None):
     try:
@@ -801,6 +809,17 @@ class PolicyHandler(BaseHTTPRequestHandler):
             items = [{"id": r[0], "user_id": r[1], "pack": r[2], "added_at": (r[3] or "")[:16]} for r in rows]
             _json_response(self, {"ok": True, "items": items}); return
 
+        if path == "/api/notifications":
+            user_id = int(params.get("user_id", 0) or 0)
+            if not user_id:
+                _json_response(self, {"notifications": []}); return
+            rows = db_query("SELECT id, type, message, created_at FROM notifications WHERE user_id=? AND read=0 ORDER BY id ASC LIMIT 20", (user_id,))
+            notifs = [{"id": r[0], "type": r[1], "message": r[2], "created_at": r[3]} for r in rows]
+            if notifs:
+                ids = tuple(r[0] for r in rows)
+                db_exec(f"UPDATE notifications SET read=1 WHERE id IN ({','.join('?'*len(ids))})", ids)
+            _json_response(self, {"notifications": notifs}); return
+
         if path == "/api/ticket":
             user_id = int(params.get("user_id", 0) or 0)
             if not user_id:
@@ -1003,6 +1022,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
             db_exec("UPDATE tickets SET admin_reply=?, status='answered', replied_at=? WHERE id=?", (reply, created_at_now(), ticket_id))
             db_exec("INSERT INTO ticket_messages (ticket_id, sender, message, created_at) VALUES (?,?,?,?)",
                     (ticket_id, "admin", reply, created_at_now()))
+            push_notification(ticket[0], "ticket_reply", f"🎫 Відповідь на тікет #{ticket_id} [{ticket[1]}]: {reply[:80]}")
             try:
                 msg_txt = f"🎫 Відповідь по тікету #{ticket_id} [{ticket[1]}]:\n\n{reply}"
                 p = urllib.parse.urlencode({"chat_id": ticket[0], "text": msg_txt}).encode()
@@ -1041,6 +1061,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
                     (ticket_id, "admin", message, created_at_now()))
             db_exec("UPDATE tickets SET status='answered', admin_reply=?, replied_at=? WHERE id=?",
                     (message, created_at_now(), ticket_id))
+            push_notification(ticket[0], "ticket_reply", f"🎫 Відповідь на тікет #{ticket_id} [{ticket[1]}]: {message[:80]}")
             try:
                 msg_txt = f"🎫 Відповідь по тікету #{ticket_id} [{ticket[1]}]:\n\n{message}"
                 p = urllib.parse.urlencode({"chat_id": ticket[0], "text": msg_txt}).encode()
@@ -1252,10 +1273,12 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 else:
                     _send_tg_message(chat_id, f"✅ {pack} нараховано! Дякуємо за покупку 🌸")
                 check_achievements(chat_id)
+                push_notification(chat_id, "order_done", f"✅ {pack} нараховано! Дякуємо за покупку 🌸")
                 _json_response(self, {"ok": True, "message": f"Замовлення {order_id} виконано"}); return
             elif action == "no":
                 db_exec("UPDATE orders SET status='canceled' WHERE id=?", (order_id,))
                 _send_tg_message(chat_id, f"❌ Ваше замовлення ({pack}) відхилено. Зверніться в підтримку.")
+                push_notification(chat_id, "order_canceled", f"❌ Замовлення ({pack}) відхилено. Зверніться в підтримку.")
                 _json_response(self, {"ok": True, "message": f"Замовлення {order_id} відхилено"}); return
             _json_response(self, {"ok": False, "error": "Невідома дія"}); return
 
