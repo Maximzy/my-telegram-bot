@@ -1142,6 +1142,14 @@ function discountedPrice(price, pct) {
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 async function api(path, method = 'GET', body = null) {
+  // Auto-inject auth_uid for all admin calls — trusted admins bypass password check
+  if (path.includes('/api/admin/') && uid) {
+    if (method === 'GET') {
+      path += (path.includes('?') ? '&' : '?') + 'auth_uid=' + uid;
+    } else {
+      body = Object.assign({ auth_uid: uid }, body || {});
+    }
+  }
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   try {
@@ -1226,7 +1234,15 @@ document.querySelectorAll('.nav-item').forEach(el => {
     else if (tab === 'orders') loadOrders();
     if (tab === 'services' && !lazyLoaded.svcBonus) { lazyLoaded.svcBonus = true; loadBonuses(); }
     if (tab === 'profile') loadProfile();
-    if (tab === 'admin' && adminPass) { showAdminPanel(); loadAOrders(); }
+    if (tab === 'admin') {
+      if (adminPass) { showAdminPanel(); loadAOrders(); }
+      else if (uid) {
+        // Auto-login for trusted admins (owner or added via mini app) — no password needed
+        api('/api/admin/auth', 'POST', {}).then(r => {
+          if (r.ok) { adminPass = '_trusted_'; sessionStorage.setItem('ap', '_trusted_'); showAdminPanel(); loadAOrders(); }
+        });
+      }
+    }
   });
 });
 
@@ -2275,6 +2291,20 @@ async function loadWheelHistory() {
 
 // ─── AUTO-SHOW ADMIN PANEL IF LOGGED IN ──────────────────────────────────────
 if (adminPass) showAdminPanel();
+// Re-verify trusted session or auto-login on every page load
+if (uid) {
+  api('/api/admin/auth', 'POST', {}).then(r => {
+    if (r.ok && !adminPass) {
+      // Newly recognised trusted admin — set session silently
+      adminPass = '_trusted_'; sessionStorage.setItem('ap', '_trusted_');
+    } else if (!r.ok && adminPass === '_trusted_') {
+      // Admin was removed — clear session and show login form
+      adminPass = ''; sessionStorage.removeItem('ap');
+      document.getElementById('adminLogin').style.display = '';
+      document.getElementById('adminPanel').style.display = 'none';
+    }
+  });
+}
 
 // ─── ВІДНОВЛЕННЯ ПІСЛЯ ПОВЕРНЕННЯ В МІНІ-АПП ────────────────────────────────
 function onAppReactivated() {

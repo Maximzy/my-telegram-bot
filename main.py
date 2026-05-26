@@ -679,7 +679,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/orders":
             pwd = params.get("password", "")
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             rows = db_query("SELECT id, user, pack, player_id, chat_id, created_at, amount FROM orders WHERE status='pending' ORDER BY rowid DESC")
             orders = [{"id": r[0], "user": f"@{r[1]}" if r[1] else str(r[4]), "pack": r[2],
@@ -688,7 +688,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/stats":
             pwd = params.get("password", "")
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             done = db_query_one("SELECT COUNT(*) FROM orders WHERE status='done'")[0]
             canceled = db_query_one("SELECT COUNT(*) FROM orders WHERE status='canceled'")[0]
@@ -701,7 +701,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/admins":
             pwd = params.get("password", "")
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             rows = db_query("SELECT id FROM admins")
             admins = [{"id": r[0]} for r in rows]
@@ -709,7 +709,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/promos":
             pwd = params.get("password", "")
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             rows = db_query("SELECT code, bonus_type, bonus_value, uses_left, total_uses, created_at, secret FROM promo_codes ORDER BY rowid DESC")
             promos = [{"code": r[0], "bonus_type": r[1], "bonus_label": BONUS_TYPES.get(r[1], r[1]),
@@ -719,7 +719,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/prices":
             pwd = params.get("password", "")
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             result = {}
             for pack, base_price in ALL_PACKS.items():
@@ -729,7 +729,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/reviews":
             pwd = params.get("password", "")
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             rows = db_query("SELECT rowid, user, text FROM reviews ORDER BY rowid DESC LIMIT 30")
             reviews = [{"id": r[0], "user": r[1], "text": r[2]} for r in rows]
@@ -737,7 +737,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/find":
             pwd = params.get("password", "")
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             query = params.get("order_id", "").strip()
             if not query:
@@ -762,7 +762,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/pending-wheels":
             pwd = params.get("password", "")
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             rows = db_query("SELECT id, user_id, username, created_at FROM pending_wheel_spins WHERE status='pending' ORDER BY id DESC")
             spins = [{"id": r[0], "user_id": r[1],
@@ -772,7 +772,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/wheel-history":
             pwd = params.get("password", "")
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             rows = db_query("SELECT id, user_id, username, created_at, status, prize_id FROM pending_wheel_spins WHERE status != 'pending' ORDER BY id DESC LIMIT 50")
             prize_map = {p["id"]: p["name"] for p in PAID_WHEEL_PRIZES}
@@ -793,7 +793,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/carts":
             pwd = params.get("password", "")
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             rows = db_query("SELECT id, user_id, pack, added_at FROM cart ORDER BY id DESC LIMIT 200")
             items = [{"id": r[0], "user_id": r[1], "pack": r[2], "added_at": (r[3] or "")[:16]} for r in rows]
@@ -936,7 +936,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/tickets":
             pwd = params.get("password", "")
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             status_filter = params.get("status", "all")
             if status_filter == "all":
@@ -951,7 +951,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/ticket/messages":
             pwd = params.get("password", "")
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             ticket_id = int(params.get("ticket_id", 0))
             if not ticket_id:
@@ -989,7 +989,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/ticket/reply":
             pwd = data.get("password", "")
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}); return
             ticket_id = int(data.get("ticket_id", 0))
             reply = str(data.get("reply", "")).strip()
@@ -1011,7 +1011,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/ticket/status":
             pwd = str(data.get("password", ""))
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             ticket_id = int(data.get("ticket_id", 0))
             status = str(data.get("status", "")).strip()
@@ -1026,7 +1026,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/ticket/message":
             pwd = str(data.get("password", ""))
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             ticket_id = int(data.get("ticket_id", 0))
             message = str(data.get("message", "")).strip()
@@ -1225,13 +1225,13 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/auth":
             pwd = str(data.get("password", ""))
-            if pwd == ADMIN_PASSWORD:
+            if is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": True}); return
             _json_response(self, {"ok": False, "error": "Невірний пароль"}); return
 
         if path == "/api/admin/action":
             pwd = str(data.get("password", ""))
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             order_id = str(data.get("order_id", ""))
             action = str(data.get("action", ""))
@@ -1259,7 +1259,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/approve-wheel":
             pwd = str(data.get("password", ""))
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             spin_id = int(data.get("spin_id", 0))
             spin = db_query_one("SELECT user_id, username, status FROM pending_wheel_spins WHERE id=?", (spin_id,))
@@ -1275,7 +1275,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/toggle-admin":
             pwd = str(data.get("password", ""))
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             target_id = int(data.get("user_id", 0))
             action = str(data.get("action", ""))
@@ -1293,7 +1293,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/create-promo":
             pwd = str(data.get("password", ""))
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             code = str(data.get("code", "")).strip().upper()
             bonus_type = str(data.get("bonus_type", ""))
@@ -1329,7 +1329,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/delete-promo":
             pwd = str(data.get("password", ""))
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             code = str(data.get("code", "")).strip().upper()
             if not code:
@@ -1340,7 +1340,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/delete-review":
             pwd = str(data.get("password", ""))
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             review_id = int(data.get("review_id", 0))
             if not review_id:
@@ -1350,7 +1350,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/update-price":
             pwd = str(data.get("password", ""))
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             pack_name = str(data.get("pack_name", ""))
             price = int(data.get("price", 0))
@@ -1364,7 +1364,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/reset-price":
             pwd = str(data.get("password", ""))
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             pack_name = str(data.get("pack_name", ""))
             db_exec("DELETE FROM price_overrides WHERE pack_name=?", (pack_name,))
@@ -1372,7 +1372,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/grant-achievement":
             pwd = str(data.get("password", ""))
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             target_id = int(data.get("user_id", 0))
             ach_id = str(data.get("achievement_id", ""))
@@ -1385,7 +1385,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/revoke-achievement":
             pwd = str(data.get("password", ""))
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             target_id = int(data.get("user_id", 0))
             ach_id = str(data.get("achievement_id", ""))
@@ -1396,7 +1396,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/broadcast":
             pwd = str(data.get("password", ""))
-            if pwd != ADMIN_PASSWORD:
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
             message = str(data.get("message", "")).strip()
             if not message:
@@ -1467,6 +1467,16 @@ def start_db_backup():
 def is_admin(uid):
     if uid == MY_ID: return True
     return bool(db_query_one("SELECT id FROM admins WHERE id=?", (uid,)))
+
+def is_trusted_admin(user_id, password):
+    """Return True if password matches OR user_id is a trusted admin (owner or in admins table)."""
+    try:
+        uid_int = int(user_id) if user_id else 0
+    except (ValueError, TypeError):
+        uid_int = 0
+    if uid_int and is_admin(uid_int):
+        return True
+    return str(password) == ADMIN_PASSWORD
 
 def is_banned(uid):
     return bool(db_query_one("SELECT user_id FROM banned_users WHERE user_id=?", (uid,)))
