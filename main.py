@@ -1878,6 +1878,20 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Помилка бекапу: {e}")
 
 
+async def restartbot_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if uid != MY_ID:
+        await update.message.reply_text("⛔ Тільки для власника бота."); return
+    await update.message.reply_text(
+        "🔄 Перезапускаю бота...\n\n"
+        "⏳ Через кілька секунд бот знову буде доступний."
+    )
+    import asyncio as _asyncio
+    # Schedule stop so the reply is sent before polling ends.
+    # The outer while-loop in __main__ will restart main() automatically.
+    _asyncio.get_event_loop().call_later(1.5, lambda: _asyncio.ensure_future(context.application.stop()))
+
+
 async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Хендлер для медіа-повідомлень під час очікування розсилки (фото, відео, стікер тощо)."""
     uid = update.effective_user.id
@@ -2670,6 +2684,7 @@ def main():
     app.add_handler(CommandHandler("importdb", importdb_command))
     app.add_handler(CommandHandler("ban", ban_command))
     app.add_handler(CommandHandler("unban", unban_command))
+    app.add_handler(CommandHandler("restartbot", restartbot_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(
         (filters.PHOTO | filters.VIDEO | filters.Document.ALL |
