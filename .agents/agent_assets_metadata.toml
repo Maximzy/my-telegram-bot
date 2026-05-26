@@ -1,0 +1,13 @@
+uploads = []
+
+[[generated]]
+id = "Igsoly0MmICKrSoMEQfwJ"
+uri = "file://attached_assets/nezuko.png"
+type = "image"
+title = "nezuko kamado demon slayer"
+
+[[outputs]]
+id = "HvEuesN1vTAPtTV58peQ-"
+uri = "file://attached_assets/nezuko.png"
+type = "image"
+title = "Незуко — сгенерированная картинка"

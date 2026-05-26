@@ -201,6 +201,21 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 .sakura{position:fixed;top:-10px;pointer-events:none;z-index:500;animation:sfade linear forwards}
 @keyframes sfade{to{transform:translateY(110vh) rotate(540deg);opacity:0}}
 
+/* ── NEZUKO BACKGROUND ──────────────────── */
+#nezuko-bg{
+  position:fixed;bottom:0;right:-10px;
+  width:220px;height:auto;
+  pointer-events:none;z-index:1;
+  opacity:0.13;
+  filter:drop-shadow(0 0 30px #ff2d78aa);
+  animation:nezuko-float 6s ease-in-out infinite;
+  user-select:none;
+}
+@keyframes nezuko-float{
+  0%,100%{transform:translateY(0px) scale(1)}
+  50%{transform:translateY(-14px) scale(1.02)}
+}
+
 /* ── UTILS ──────────────────────────────── */
 .divider{height:1px;background:var(--border);margin:12px 0}
 .empty{text-align:center;padding:36px 16px;color:var(--muted);font-size:13px}
@@ -217,6 +232,9 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
 <!-- Sakura petals overlay -->
 <div id="sakura-container"></div>
+
+<!-- Nezuko background decoration -->
+<img id="nezuko-bg" src="/nezuko.png" alt="" draggable="false">
 
 <!-- Header -->
 <div class="header">

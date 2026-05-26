@@ -530,6 +530,21 @@ class PolicyHandler(BaseHTTPRequestHandler):
         if path == "/favicon.ico":
             self.send_response(204); self.end_headers(); return
 
+        if path == "/nezuko.png":
+            img_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "attached_assets", "nezuko.png")
+            if os.path.exists(img_path):
+                with open(img_path, "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self.send_response(404); self.end_headers()
+            return
+
         if path in ("/", "/policy"):
             _html_response(self, POLICY_HTML); return
 
