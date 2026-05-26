@@ -2579,12 +2579,24 @@ if __name__ == "__main__":
         logging.info("DISABLE_BOT=1 — бот вимкнено. Веб-сервер працює на порту 5000.")
         while True:
             _time.sleep(3600)
+    _conflict_count = 0
     while True:
         try:
+            _conflict_count = 0
             main()
         except Exception as _e:
-            logging.warning(f"Бот зупинився ({_e}), перезапуск через 15 сек...")
-            _time.sleep(15)
+            _err_str = str(_e).lower()
+            if "conflict" in _err_str or "terminated by other" in _err_str:
+                _conflict_count += 1
+                _wait = min(30 * _conflict_count, 120)
+                logging.warning(
+                    f"⚠️ Конфлікт: інший екземпляр бота вже запущений! "
+                    f"Очікування {_wait} сек перед перезапуском (спроба {_conflict_count})..."
+                )
+                _time.sleep(_wait)
+            else:
+                logging.warning(f"Бот зупинився ({_e}), перезапуск через 15 сек...")
+                _time.sleep(15)
         finally:
             try:
                 loop = _asyncio.get_event_loop()
