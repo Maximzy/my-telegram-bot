@@ -253,6 +253,22 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 @keyframes splash-fill{to{width:100%}}
 #splash-petals{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 
+/* ── CONFETTI ────────────────────────────── */
+#confetti-container{position:fixed;inset:0;pointer-events:none;z-index:8000;overflow:hidden}
+.confetti-piece{
+  position:absolute;top:-20px;
+  width:10px;height:10px;
+  border-radius:2px;
+  opacity:0;
+  animation:confetti-fall linear forwards;
+}
+@keyframes confetti-fall{
+  0%  {opacity:0;transform:translateY(0) rotate(0deg) scale(1)}
+  5%  {opacity:1}
+  85% {opacity:1}
+  100%{opacity:0;transform:translateY(110vh) rotate(900deg) scale(.4)}
+}
+
 /* ── NEZUKO FULLSCREEN BACKGROUND ───────── */
 #nezuko-bg{
   position:fixed;top:0;left:0;
@@ -299,6 +315,9 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
 <!-- Sakura petals overlay -->
 <div id="sakura-container"></div>
+
+<!-- Confetti container -->
+<div id="confetti-container"></div>
 
 <!-- ═══ SPLASH SCREEN ═══ -->
 <div id="splash">
@@ -484,7 +503,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <div class="sub-tab" data-svc="wheel">🎰 Рулетка</div>
       <div class="sub-tab" data-svc="top">🏆 Топ</div>
       <div class="sub-tab" data-svc="reviews">🌟 Відгуки</div>
-      <div class="sub-tab" data-svc="points">💰 Бали</div>
+      <div class="sub-tab" data-svc="points"><img src="/points_coin.png" style="width:15px;height:15px;object-fit:contain;vertical-align:middle;margin-right:3px"> Бали</div>
       <div class="sub-tab" data-svc="support">🆘 Підтримка</div>
       <div class="sub-tab" data-svc="policy">📄 Політика</div>
       <div class="sub-tab" data-svc="help">ℹ️ Допомога</div>
@@ -595,10 +614,10 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
     <!-- Points shop -->
     <div class="svc" id="svc-points" style="display:none">
       <div class="pts-balance">
-        <div class="pts-bal-val" id="ptsBalance">0 🪙</div>
+        <div class="pts-bal-val" id="ptsBalance">0 <img src="/points_coin.png" style="width:36px;height:36px;object-fit:contain;vertical-align:middle"></div>
         <div class="pts-bal-lbl">Ваші бали</div>
       </div>
-      <div class="section-title">Магазин балів</div>
+      <div class="section-title" style="display:flex;align-items:center;gap:5px"><img src="/points_coin.png" style="width:16px;height:16px;object-fit:contain"> Магазин балів</div>
       <div id="ptsItems"></div>
     </div>
 
@@ -678,7 +697,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <div class="profile-name" id="pName">Гравець</div>
       <div class="profile-mini" id="pId">ID: —</div>
       <div class="profile-stats-row">
-        <div class="pstat"><div class="pstat-val" style="color:var(--pts)" id="pPoints">0</div><div class="pstat-lbl">🪙 балів</div></div>
+        <div class="pstat"><div class="pstat-val" style="color:var(--pts)" id="pPoints">0</div><div class="pstat-lbl" style="display:flex;align-items:center;justify-content:center;gap:2px"><img src="/points_coin.png" style="width:13px;height:13px;object-fit:contain"> балів</div></div>
         <div class="pstat"><div class="pstat-val" style="color:var(--acc)" id="pAchs">0</div><div class="pstat-lbl">🏅 досягнень</div></div>
         <div class="pstat"><div class="pstat-val" style="color:#60a5fa" id="pDays">0</div><div class="pstat-lbl">📆 днів</div></div>
       </div>
@@ -1409,6 +1428,7 @@ async function submitOrder() {
     document.getElementById('doneId').textContent = r.order_id;
     showWithAnim(document.getElementById('shopDone'));
     sakura();
+    launchConfetti();
   } else toast(r.error || 'Помилка', 'error');
 }
 
@@ -1582,7 +1602,7 @@ function copyRef() {
 const ITEM_W = 84; // width per wheel item (px) — matches CSS .wheel-item{width:84px}, stride = ITEM_W+4 = 88px
 
 function prizeEmoji(p) {
-  if (p.type === 'points') return p.value >= 500 ? '💰' : p.value >= 100 ? '🪙🪙' : '🪙';
+  if (p.type === 'points') return `<img src="/points_coin.png" style="width:${p.value>=500?32:26}px;height:${p.value>=500?32:26}px;object-fit:contain">${p.value>=200?'<img src="/points_coin.png" style="width:26px;height:26px;object-fit:contain">':''}`;
   if (p.type === 'free_uc_30') return '<img src="/uc_icon.png" style="width:28px;height:28px;object-fit:contain">';
   if (p.type === 'free_uc_60') return '<img src="/uc_icon.png" style="width:28px;height:28px;object-fit:contain"><img src="/uc_icon.png" style="width:28px;height:28px;object-fit:contain">';
   if (p.type === 'random_discount_small') return '💸';
@@ -1781,7 +1801,7 @@ async function sendReview() {
 // ─── POINTS SHOP ─────────────────────────────────────────────────────────────
 async function loadPointsShop() {
   const r = await api('/api/points?user_id=' + uid);
-  document.getElementById('ptsBalance').textContent = (r.points || 0) + ' 🪙';
+  document.getElementById('ptsBalance').innerHTML = (r.points || 0) + ' <img src="/points_coin.png" style="width:36px;height:36px;object-fit:contain;vertical-align:middle">';
   const SHOP = [
     { id: 'uc30', name: '🎁 30 UC безкоштовно', cost: 1500 },
     { id: 'uc60', name: '🎁 60 UC безкоштовно', cost: 3000 },
@@ -1793,7 +1813,7 @@ async function loadPointsShop() {
   ];
   document.getElementById('ptsItems').innerHTML = SHOP.map(i => `
     <div class="pts-item">
-      <div><div class="pts-item-name">${i.name}</div><div class="pts-item-cost">${i.cost} 🪙</div></div>
+      <div><div class="pts-item-name">${i.name}</div><div class="pts-item-cost">${i.cost} <img src="/points_coin.png" style="width:14px;height:14px;object-fit:contain;vertical-align:middle"></div></div>
       <button class="btn btn-sm" onclick="buyPointsItem('${i.id}')">Купити</button>
     </div>`).join('');
 }
@@ -2148,7 +2168,7 @@ async function loadWheelHistory() {
   const prizeIcon = p => {
     if (p === 'Нічого') return '😶';
     if (p.includes('UC')) return '<img src="/uc_icon.png" style="width:20px;height:20px;object-fit:contain;vertical-align:middle">';
-    if (p.includes('балів')) return '🪙';
+    if (p.includes('балів')) return '<img src="/points_coin.png" style="width:20px;height:20px;object-fit:contain;vertical-align:middle">';
     return '🎁';
   };
   el.innerHTML = history.map(h => {
@@ -2242,6 +2262,35 @@ document.addEventListener('visibilitychange', () => {
 
   setTimeout(() => { container.remove(); }, (count * 0.28 + 7.5) * 1000);
 })();
+
+// ── CONFETTI ─────────────────────────────────────────────────────
+function launchConfetti() {
+  const container = document.getElementById('confetti-container');
+  if (!container) return;
+  const colors = ['#ff2d78','#ffd166','#4ade80','#60a5fa','#a855f7','#ff6ba8','#fff','#fb923c'];
+  const shapes = ['2px','50%'];
+  const count = 90;
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement('div');
+    el.className = 'confetti-piece';
+    const size  = 6 + Math.random() * 10;
+    const left  = Math.random() * 100;
+    const delay = Math.random() * 1.2;
+    const dur   = 2.2 + Math.random() * 2;
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const br    = shapes[Math.floor(Math.random() * shapes.length)];
+    const skew  = Math.random() > .5 ? `scaleX(${0.4 + Math.random()*.6})` : '';
+    el.style.cssText = [
+      `left:${left}%`,
+      `width:${size}px`,`height:${size * (0.4 + Math.random() * 0.8)}px`,
+      `background:${color}`,`border-radius:${br}`,
+      `animation-duration:${dur}s`,`animation-delay:${delay}s`,
+      `transform:${skew}`,
+    ].join(';');
+    container.appendChild(el);
+    setTimeout(() => el.remove(), (delay + dur + 0.5) * 1000);
+  }
+}
 
 // ── SPLASH SCREEN ───────────────────────────────────────────────
 (function initSplash() {

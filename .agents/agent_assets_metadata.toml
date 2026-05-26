@@ -12,6 +12,12 @@ uri = "file://attached_assets/nezuko_bg.png"
 type = "image"
 title = "nezuko fullscreen background"
 
+[[generated]]
+id = "7hZSXt_aq84Q4IMWrSRUB"
+uri = "file://attached_assets/nezuko_love.png"
+type = "image"
+title = "nezuko love heart cute"
+
 [[outputs]]
 id = "HvEuesN1vTAPtTV58peQ-"
 uri = "file://attached_assets/nezuko.png"
@@ -23,3 +29,9 @@ id = "0_7ba1Hhwl5Ht3KPuvwIU"
 uri = "file://attached_assets/nezuko_bg.png"
 type = "image"
 title = "Незуко — новый фон"
+
+[[outputs]]
+id = "FQESfPA9auY3IGy73ux8n"
+uri = "file://attached_assets/nezuko_love.png"
+type = "image"
+title = "Незуко любит тебя ❤️"
