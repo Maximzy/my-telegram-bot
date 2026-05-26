@@ -253,6 +253,12 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 @keyframes splash-fill{to{width:100%}}
 #splash-petals{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 
+/* ── NEZUKO POP ANIMATION ────────────────── */
+@keyframes nezuko-pop{
+  0%{opacity:0;transform:scale(0.4) rotate(-8deg)}
+  100%{opacity:1;transform:scale(1) rotate(0deg)}
+}
+
 /* ── CONFETTI ────────────────────────────── */
 #confetti-container{position:fixed;inset:0;pointer-events:none;z-index:8000;overflow:hidden}
 .confetti-piece{
@@ -459,8 +465,9 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
     </div>
 
     <!-- Step 5 – Success -->
-    <div id="shopDone" style="display:none;text-align:center;padding:44px 16px">
-      <div style="font-size:60px;margin-bottom:14px">🎉</div>
+    <div id="shopDone" style="display:none;text-align:center;padding:28px 16px">
+      <img src="/nezuko_love.png" style="width:180px;height:180px;object-fit:contain;filter:drop-shadow(0 0 18px rgba(255,100,180,.5));animation:nezuko-pop .5s cubic-bezier(.34,1.56,.64,1) both;margin-bottom:6px">
+      <div style="font-size:60px;margin-bottom:10px">🎉</div>
       <div style="font-size:20px;font-weight:800;margin-bottom:8px">Замовлення прийнято!</div>
       <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Адмін підтвердить найближчим часом</div>
       <div style="font-size:12px;color:var(--muted)">ID: <span id="doneId" style="font-family:monospace;color:var(--acc)"></span></div>
@@ -1225,7 +1232,7 @@ async function showPacks(cat) {
   curCat = cat;
   if (uid) await loadUserBonuses();
   const packs = Object.keys(prices).filter(CAT_FILTER[cat]);
-  document.getElementById('packTitle').textContent = CAT_LABEL[cat];
+  document.getElementById('packTitle').innerHTML = CAT_LABEL[cat];
   const riseNote = cat === 'rise'
     ? `<div class="card" style="margin-bottom:10px;padding:12px 14px;border-color:rgba(255,209,102,.3);background:linear-gradient(135deg,#1a1000,#201600)">
         <div style="font-size:13px;font-weight:700;color:#ffd166;margin-bottom:4px">⚠️ Важливо!</div>
