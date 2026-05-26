@@ -359,7 +359,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <div class="section-title">Оберіть категорію</div>
       <div class="category-grid" style="margin-bottom:10px">
         <div class="category-card" onclick="showPacks('uc')">
-          <div class="category-icon">💎</div>
+          <div class="category-icon"><img src="/uc_icon.png" style="width:48px;height:48px;object-fit:contain;filter:drop-shadow(0 0 8px #ffd16699)" draggable="false"></div>
           <div class="category-label">UC</div>
         </div>
         <div class="category-card" onclick="showPacks('prime')">
@@ -412,7 +412,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div id="mixOptions"></div>
       </div>
       <div class="card" id="mixTotals" style="display:none;text-align:center">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">💎 Разом у замовленні:</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:4px"><img src="/uc_icon.png" style="width:16px;height:16px;object-fit:contain;vertical-align:middle"> Разом у замовленні:</div>
         <div style="font-size:22px;font-weight:900;color:var(--acc)" id="mixTotalUC"></div>
         <div style="font-size:18px;font-weight:700;color:var(--success);margin-top:2px" id="mixTotalPrice"></div>
       </div>
@@ -540,7 +540,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <span class="hl" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-3deg);font-size:16px;background:var(--card)">O</span>
       </div>
 
-      <div class="section-title">💎 Платна рулетка</div>
+      <div class="section-title" style="display:flex;align-items:center;gap:5px"><img src="/uc_icon.png" style="width:16px;height:16px;object-fit:contain"> Платна рулетка</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px">40 грн — Адмін особисто крутить після оплати!</div>
 
       <div class="wheel-wrap" id="pwWrap">
@@ -554,13 +554,13 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div style="font-size:13px;font-weight:600;margin-bottom:6px">Як отримати?</div>
         <div style="font-size:12px;color:var(--muted);line-height:1.6">1. Натисни кнопку нижче<br>2. Оплати 40 грн на картку адміна<br>3. Адмін підтвердить і крутне колесо<br>4. Приз прийде автоматично!</div>
       </div>
-      <button class="btn-purple" id="paidSpinOrderBtn" onclick="reqPaidSpin()">💎 Замовити платне колесо (40 грн)</button>
+      <button class="btn-purple" id="paidSpinOrderBtn" onclick="reqPaidSpin()"><img src="/uc_icon.png" style="width:18px;height:18px;object-fit:contain;vertical-align:middle;margin-right:5px"> Замовити платне колесо (40 грн)</button>
 
       <!-- Платна рулетка — екран оплати -->
       <div id="paidSpinPay" style="display:none;margin-top:12px">
         <div class="back-btn" onclick="cancelPaidSpinPay()">← Назад</div>
         <div class="card">
-          <div class="section-title" style="margin-top:0">💎 Платне колесо</div>
+          <div class="section-title" style="margin-top:0;display:flex;align-items:center;gap:5px"><img src="/uc_icon.png" style="width:16px;height:16px;object-fit:contain"> Платне колесо</div>
           <div style="font-size:14px;margin-bottom:4px">Вартість: <span style="font-weight:800;color:var(--acc)">40 грн</span></div>
           <div style="font-size:12px;color:var(--muted)">Адмін отримає запит і крутне колесо особисто</div>
         </div>
@@ -687,7 +687,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
     <div class="stats-grid">
       <div class="stat-box"><div class="stat-val" id="pSpent">0</div><div class="stat-lbl">💰 грн витрачено</div></div>
       <div class="stat-box"><div class="stat-val" id="pOrds">0</div><div class="stat-lbl">📦 замовлень</div></div>
-      <div class="stat-box"><div class="stat-val" id="pUC">0</div><div class="stat-lbl">💎 UC донатовано</div></div>
+      <div class="stat-box"><div class="stat-val" id="pUC">0</div><div class="stat-lbl" style="display:flex;align-items:center;justify-content:center;gap:3px"><img src="/uc_icon.png" style="width:14px;height:14px;object-fit:contain"> UC донатовано</div></div>
       <div class="stat-box"><div class="stat-val" style="font-size:13px" id="pSince">—</div><div class="stat-lbl">📅 в магазині з</div></div>
     </div>
 
@@ -1200,7 +1200,7 @@ const CAT_FILTER = {
   primeplus: k => k.includes('Prime Plus'),
   rise: k => k.includes('⭐️ Набір Підйом')
 };
-const CAT_LABEL = { uc: '💎 UC Паки', prime: '👑 Prime Паки', primeplus: '✨ Prime Plus Паки', rise: '⭐️ Набори Підйом' };
+const CAT_LABEL = { uc: '<img src="/uc_icon.png" style="width:16px;height:16px;object-fit:contain;vertical-align:middle"> UC Паки', prime: '👑 Prime Паки', primeplus: '✨ Prime Plus Паки', rise: '⭐️ Набори Підйом' };
 
 async function showPacks(cat) {
   curCat = cat;
@@ -1352,8 +1352,8 @@ function goToPaymentDirect() {
     document.getElementById('payPackName').textContent = mixFinalPack;
     document.getElementById('payAmt').textContent = totalPrice + ' грн';
     const discLine = pct > 0
-      ? `✂️ Знижка ${pct}% на перший пак · 💎 ${allPacks.length} паки разом`
-      : `💎 ${allPacks.length} паки в одному замовленні`;
+      ? `✂️ Знижка ${pct}% на перший пак · <img src="/uc_icon.png" style="width:14px;height:14px;object-fit:contain;vertical-align:middle"> ${allPacks.length} паки разом`
+      : `<img src="/uc_icon.png" style="width:14px;height:14px;object-fit:contain;vertical-align:middle"> ${allPacks.length} паки в одному замовленні`;
     document.getElementById('payDisc').textContent = discLine;
   } else {
     mixFinalPack = ''; mixFinalAmount = 0;
@@ -1576,8 +1576,8 @@ const ITEM_W = 84; // width per wheel item (px) — matches CSS .wheel-item{widt
 
 function prizeEmoji(p) {
   if (p.type === 'points') return p.value >= 500 ? '💰' : p.value >= 100 ? '🪙🪙' : '🪙';
-  if (p.type === 'free_uc_30') return '💎';
-  if (p.type === 'free_uc_60') return '💎💎';
+  if (p.type === 'free_uc_30') return '<img src="/uc_icon.png" style="width:28px;height:28px;object-fit:contain">';
+  if (p.type === 'free_uc_60') return '<img src="/uc_icon.png" style="width:28px;height:28px;object-fit:contain"><img src="/uc_icon.png" style="width:28px;height:28px;object-fit:contain">';
   if (p.type === 'random_discount_small') return '💸';
   return '💀';
 }
@@ -2140,7 +2140,7 @@ async function loadWheelHistory() {
   if (!history.length) { el.innerHTML = '<div class="empty">📊 Поки немає результатів</div>'; return; }
   const prizeIcon = p => {
     if (p === 'Нічого') return '😶';
-    if (p.includes('UC')) return '💎';
+    if (p.includes('UC')) return '<img src="/uc_icon.png" style="width:20px;height:20px;object-fit:contain;vertical-align:middle">';
     if (p.includes('балів')) return '🪙';
     return '🎁';
   };
@@ -2273,8 +2273,6 @@ document.addEventListener('visibilitychange', () => {
 (function spawnUCCoins() {
   const container = document.getElementById('uc-coins-container');
   if (!container) return;
-  const symbols = ['💎','💎','💎','✨','💠','🔷'];
-
   function makeCoins() {
     const count = 8 + Math.floor(Math.random() * 5);
     for (let i = 0; i < count; i++) {
@@ -2283,11 +2281,14 @@ document.addEventListener('visibilitychange', () => {
       const left  = Math.random() * 100;
       const delay = i * 0.35 + Math.random() * 0.6;
       const dur   = 4 + Math.random() * 4;
-      const size  = 16 + Math.floor(Math.random() * 18);
-      el.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+      const size  = 22 + Math.floor(Math.random() * 20);
+      const img = document.createElement('img');
+      img.src = '/uc_icon.png';
+      img.style.cssText = `width:${size}px;height:${size}px;object-fit:contain;display:block`;
+      img.draggable = false;
+      el.appendChild(img);
       el.style.cssText = [
         `left:${left}%`,
-        `font-size:${size}px`,
         `animation-duration:${dur}s`,
         `animation-delay:${delay}s`,
       ].join(';');
