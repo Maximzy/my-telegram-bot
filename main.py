@@ -100,6 +100,7 @@ def run_migrations(connection):
         c.execute("ALTER TABLE tickets ADD COLUMN rating INTEGER")
     c.execute("CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, type TEXT, message TEXT, read INTEGER DEFAULT 0, created_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS ai_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, message TEXT, topic TEXT, created_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS security_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, ip TEXT, path TEXT, event TEXT, detail TEXT)")
     connection.commit()
 
 run_migrations(conn)
@@ -316,6 +317,67 @@ def _get_client_ip(handler) -> str:
         return xff.split(",")[0].strip()
     return handler.client_address[0] if handler.client_address else "unknown"
 
+_ip_blacklist: dict = {}   # ip -> blacklisted_until timestamp
+_ip_violation_count: dict = collections.defaultdict(int)
+
+def _sec_log(ip: str, path: str, event: str, detail: str = ""):
+    """Log a security event to DB and stderr."""
+    try:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        db_exec("INSERT INTO security_log (ts, ip, path, event, detail) VALUES (?,?,?,?,?)",
+                (ts, ip[:64], path[:128], event[:64], detail[:256]))
+    except Exception:
+        pass
+    logging.warning(f"[SECURITY] {event} | ip={ip} path={path} | {detail}")
+
+def _ip_is_blocked(ip: str) -> bool:
+    """Return True if IP is currently blacklisted."""
+    until = _ip_blacklist.get(ip, 0)
+    return time.time() < until
+
+def _ip_violation(ip: str, path: str, reason: str):
+    """Record a violation; auto-blacklist after 20 violations in 10 min."""
+    with _rl_lock:
+        _ip_violation_count[ip] += 1
+        count = _ip_violation_count[ip]
+    _sec_log(ip, path, "VIOLATION", f"#{count} — {reason}")
+    if count >= 20:
+        with _rl_lock:
+            _ip_blacklist[ip] = time.time() + 3600  # 1-hour block
+            _ip_violation_count[ip] = 0
+        _sec_log(ip, path, "IP_BLACKLISTED", f"Auto-blacklisted after {count} violations")
+
+_CTRL_CHARS_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+
+def _sanitize(text: str, max_len: int = 500) -> str:
+    """Strip control characters and trim to max length."""
+    return _CTRL_CHARS_RE.sub("", str(text))[:max_len]
+
+def _valid_player_id(pid: str) -> bool:
+    """PUBG Mobile player IDs are 5–16 digit numbers."""
+    return bool(re.fullmatch(r'\d{5,16}', pid.strip()))
+
+def _rl_cleanup_worker():
+    """Periodically purge stale entries from rate-limit buckets to prevent memory leaks."""
+    while True:
+        time.sleep(600)
+        cutoff = time.time() - 3600
+        with _rl_lock:
+            stale_keys = [k for k, v in _rl_buckets.items() if not v or v[-1] < cutoff]
+            for k in stale_keys:
+                del _rl_buckets[k]
+            stale_ips = [ip for ip, until in _ip_blacklist.items() if time.time() > until]
+            for ip in stale_ips:
+                del _ip_blacklist[ip]
+            stale_fails = [ip for ip, v in _rl_admin_fails.items() if not v]
+            for ip in stale_fails:
+                del _rl_admin_fails[ip]
+            stale_violations = [ip for ip, c in _ip_violation_count.items() if c == 0]
+            for ip in stale_violations:
+                del _ip_violation_count[ip]
+
+threading.Thread(target=_rl_cleanup_worker, daemon=True).start()
+
 def is_admin_online():
     return (time.time() - admin_last_seen) < 120
 
@@ -407,6 +469,10 @@ def _html_response(handler, html):
     handler.send_header("X-Content-Type-Options", "nosniff")
     handler.send_header("X-Frame-Options", "SAMEORIGIN")
     handler.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+    handler.send_header("Content-Security-Policy",
+        "default-src 'self' https://telegram.org https://*.telegram.org; "
+        "script-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org; "
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:")
     handler.end_headers()
     handler.wfile.write(body)
 
@@ -654,6 +720,12 @@ class PolicyHandler(BaseHTTPRequestHandler):
         params = dict(urllib.parse.parse_qsl(query))
         ip = _get_client_ip(self)
 
+        if _ip_is_blocked(ip):
+            self.send_response(403); self.end_headers(); return
+        if path not in ("/favicon.ico", "/nezuko.png", "/nezuko_bg.png", "/uc_icon.png", "/prime_crown.png", "/points_coin.png", "/nezuko_love.png", "/crate_icon.png"):
+            if not _rl_allow(f"ip-get:{ip}", 200, 60):
+                self.send_response(429); self.end_headers(); return
+
         if path == "/favicon.ico":
             self.send_response(204); self.end_headers(); return
 
@@ -677,6 +749,10 @@ class PolicyHandler(BaseHTTPRequestHandler):
             _html_response(self, _load_miniapp_html()); return
 
         if path == "/api/admin/heartbeat":
+            if _ip_is_blocked(ip):
+                _json_response(self, {"ok": False}, 403); return
+            if not _rl_allow(f"heartbeat:{ip}", 30, 60):
+                _json_response(self, {"ok": False}, 429); return
             global admin_last_seen
             admin_last_seen = time.time()
             _json_response(self, {"ok": True}); return
@@ -990,8 +1066,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
             rows = db_query("SELECT id, type, message, created_at FROM notifications WHERE user_id=? AND read=0 ORDER BY id ASC LIMIT 20", (user_id,))
             notifs = [{"id": r[0], "type": r[1], "message": r[2], "created_at": r[3]} for r in rows]
             if notifs:
-                ids = tuple(r[0] for r in rows)
-                db_exec(f"UPDATE notifications SET read=1 WHERE id IN ({','.join('?'*len(ids))})", ids)
+                ids = tuple(r[0] for r in rows[:20])
+                placeholders = ",".join(["?"] * len(ids))
+                db_exec(f"UPDATE notifications SET read=1 WHERE user_id=? AND id IN ({placeholders})", (user_id, *ids))
             _json_response(self, {"notifications": notifs}); return
 
         if path == "/api/ticket":
@@ -1066,11 +1143,13 @@ class PolicyHandler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         ip = _get_client_ip(self)
 
+        if _ip_is_blocked(ip):
+            _json_response(self, {"ok": False, "error": "Доступ заборонено."}, 403); return
         if not _rl_allow(f"ip:{ip}", 120, 60):
+            _ip_violation(ip, path, "IP rate limit exceeded")
             _json_response(self, {"ok": False, "error": "Забагато запитів. Зачекайте."}, 429); return
 
         if path == "/api/resolve-user":
-            import hmac, hashlib
             init_data = str(data.get("init_data", ""))
             if not init_data:
                 _json_response(self, {"ok": False, "error": "no init_data"}); return
@@ -1078,9 +1157,10 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 parsed = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
                 received_hash = parsed.pop("hash", "")
                 data_check = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
-                secret = hmac.new(b"WebAppData", TOKEN.encode(), hashlib.sha256).digest()
-                computed = hmac.new(secret, data_check.encode(), hashlib.sha256).hexdigest()
-                if computed != received_hash:
+                secret = _hmac_mod.new(b"WebAppData", TOKEN.encode(), _hashlib_mod.sha256).digest()
+                computed = _hmac_mod.new(secret, data_check.encode(), _hashlib_mod.sha256).hexdigest()
+                if not _hmac_mod.compare_digest(computed, received_hash):
+                    _ip_violation(ip, path, "invalid initData hash")
                     _json_response(self, {"ok": False, "error": "invalid hash"}); return
                 user_str = parsed.get("user", "")
                 user_obj = json.loads(user_str) if user_str else {}
@@ -1096,23 +1176,27 @@ class PolicyHandler(BaseHTTPRequestHandler):
         if path == "/api/track-visit":
             user_id = int(data.get("user_id", 0))
             if user_id:
-                update_user_profile(user_id)
-                check_achievements(user_id)
+                if _rl_allow(f"visit:{user_id}", 5, 60):
+                    update_user_profile(user_id)
+                    check_achievements(user_id)
             _json_response(self, {"ok": True}); return
 
         if path == "/api/submit-order":
             user_id = int(data.get("user_id", 0))
             if user_id and not _rl_allow(f"order:{user_id}", 5, 60):
                 _json_response(self, {"ok": False, "error": "Забагато замовлень. Зачекайте хвилину."}, 429); return
-            username = str(data.get("username", ""))[:64]
+            username = _sanitize(str(data.get("username", "")), 64)
             pack = str(data.get("pack", ""))
-            player_id = str(data.get("player_id", ""))[:32]
-            player_nick = str(data.get("player_nick", "")).strip()[:64]
+            player_id = _sanitize(str(data.get("player_id", "")), 32).strip()
+            player_nick = _sanitize(str(data.get("player_nick", "")).strip(), 64)
             base_amount = int(data.get("amount", 0))
             flash_order = bool(data.get("flash_order", False))
             mix_packs = data.get("mix_packs", None)
             if not pack or not player_id:
                 _json_response(self, {"ok": False, "error": "Відсутні дані"}); return
+            if not _valid_player_id(player_id):
+                _ip_violation(ip, path, f"invalid player_id={player_id[:32]}")
+                _json_response(self, {"ok": False, "error": "Ігровий ID повинен містити від 5 до 16 цифр"}); return
             # Mix order validation
             if mix_packs is not None:
                 if not isinstance(mix_packs, list) or len(mix_packs) < 2:
@@ -1143,7 +1227,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
                     db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (disc_id,))
                 elif disc_pct and disc_src == "ref":
                     db_exec("DELETE FROM ref_discounts WHERE id=?", (disc_id,))
-            order_id = str(uuid.uuid4())[:8].upper()
+            order_id = str(uuid.uuid4()).replace("-", "")[:12].upper()
             db_exec(
                 "INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, player_nick) VALUES (?,?,?,?,?,?,?,?,?)",
                 (order_id, username, pack, "pending", user_id, player_id, created_at_now(), str(final_price), player_nick or None)
@@ -1159,11 +1243,16 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/cart/add":
             user_id = int(data.get("user_id", 0))
+            if user_id and not _rl_allow(f"cart:{user_id}", 20, 60):
+                _json_response(self, {"ok": False, "error": "Забагато дій з кошиком."}, 429); return
             pack = str(data.get("pack", ""))
             if not user_id or not pack:
                 _json_response(self, {"ok": False, "error": "Невірні дані"}); return
             if pack not in ALL_PACKS:
                 _json_response(self, {"ok": False, "error": "Пак не знайдено"}); return
+            cart_count = db_query_one("SELECT COUNT(*) FROM cart WHERE user_id=?", (user_id,))
+            if cart_count and cart_count[0] >= 20:
+                _json_response(self, {"ok": False, "error": "Кошик переповнений (макс. 20 позицій)"}); return
             existing = db_query_one("SELECT id FROM cart WHERE user_id=? AND pack=?", (user_id, pack))
             if existing:
                 _json_response(self, {"ok": False, "error": "Вже є в кошику"}); return
@@ -1324,11 +1413,15 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/ticket/message":
             user_id = int(data.get("user_id", 0))
+            if user_id and not _rl_allow(f"tktmsg:{user_id}", 5, 60):
+                _json_response(self, {"ok": False, "error": "Забагато повідомлень. Зачекайте хвилину."}, 429); return
             ticket_id = int(data.get("ticket_id", 0))
-            message = str(data.get("message", "")).strip()
-            username = str(data.get("username", "")).strip()
+            message = _sanitize(str(data.get("message", "")).strip(), 1000)
+            username = _sanitize(str(data.get("username", "")).strip(), 64)
             if not user_id or not ticket_id or not message:
                 _json_response(self, {"ok": False, "error": "Невірні дані"}); return
+            if len(message) > 1000:
+                _json_response(self, {"ok": False, "error": "Повідомлення занадто довге (макс. 1000 символів)"}); return
             ticket = db_query_one("SELECT user_id, category FROM tickets WHERE id=? AND user_id=?", (ticket_id, user_id))
             if not ticket:
                 _json_response(self, {"ok": False, "error": "Тікет не знайдено"}); return
@@ -1351,7 +1444,10 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/promo":
             user_id = int(data.get("user_id", 0))
-            code = str(data.get("code", "")).strip().upper()
+            if user_id and not _rl_allow(f"promo:{user_id}", 5, 300):
+                _ip_violation(ip, path, f"promo brute-force uid={user_id}")
+                _json_response(self, {"ok": False, "error": "Забагато спроб. Зачекайте 5 хвилин."}, 429); return
+            code = _sanitize(str(data.get("code", "")), 32).strip().upper()
             if not code or not user_id:
                 _json_response(self, {"ok": False, "error": "Невірні дані"}); return
             already = db_query_one("SELECT 1 FROM used_promo_codes WHERE user_id=? AND code=?", (user_id, code))
@@ -1408,18 +1504,19 @@ class PolicyHandler(BaseHTTPRequestHandler):
             user_id = int(data.get("user_id", 0))
             if user_id and not _rl_allow(f"freeuc:{user_id}", 2, 3600):
                 _json_response(self, {"ok": False, "error": "Забагато запитів. Зачекайте годину."}, 429); return
-            username = str(data.get("username", ""))[:64]
-            player_id = str(data.get("player_id", "")).strip()[:32]
-            player_nick = str(data.get("player_nick", "")).strip()[:64]
+            username = _sanitize(str(data.get("username", "")), 64)
+            player_id = _sanitize(str(data.get("player_id", "")).strip(), 32)
+            player_nick = _sanitize(str(data.get("player_nick", "")).strip(), 64)
             bonus_type = str(data.get("bonus_type", "free_uc_60"))
-            if not player_id or len(player_id) < 5:
-                _json_response(self, {"ok": False, "error": "Введи правильний ігровий ID"}); return
+            if not _valid_player_id(player_id):
+                _ip_violation(ip, path, f"invalid player_id={player_id[:32]}")
+                _json_response(self, {"ok": False, "error": "Ігровий ID повинен містити від 5 до 16 цифр"}); return
             bonus = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type=? AND used=0 LIMIT 1", (user_id, bonus_type))
             if not bonus:
                 _json_response(self, {"ok": False, "error": f"Бонус {BONUS_TYPES.get(bonus_type,'')} недоступний"}); return
             db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (bonus[0],))
             uc_count = 30 if bonus_type == "free_uc_30" else 60
-            oid = str(uuid.uuid4())[:8].upper()
+            oid = str(uuid.uuid4()).replace("-", "")[:12].upper()
             db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment, player_nick) VALUES (?,?,?,?,?,?,?,?,?,?)",
                     (oid, username, f"🎁 {uc_count} UC Free (бонус)", "pending", user_id, player_id, created_at_now(), 0, "bonus", player_nick or None))
             nick_line = f"\n🪪 Нік: {player_nick}" if player_nick else ""
@@ -1452,7 +1549,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/wheel/spin-free":
             user_id = int(data.get("user_id", 0))
-            username = str(data.get("username", ""))
+            if user_id and not _rl_allow(f"wheelf:{user_id}", 3, 60):
+                _json_response(self, {"ok": False, "error": "Забагато спроб крутити колесо."}, 429); return
+            username = _sanitize(str(data.get("username", "")), 64)
             # Check cooldown
             wheel = db_query_one("SELECT last_free_spin FROM wheel_data WHERE user_id=?", (user_id,))
             can_spin = True
@@ -1484,7 +1583,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/wheel/spin-paid":
             user_id = int(data.get("user_id", 0))
-            username = str(data.get("username", ""))
+            if user_id and not _rl_allow(f"wheelp:{user_id}", 5, 300):
+                _json_response(self, {"ok": False, "error": "Забагато запитів на платне колесо."}, 429); return
+            username = _sanitize(str(data.get("username", "")), 64)
             cur = db_exec("INSERT INTO pending_wheel_spins (user_id, username, created_at) VALUES (?,?,?)",
                     (user_id, username, created_at_now()))
             spin_id = cur.lastrowid
@@ -2936,7 +3037,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         uc = state.get("uc", 60)
         bt = state.get("bt", "free_uc_60")
         db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (bonus_id,))
-        oid = str(uuid.uuid4())[:8]
+        oid = str(uuid.uuid4()).replace("-", "")[:12].upper()
         db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment, player_nick) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (oid, update.effective_user.username, f"🎁 {uc} UC Free (бонус)", "pending", uid, game_id, created_at_now(), 0, "bonus", nick or None))
         if MY_ID != 0:
@@ -2969,7 +3070,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         disc_pct, disc_src, disc_id = get_user_discount(uid, pack)
         final_price = apply_discount(price, disc_pct) if disc_pct else price
 
-        oid = str(uuid.uuid4())[:8]
+        oid = str(uuid.uuid4()).replace("-", "")[:12].upper()
         db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment, player_nick) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (oid, update.effective_user.username, pack, "pending", uid, pid, created_at_now(), final_price, "card", nick or None))
 
