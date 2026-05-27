@@ -1,4 +1,4 @@
-import sqlite3, uuid, logging, threading, os, re, json, urllib.request, urllib.parse, random, asyncio
+import sqlite3, uuid, logging, threading, os, re, json, urllib.request, urllib.parse, random, asyncio, time
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, KeyboardButton
@@ -2260,14 +2260,28 @@ def _gemini_api_call(contents: list, max_tokens: int = 400) -> str:
         "contents": contents,
         "generationConfig": {"temperature": 0.7, "maxOutputTokens": max_tokens}
     }).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-            return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except Exception as e:
-        logging.warning(f"Gemini API error: {e}")
-        return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
+    for attempt in range(3):
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                return result["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                if attempt < 2:
+                    logging.warning(f"Gemini 429 rate limit, retry {attempt+1}/2...")
+                    time.sleep(2 + attempt * 2)
+                    continue
+                return "⏳ AI зараз перевантажений — надто багато запитів. Спробуй через 1-2 хвилини."
+            body = ""
+            try: body = e.read().decode()[:200]
+            except: pass
+            logging.warning(f"Gemini HTTP {e.code}: {body}")
+            return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
+        except Exception as e:
+            logging.warning(f"Gemini API error: {e}")
+            return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
+    return "⏳ AI зараз перевантажений. Спробуй через хвилину."
 
 def _detect_ai_topic(text: str) -> str:
     t = text.lower()
