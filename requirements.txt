@@ -10,3 +10,16 @@ APScheduler==3.10.4
 pytz==2026.2
 tzlocal==5.3.1
 six==1.17.0
+anyio==4.13.0
+APScheduler==3.10.4
+certifi==2026.4.22
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.14
+python-telegram-bot[job-queue]==21.0.1
+pytz==2026.2
+six==1.17.0
+telegram
+typing_extensions==4.15.0
+tzlocal==5.3.1
