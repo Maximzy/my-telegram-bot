@@ -248,6 +248,52 @@ ADMIN_KB = [
 ]
 
 user_states = {}
+admin_last_seen = 0.0
+
+def is_admin_online():
+    return (time.time() - admin_last_seen) < 120
+
+def _ai_ticket_auto_reply(ticket_id, category, user_chat_id, delay=50):
+    """Wait `delay` seconds, then reply with AI if admin is still offline and ticket unanswered."""
+    def _run():
+        time.sleep(delay)
+        if is_admin_online():
+            return
+        if not GEMINI_API_KEY:
+            return
+        try:
+            ticket = db_query_one("SELECT status FROM tickets WHERE id=?", (ticket_id,))
+            if not ticket or ticket[0] in ("closed", "answered"):
+                return
+            msgs = db_query("SELECT sender, message FROM ticket_messages WHERE ticket_id=? ORDER BY id", (ticket_id,))
+            history_text = "\n".join([f"{'Користувач' if m[0]=='user' else 'Підтримка'}: {m[1]}" for m in msgs])
+            prompt = (
+                f"Ти — AI-помічник підтримки магазину UC Shop (PUBG Mobile). "
+                f"Відповідай ЛИШЕ українською мовою. Будь ввічливим і корисним. "
+                f"Категорія тікету: {category}.\n"
+                f"Листування:\n{history_text}\n\n"
+                f"Дай коротку корисну відповідь від імені підтримки. "
+                f"Якщо питання складне — скажи що менеджер відповість найближчим часом."
+            )
+            contents = [{"role": "user", "parts": [{"text": prompt}]}]
+            response = _gemini_api_call(contents, max_tokens=400)
+            if not response or response.startswith("❌"):
+                return
+            ai_note = response + "\n\n_(🤖 Автовідповідь AI — менеджер підтвердить найближчим часом)_"
+            db_exec("INSERT INTO ticket_messages (ticket_id, sender, message, created_at) VALUES (?,?,?,?)",
+                    (ticket_id, "ai", ai_note, created_at_now()))
+            db_exec("UPDATE tickets SET status='answered', admin_reply=?, replied_at=? WHERE id=?",
+                    (ai_note, created_at_now(), ticket_id))
+            push_notification(user_chat_id, "ticket_reply", f"🤖 AI відповів на тікет #{ticket_id}: {response[:80]}")
+            try:
+                msg_txt = f"🤖 AI-відповідь по тікету #{ticket_id} [{category}]:\n\n{response}\n\n_(Менеджер підтвердить найближчим часом)_"
+                p = urllib.parse.urlencode({"chat_id": user_chat_id, "text": msg_txt}).encode()
+                urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=p), timeout=5)
+            except Exception as e:
+                logging.warning(f"ai ticket notify error: {e}")
+        except Exception as e:
+            logging.warning(f"_ai_ticket_auto_reply error: {e}")
+    threading.Thread(target=_run, daemon=True).start()
 
 POLICY_HTML = ""
 
@@ -540,6 +586,11 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/app":
             _html_response(self, _load_miniapp_html()); return
+
+        if path == "/api/admin/heartbeat":
+            global admin_last_seen
+            admin_last_seen = time.time()
+            _json_response(self, {"ok": True}); return
 
         if path == "/api/orders":
             user_id = int(params.get("user_id", 0))
@@ -1028,6 +1079,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
             db_exec("INSERT INTO ticket_messages (ticket_id, sender, message, created_at) VALUES (?,?,?,?)",
                     (tid, "user", message, created_at_now()))
             _notify_admin_ticket(tid, user_id, username, category, message)
+            _ai_ticket_auto_reply(tid, category, user_id)
             _json_response(self, {"ok": True, "ticket_id": tid}); return
 
         if path == "/api/ticket/reply":
@@ -1110,6 +1162,26 @@ class PolicyHandler(BaseHTTPRequestHandler):
             response = _gemini_api_call(contents, max_tokens=700)
             _json_response(self, {"ok": True, "response": response}); return
 
+        if path == "/api/user/ai-chat":
+            user_id = int(data.get("user_id", 0))
+            message = str(data.get("message", "")).strip()
+            history = data.get("history", [])
+            if not message:
+                _json_response(self, {"ok": False, "error": "Немає повідомлення"}); return
+            if not GEMINI_API_KEY:
+                _json_response(self, {"ok": False, "error": "AI тимчасово недоступний"}); return
+            contents = []
+            for h in (history[-6:] if len(history) > 6 else history):
+                role = "model" if h.get("role") == "assistant" else "user"
+                contents.append({"role": role, "parts": [{"text": str(h.get("text", ""))[:400]}]})
+            contents.append({"role": "user", "parts": [{"text": GEMINI_SYSTEM_PROMPT + "\n\nПитання: " + message}]})
+            response = _gemini_api_call(contents, max_tokens=400)
+            if user_id:
+                topic = _detect_ai_topic(message)
+                db_exec("INSERT INTO ai_logs (user_id, message, topic, created_at) VALUES (?,?,?,?)",
+                        (user_id, message[:200], topic, created_at_now()))
+            _json_response(self, {"ok": True, "response": response}); return
+
         if path == "/api/ticket/close":
             user_id = int(data.get("user_id", 0))
             ticket_id = int(data.get("ticket_id", 0))
@@ -1149,6 +1221,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=p), timeout=5)
             except Exception as e:
                 logging.warning(f"ticket user msg notify error: {e}")
+            _ai_ticket_auto_reply(ticket_id, ticket[1], user_id)
             _json_response(self, {"ok": True}); return
 
         if path == "/api/promo":

@@ -576,6 +576,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <div class="sub-tab" data-svc="reviews">🌟 Відгуки</div>
       <div class="sub-tab" data-svc="points"><img src="/points_coin.png" style="width:15px;height:15px;object-fit:contain;vertical-align:middle;margin-right:3px"> Бали</div>
       <div class="sub-tab" data-svc="support">🆘 Підтримка</div>
+      <div class="sub-tab" data-svc="ai">🤖 AI</div>
       <div class="sub-tab" data-svc="policy">📄 Політика</div>
       <div class="sub-tab" data-svc="help">ℹ️ Допомога</div>
     </div>
@@ -739,6 +740,21 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
     </div>
 
     <!-- Policy -->
+    <!-- AI Chat -->
+    <div class="svc" id="svc-ai" style="display:none">
+      <div class="card" style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:15px;font-weight:800">🤖 AI-помічник</div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.6">Задай будь-яке питання про UC, Prime, замовлення або наш магазин.</div>
+        <div id="aiChatMessages" style="display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;padding-right:2px"></div>
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <textarea id="aiChatInput" placeholder="Напишіть питання..." rows="2"
+            style="flex:1;resize:none;font-size:13px;border-radius:12px;padding:8px 12px;border:1px solid var(--border);background:var(--card);color:var(--text)"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendUserAiMsg();}"></textarea>
+          <button class="btn btn-sm" onclick="sendUserAiMsg()" style="height:38px;padding:0 14px">→</button>
+        </div>
+      </div>
+    </div>
+
     <div class="svc" id="svc-policy" style="display:none">
       <div class="card">
         <div style="font-size:16px;font-weight:800;margin-bottom:4px">📄 ПОЛІТИКА МАГАЗИНУ UC</div>
@@ -1365,6 +1381,7 @@ document.querySelectorAll('#svcTabs .sub-tab').forEach(el => {
       else if (svc === 'referral') loadReferral();
       else if (svc === 'bonus') loadBonuses();
       else if (svc === 'support') loadTickets();
+      else if (svc === 'ai') initAiChat();
     }
   });
 });
@@ -2111,11 +2128,21 @@ async function updateAdminBadge() {
   else { badge.style.display = 'none'; }
 }
 
+let adminHeartbeatInterval = null;
+function _startAdminHeartbeat() {
+  api('/api/admin/heartbeat');
+  if (!adminHeartbeatInterval) adminHeartbeatInterval = setInterval(() => api('/api/admin/heartbeat'), 30000);
+}
+function _stopAdminHeartbeat() {
+  if (adminHeartbeatInterval) { clearInterval(adminHeartbeatInterval); adminHeartbeatInterval = null; }
+}
+
 function showAdminPanel() {
   document.getElementById('adminLogin').style.display = 'none';
   document.getElementById('adminPanel').style.display = '';
   updateAdminBadge();
   if (!adminBadgeInterval) adminBadgeInterval = setInterval(updateAdminBadge, 30000);
+  _startAdminHeartbeat();
 }
 
 function aLogout() {
@@ -2125,6 +2152,7 @@ function aLogout() {
   if (adminBadgeInterval) { clearInterval(adminBadgeInterval); adminBadgeInterval = null; }
   const badge = document.getElementById('adminTicketBadge');
   if (badge) badge.style.display = 'none';
+  _stopAdminHeartbeat();
 }
 
 async function loadAOrders() {
@@ -2162,13 +2190,53 @@ async function loadAStats() {
       <div class="stat-box"><div class="stat-val" style="color:var(--warn)">${r.pending}</div><div class="stat-lbl">⏳ Очікують</div></div>
       <div class="stat-box"><div class="stat-val" style="color:var(--pts)">${r.users}</div><div class="stat-lbl">👥 Користувачів</div></div>
       <div class="stat-box"><div class="stat-val" style="color:var(--acc)">${r.open_tickets ?? 0}</div><div class="stat-lbl">🎫 Відкриті тікети</div></div>
-      <div class="stat-box"><div class="stat-val" style="color:var(--acc)">${r.ai_today ?? 0}</div><div class="stat-lbl">🤖 AI запитів сьогодні</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--acc)">${r.ai_today ?? 0} <span style="font-size:14px;color:var(--muted)">/ 1500</span></div><div class="stat-lbl">🤖 AI запитів сьогодні</div></div>
       <div class="stat-box" style="grid-column:1/-1"><div class="stat-val" style="font-size:26px">${r.total_sum} грн</div><div class="stat-lbl">💰 Загальні продажі</div></div>
       <div class="stat-box" style="grid-column:1/-1"><div class="stat-val" style="font-size:26px;color:var(--success)">${r.today_sum} грн</div><div class="stat-lbl">📅 Сьогодні</div></div>
     </div>`;
 }
 
 // ── ADMIN AI ADVISOR ──────────────────────────────────────────────────────────
+// ── USER AI CHAT ──────────────────────────────────────────────────────────────
+let userAiHistory = [];
+let userAiInitialized = false;
+
+function initAiChat() {
+  if (userAiInitialized) return;
+  userAiInitialized = true;
+  const el = document.getElementById('aiChatMessages');
+  el.innerHTML = `<div style="align-self:flex-start;background:var(--card2,var(--card));border:1px solid var(--border);border-radius:14px;padding:10px 14px;font-size:13px;max-width:85%;line-height:1.5">
+    👋 Привіт! Я AI-помічник магазину UC. Запитай мене про пакети, оплату або замовлення — я допоможу!
+  </div>`;
+}
+
+async function sendUserAiMsg() {
+  const input = document.getElementById('aiChatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  const el = document.getElementById('aiChatMessages');
+
+  const userBubble = document.createElement('div');
+  userBubble.style.cssText = 'align-self:flex-end;background:var(--acc);color:#fff;border-radius:14px;padding:10px 14px;font-size:13px;max-width:85%;line-height:1.5;word-break:break-word';
+  userBubble.textContent = msg;
+  el.appendChild(userBubble);
+  el.scrollTop = el.scrollHeight;
+
+  const aiBubble = document.createElement('div');
+  aiBubble.style.cssText = 'align-self:flex-start;background:var(--card2,var(--card));border:1px solid var(--border);border-radius:14px;padding:10px 14px;font-size:13px;max-width:85%;line-height:1.5';
+  aiBubble.innerHTML = '<div class="spinner" style="width:18px;height:18px;border-width:2px"></div>';
+  el.appendChild(aiBubble);
+  el.scrollTop = el.scrollHeight;
+
+  userAiHistory.push({role: 'user', text: msg});
+  const r = await api('/api/user/ai-chat', 'POST', {user_id: uid, message: msg, history: userAiHistory.slice(-6)});
+  const reply = r.ok ? (r.response || '…') : (r.error || 'Помилка');
+  aiBubble.innerHTML = esc(reply).replace(/\n/g, '<br>');
+  if (r.ok) userAiHistory.push({role: 'assistant', text: reply});
+  el.scrollTop = el.scrollHeight;
+}
+
 let adminAIHistory = [];
 
 async function loadAdminAI() {
