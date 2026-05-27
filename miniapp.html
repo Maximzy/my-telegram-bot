@@ -460,6 +460,14 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
           <div class="category-icon"><img src="/crate_icon.png" style="width:52px;height:52px;object-fit:contain;filter:drop-shadow(0 0 8px rgba(255,150,0,.55))"></div>
           <div class="category-label" style="color:#ffd166">Набори Підйом</div>
         </div>
+        <div class="category-card" style="background:linear-gradient(135deg,#120d22,#1a1030);border-color:rgba(180,130,255,.2)" onclick="showTgShop('stars')">
+          <div class="category-icon" style="font-size:40px;margin-bottom:8px;filter:drop-shadow(0 0 10px rgba(255,210,80,.6))">⭐</div>
+          <div class="category-label" style="color:#e8c840">Зірки Telegram</div>
+        </div>
+        <div class="category-card" style="background:linear-gradient(135deg,#0a1020,#111830);border-color:rgba(90,150,255,.2)" onclick="showTgShop('premium')">
+          <div class="category-icon" style="font-size:40px;margin-bottom:8px;filter:drop-shadow(0 0 10px rgba(90,150,255,.6))">💎</div>
+          <div class="category-label" style="color:#7ab4ff">Telegram Premium</div>
+        </div>
       </div>
       <div class="section-title">Популярне</div>
       <div id="popularList"></div>
@@ -536,6 +544,65 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Адмін підтвердить найближчим часом</div>
       <div style="font-size:12px;color:var(--muted)">ID: <span id="doneId" style="font-family:monospace;color:var(--acc)"></span></div>
       <button class="btn mt-16" onclick="resetShop()">На головну</button>
+    </div>
+
+    <!-- TG Stars / Premium – Step 1 -->
+    <div id="shopTg" style="display:none">
+      <div class="back-btn" onclick="backTgToCats()">← Назад</div>
+
+      <!-- Stars section -->
+      <div id="tgStarsSection">
+        <div class="card" style="background:linear-gradient(135deg,#100d1e,#161228);border-color:rgba(180,130,255,.25);margin-bottom:12px">
+          <div style="font-size:18px;font-weight:800;margin-bottom:6px">⭐ Зірки Telegram</div>
+          <div id="tgStarsRateDisplay" style="font-size:14px;color:#e8c840;font-weight:700">1 ⭐ = 0.73 грн</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:5px">Мінімальна кількість: 50 зірок</div>
+        </div>
+        <div class="section-title">Кількість зірок</div>
+        <input type="number" id="starsAmountInput" placeholder="Введіть кількість (мін. 50)" min="50" step="10" inputmode="numeric" oninput="updateStarsPrice()" style="font-size:16px">
+        <div id="starsPriceCalc" style="display:none;margin-top:10px;padding:12px 16px;background:var(--card2);border-radius:14px;border:1px solid var(--border)">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:2px">До сплати:</div>
+          <div id="starsPriceValue" style="font-size:26px;font-weight:900;color:var(--acc)"></div>
+        </div>
+      </div>
+
+      <!-- Premium section -->
+      <div id="tgPremiumSection" style="display:none">
+        <div class="card" style="background:linear-gradient(135deg,#0a1020,#101828);border-color:rgba(90,150,255,.25);margin-bottom:12px">
+          <div style="font-size:18px;font-weight:800;margin-bottom:4px">💎 Telegram Premium</div>
+          <div style="font-size:12px;color:#7ab4ff">Оберіть термін підписки</div>
+        </div>
+        <div class="section-title">Пакети Premium</div>
+        <div id="premiumPackList"></div>
+      </div>
+
+      <!-- Telegram tag input (common) -->
+      <div class="section-title" style="margin-top:16px">Ваш Telegram тег</div>
+      <input type="text" id="tgTagInput" placeholder="@ваш_тег" autocomplete="off">
+      <div style="font-size:11px;color:var(--muted);margin-top:5px">Ваш @тег — на нього буде відправлено замовлення</div>
+
+      <button class="btn mt-12" onclick="goToTgPay()">Далі →</button>
+    </div>
+
+    <!-- TG Stars / Premium – Step 2 (Payment) -->
+    <div id="shopTgPay" style="display:none">
+      <div class="back-btn" onclick="backToTgStep1()">← Назад</div>
+      <div class="card">
+        <div class="section-title" style="margin-top:0">Замовлення</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:6px" id="tgPayPackName"></div>
+        <div style="font-size:12px;color:var(--muted)">Telegram тег: <span id="tgPayTag" style="color:var(--acc);font-weight:700"></span></div>
+        <div class="divider"></div>
+        <div style="font-size:26px;font-weight:900;color:var(--acc)" id="tgPayAmt"></div>
+      </div>
+      <div class="card">
+        <div class="section-title" style="margin-top:0">💳 Оплата карткою</div>
+        <div style="font-size:17px;font-weight:700;letter-spacing:2px;color:var(--acc);cursor:pointer;margin-bottom:6px" id="tgPayCardNum" onclick="copyTgCard()"></div>
+        <div style="font-size:11px;color:var(--muted);cursor:pointer" onclick="copyTgCard()">Натисніть щоб скопіювати</div>
+      </div>
+      <div class="card" style="background:linear-gradient(135deg,#0d1a0d,#111e11);border-color:rgba(74,222,128,.2)">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:5px">Наш акаунт (для перевірки):</div>
+        <div id="tgShopTagDisplay" style="font-size:16px;font-weight:800;color:var(--success)"></div>
+      </div>
+      <button class="btn" id="tgPayBtn" onclick="submitTgOrder()">✅ Я оплатив</button>
     </div>
   </div>
 </div>
@@ -1208,6 +1275,8 @@ let spinning = false;
 let freePrizes = [], paidPrizes = [];
 let prices = {};
 let curCat = null, curPack = null;
+let curTgCat = null, curTgPack = null, tgStarsAmount = 0;
+let tgStarsRate = 0.73, tgShopTag = '', tgPremiumPacks = [];
 let mixExtra = [], mixFinalPack = '', mixFinalAmount = 0, mixCounts = {}, _mixUcPacks = [];
 let userBonuses = [];
 
@@ -1681,12 +1750,137 @@ function resetShop() {
   document.getElementById('shopId').style.display = 'none';
   document.getElementById('shopMix').style.display = 'none';
   document.getElementById('shopPacks').style.display = 'none';
+  document.getElementById('shopTg').style.display = 'none';
+  document.getElementById('shopTgPay').style.display = 'none';
   showWithAnim(document.getElementById('shopCats'));
   document.getElementById('gameIdInput').value = '';
   document.getElementById('gameNickInput').value = '';
+  document.getElementById('tgTagInput').value = '';
+  document.getElementById('starsAmountInput').value = '';
+  document.getElementById('starsPriceCalc').style.display = 'none';
   curPack = null; curCat = null;
+  curTgCat = null; curTgPack = null; tgStarsAmount = 0;
   mixExtra = []; mixCounts = {}; mixFinalPack = ''; mixFinalAmount = 0;
   api('/api/prices').then(r => { if (r.ok) { prices = r.prices; renderPopular(); } });
+}
+
+// ─── TG STARS / PREMIUM ──────────────────────────────────────────────────────
+async function showTgShop(cat) {
+  curTgCat = cat;
+  curTgPack = null;
+  document.getElementById('shopCats').style.display = 'none';
+  document.getElementById('tgStarsSection').style.display = cat === 'stars' ? '' : 'none';
+  document.getElementById('tgPremiumSection').style.display = cat === 'premium' ? '' : 'none';
+  document.getElementById('starsPriceCalc').style.display = 'none';
+  document.getElementById('starsAmountInput').value = '';
+  document.getElementById('tgTagInput').value = '';
+  showWithAnim(document.getElementById('shopTg'));
+  const r = await api('/api/tg-config');
+  if (r.ok) {
+    tgStarsRate = r.stars_rate;
+    tgShopTag = r.shop_tag;
+    tgPremiumPacks = r.premium_packs || [];
+    if (r.payment_card) {
+      const c = r.payment_card.replace(/(\d{4})/g,'$1 ').trim();
+      document.getElementById('tgPayCardNum').textContent = c;
+    }
+    document.getElementById('tgStarsRateDisplay').textContent = `1 ⭐ = ${r.stars_rate} грн`;
+    if (cat === 'premium') renderPremiumPacks();
+  }
+}
+
+function renderPremiumPacks() {
+  const el = document.getElementById('premiumPackList');
+  if (!el) return;
+  el.innerHTML = tgPremiumPacks.map(p => `
+    <div id="tgprem-${p.id}" class="pack-item" style="cursor:pointer;border:2px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:8px;transition:border-color .15s,background .15s" onclick="selectTgPremPack('${p.id}')">
+      <span class="pack-name" style="font-size:14px;font-weight:700">💎 ${esc(p.label)}</span>
+      <span class="pack-price" style="font-size:16px;font-weight:900;color:#7ab4ff">${p.price} грн</span>
+    </div>`).join('');
+}
+
+function selectTgPremPack(id) {
+  curTgPack = tgPremiumPacks.find(p => p.id === id) || null;
+  document.querySelectorAll('#premiumPackList .pack-item').forEach(el => {
+    el.style.borderColor = 'var(--border)';
+    el.style.background = '';
+  });
+  const sel = document.getElementById('tgprem-' + id);
+  if (sel) { sel.style.borderColor = '#7ab4ff'; sel.style.background = 'rgba(90,150,255,.08)'; }
+}
+
+function updateStarsPrice() {
+  const amt = parseInt(document.getElementById('starsAmountInput').value) || 0;
+  const calc = document.getElementById('starsPriceCalc');
+  if (amt >= 50) {
+    const price = Math.ceil(amt * tgStarsRate);
+    document.getElementById('starsPriceValue').textContent = price + ' грн';
+    calc.style.display = '';
+  } else {
+    calc.style.display = 'none';
+  }
+}
+
+function goToTgPay() {
+  const tgTag = document.getElementById('tgTagInput').value.trim();
+  if (!tgTag || tgTag.length < 3) { toast('Введіть ваш Telegram тег (@тег)', 'error'); return; }
+  let packName, amount;
+  if (curTgCat === 'stars') {
+    const amt = parseInt(document.getElementById('starsAmountInput').value) || 0;
+    if (amt < 50) { toast('Мінімум 50 зірок', 'error'); return; }
+    tgStarsAmount = amt;
+    packName = `⭐ ${amt} Зірок Telegram`;
+    amount = Math.ceil(amt * tgStarsRate);
+  } else {
+    if (!curTgPack) { toast('Оберіть пакет Premium', 'error'); return; }
+    packName = curTgPack.label;
+    amount = curTgPack.price;
+  }
+  document.getElementById('tgPayPackName').textContent = packName;
+  document.getElementById('tgPayTag').textContent = tgTag;
+  document.getElementById('tgPayAmt').textContent = amount + ' грн';
+  document.getElementById('tgShopTagDisplay').textContent = tgShopTag || '@NezukoUCShop';
+  document.getElementById('shopTg').style.display = 'none';
+  showWithAnim(document.getElementById('shopTgPay'));
+}
+
+function backTgToCats() {
+  document.getElementById('shopTg').style.display = 'none';
+  showWithAnim(document.getElementById('shopCats'));
+}
+
+function backToTgStep1() {
+  document.getElementById('shopTgPay').style.display = 'none';
+  showWithAnim(document.getElementById('shopTg'));
+}
+
+function copyTgCard() {
+  const card = (document.getElementById('tgPayCardNum').textContent || '').replace(/\s/g, '');
+  if (!card) return;
+  navigator.clipboard.writeText(card)
+    .then(() => toast('Картку скопійовано!', 'success'))
+    .catch(() => {});
+}
+
+async function submitTgOrder() {
+  const tgTag = document.getElementById('tgPayTag').textContent.trim();
+  const packName = document.getElementById('tgPayPackName').textContent;
+  const amtStr = document.getElementById('tgPayAmt').textContent.replace(/\D/g, '');
+  const amount = parseInt(amtStr) || 0;
+  if (!tgTag || !packName || amount <= 0) { toast('Помилка даних', 'error'); return; }
+  const btn = document.getElementById('tgPayBtn');
+  btn.disabled = true; btn.textContent = 'Відправляємо...';
+  const r = await api('/api/submit-tg-order', 'POST', {
+    user_id: uid, username: uname,
+    pack: packName, tg_tag: tgTag, amount
+  });
+  btn.disabled = false; btn.textContent = '✅ Я оплатив';
+  if (r.ok) {
+    document.getElementById('shopTgPay').style.display = 'none';
+    document.getElementById('doneId').textContent = r.order_id;
+    showWithAnim(document.getElementById('shopDone'));
+    sakura(); launchConfetti();
+  } else toast(r.error || 'Помилка', 'error');
 }
 
 // ─── CART ────────────────────────────────────────────────────────────────────

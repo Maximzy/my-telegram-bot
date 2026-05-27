@@ -18,6 +18,13 @@ if not _env_admin_pwd:
 ADMIN_PASSWORD = _env_admin_pwd
 PAYMENT_CARD = os.environ.get("PAYMENT_CARD", "4874070020367247")
 MY_ID = int(os.environ.get("OWNER_ID", "1440236609"))
+SHOP_TAG = os.environ.get("SHOP_TAG", "@NezukoUCShop")
+STARS_RATE = float(os.environ.get("STARS_RATE", "0.73"))
+PREMIUM_PACKS_LIST = [
+    {"id": "prem_3m",  "label": "Telegram Premium 3 міс",  "price": 530},
+    {"id": "prem_6m",  "label": "Telegram Premium 6 міс",  "price": 700},
+    {"id": "prem_12m", "label": "Telegram Premium 12 міс", "price": 1250},
+]
 
 logging.basicConfig(level=logging.INFO)
 
@@ -905,6 +912,15 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 result[pack] = override[0] if override else base_price
             _json_response(self, {"ok": True, "prices": result}); return
 
+        if path == "/api/tg-config":
+            _json_response(self, {
+                "ok": True,
+                "shop_tag": SHOP_TAG,
+                "stars_rate": STARS_RATE,
+                "payment_card": PAYMENT_CARD,
+                "premium_packs": PREMIUM_PACKS_LIST
+            }); return
+
         if path == "/api/reviews":
             rows = db_query("SELECT rowid, user, text FROM reviews ORDER BY rowid DESC LIMIT 20")
             reviews = [{"id": r[0], "user": r[1], "text": r[2]} for r in rows]
@@ -1246,6 +1262,38 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 grant_achievement(user_id, "flash")
             _json_response(self, {"ok": True, "order_id": order_id, "final_price": final_price,
                                   "discount": disc_pct}); return
+
+        if path == "/api/submit-tg-order":
+            user_id = int(data.get("user_id", 0))
+            if user_id and not _rl_allow(f"tgorder:{user_id}", 5, 60):
+                _json_response(self, {"ok": False, "error": "Забагато замовлень. Зачекайте хвилину."}, 429); return
+            username = _sanitize(str(data.get("username", "")), 64)
+            pack = _sanitize(str(data.get("pack", "")), 128)
+            tg_tag = _sanitize(str(data.get("tg_tag", "")), 64).strip()
+            amount = int(data.get("amount", 0))
+            if not pack or not tg_tag or amount <= 0:
+                _json_response(self, {"ok": False, "error": "Відсутні дані"}); return
+            if len(tg_tag) < 3:
+                _json_response(self, {"ok": False, "error": "Введіть правильний Telegram тег"}); return
+            order_id = str(uuid.uuid4()).replace("-", "")[:12].upper()
+            db_exec(
+                "INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount) VALUES (?,?,?,?,?,?,?,?)",
+                (order_id, username, pack, "pending", user_id, tg_tag, created_at_now(), str(amount))
+            )
+            try:
+                user_label_str = f"@{username}" if username else str(user_id)
+                text = (f"⭐ ТГ ЗАМОВЛЕННЯ!\n🆔 {order_id}\n👤 {user_label_str}\n🎁 {pack}\n📲 Тег: {tg_tag}\n💵 Сума: {amount} грн")
+                ok_btn = json.dumps({"inline_keyboard": [[
+                    {"text": "✅ Готово", "callback_data": f"ok_{order_id}"},
+                    {"text": "❌ Відхилити", "callback_data": f"no_{order_id}"}
+                ]]})
+                params = urllib.parse.urlencode({"chat_id": MY_ID, "text": text, "reply_markup": ok_btn}).encode()
+                req = urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=params)
+                urllib.request.urlopen(req, timeout=5)
+            except Exception as e:
+                logging.warning(f"TG order admin notify error: {e}")
+            update_user_profile(user_id)
+            _json_response(self, {"ok": True, "order_id": order_id}); return
 
         if path == "/api/cart/add":
             user_id = int(data.get("user_id", 0))
@@ -3146,14 +3194,22 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pkg = next((p for p in STARS_PACKAGES if p["id"] == pkg_id), None)
         if not pkg:
             await q.answer("❌ Пакет не знайдено", show_alert=True); return
-        await context.bot.send_invoice(
-            chat_id=q.from_user.id,
-            title=f"⭐ {pkg['points']} балів",
-            description=pkg["label"],
-            payload=f"stars_points_{pkg_id}_{q.from_user.id}",
-            currency="XTR",
-            prices=[LabeledPrice(pkg["label"], pkg["stars"])],
-        )
+        try:
+            await context.bot.send_invoice(
+                chat_id=q.from_user.id,
+                title=f"⭐ {pkg['points']} балів",
+                description=pkg["label"],
+                payload=f"stars_points_{pkg_id}_{q.from_user.id}",
+                provider_token="",
+                currency="XTR",
+                prices=[LabeledPrice(pkg["label"], pkg["stars"])],
+            )
+        except Exception as e:
+            logging.warning(f"stars_buy send_invoice error: {e}")
+            await context.bot.send_message(
+                q.from_user.id,
+                f"❌ Не вдалося створити інвойс: {e}\n\nПереконайтесь, що у бота увімкнені платежі Telegram Stars у @BotFather → Payments."
+            )
         return
 
     if data.startswith("ok_"):
