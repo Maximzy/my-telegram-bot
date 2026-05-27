@@ -2404,19 +2404,40 @@ async function loadAPrices() {
   if (!r.ok) { el.innerHTML = '<div class="empty">' + esc(r.error) + '</div>'; return; }
   const sel = document.getElementById('pricePackSel');
   sel.innerHTML = '<option value="">— Оберіть пак —</option>';
-  el.innerHTML = Object.entries(r.prices).map(([pack, data]) => {
-    const opt = document.createElement('option');
-    opt.value = pack; opt.textContent = pack;
-    sel.appendChild(opt);
-    const changed = data.current !== data.base;
-    return `<div class="card" style="margin-bottom:6px;padding:9px 13px">
-      <div style="font-size:11px;font-weight:600">${esc(pack)}</div>
-      <div style="font-size:13px;margin-top:2px">
-        <span style="color:var(--acc);font-weight:700">${data.current} грн</span>
-        ${changed ? `<span style="font-size:10px;color:var(--muted);margin-left:6px">база: ${data.base} грн</span>` : ''}
-      </div>
-    </div>`;
-  }).join('');
+
+  const cats = [
+    { key: 'uc',       label: '💸 UC паки',        match: p => p.includes('UC') && !p.includes('Prime') && !p.includes('Набір') },
+    { key: 'prime',    label: '👑 Prime',            match: p => p.includes('Prime') && !p.includes('Plus') },
+    { key: 'primeplus',label: '👑 Prime Plus',       match: p => p.includes('Prime Plus') },
+    { key: 'rise',     label: '⭐️ Набори Підйом',  match: p => p.includes('Набір') || p.includes('Підйом') },
+  ];
+
+  const entries = Object.entries(r.prices);
+  let listHtml = '';
+
+  cats.forEach(cat => {
+    const group = entries.filter(([pack]) => cat.match(pack));
+    if (!group.length) return;
+    const grp = document.createElement('optgroup');
+    grp.label = cat.label;
+    listHtml += `<div style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px">${cat.label}</div>`;
+    group.forEach(([pack, data]) => {
+      const opt = document.createElement('option');
+      opt.value = pack; opt.textContent = pack;
+      grp.appendChild(opt);
+      const changed = data.current !== data.base;
+      listHtml += `<div class="card" style="margin-bottom:6px;padding:9px 13px">
+        <div style="font-size:11px;font-weight:600">${esc(pack)}</div>
+        <div style="font-size:13px;margin-top:2px">
+          <span style="color:var(--acc);font-weight:700">${data.current} грн</span>
+          ${changed ? `<span style="font-size:10px;color:var(--muted);margin-left:6px">база: ${data.base} грн</span>` : ''}
+        </div>
+      </div>`;
+    });
+    sel.appendChild(grp);
+  });
+
+  el.innerHTML = listHtml;
 }
 
 async function doUpdatePrice() {
