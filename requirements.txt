@@ -6,3 +6,7 @@ h11==0.16.0
 certifi==2026.4.22
 idna==3.14
 typing_extensions==4.15.0
+APScheduler==3.10.4
+pytz==2026.2
+tzlocal==5.3.1
+six==1.17.0
