@@ -1,8 +1,8 @@
 import sqlite3, uuid, logging, threading, os, re, json, urllib.request, urllib.parse, random, asyncio, time
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, KeyboardButton
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, KeyboardButton, LabeledPrice
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters, PreCheckoutQueryHandler
 
 # --- НАЛАШТУВАННЯ ---
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
@@ -189,6 +189,14 @@ POINTS_SHOP = [
     {"id":"extra_spin", "name":"Повторний прокрут рулетки", "cost":300,  "bonus_type":"extra_spin"},
 ]
 
+# --- ПАКЕТИ ЗІРОК (Telegram Stars → бали) ---
+STARS_PACKAGES = [
+    {"id": "stars_50",  "stars": 50,  "points": 500,  "label": "50 ⭐ → 500 балів"},
+    {"id": "stars_100", "stars": 100, "points": 1100, "label": "100 ⭐ → 1100 балів (+10%)"},
+    {"id": "stars_250", "stars": 250, "points": 3000, "label": "250 ⭐ → 3000 балів (+20%)"},
+    {"id": "stars_500", "stars": 500, "points": 6500, "label": "500 ⭐ → 6500 балів (+30%)"},
+]
+
 FREE_WHEEL_PRIZES = [
     {"id":"nothing", "name":"Нічого",      "weight":80, "type":"nothing",              "value":0,   "rarity":"common"},
     {"id":"disc12",  "name":"Знижка 1-2%", "weight":10, "type":"random_discount_small","value":0,   "rarity":"rare"},
@@ -209,6 +217,7 @@ MAIN_KB = [
     ["🛍 Магазин"],
     ["🏆 Топ донатерів", "🏅 Досягнення"],
     ["🎁 Промокод", "👥 Реферал"],
+    ["⭐ Бали за зірки"],
     ["📋 Мої замовлення", "📄 Політика"],
     ["🆘 Підтримка"],
     ["⚙️ Адмін"]
@@ -2643,6 +2652,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "🔙 Назад":
         await update.message.reply_text("Головне меню", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
 
+    if text == "⭐ Бали за зірки":
+        msg = "⭐ *Купити бали за Telegram Stars*\n\nОбери пакет — зірки спишуться з твого балансу Telegram, а бали зарахуються одразу після оплати.\n\n"
+        for p in STARS_PACKAGES:
+            msg += f"• {p['label']}\n"
+        buttons = [[InlineKeyboardButton(p["label"], callback_data=f"stars_buy_{p['id']}")] for p in STARS_PACKAGES]
+        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons)); return
+
     if text == "🏆 Топ донатерів":
         # Hidden letter O — uses stored amount column (same as mini app /api/top)
         rows = db_query(
@@ -2887,6 +2903,21 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text("🗑 Відгук видалено.")
         return
 
+    if data.startswith("stars_buy_"):
+        pkg_id = data[len("stars_buy_"):]
+        pkg = next((p for p in STARS_PACKAGES if p["id"] == pkg_id), None)
+        if not pkg:
+            await q.answer("❌ Пакет не знайдено", show_alert=True); return
+        await context.bot.send_invoice(
+            chat_id=q.from_user.id,
+            title=f"⭐ {pkg['points']} балів",
+            description=pkg["label"],
+            payload=f"stars_points_{pkg_id}_{q.from_user.id}",
+            currency="XTR",
+            prices=[LabeledPrice(pkg["label"], pkg["stars"])],
+        )
+        return
+
     if data.startswith("ok_"):
         order_id = data[3:]
         res = db_query_one("SELECT chat_id, pack FROM orders WHERE id=?", (order_id,))
@@ -3039,6 +3070,38 @@ async def _send_db_to_owner(context: ContextTypes.DEFAULT_TYPE):
         logging.warning(f"send_db_to_owner error: {e}")
 
 
+async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.pre_checkout_query.answer(ok=True)
+
+async def successful_payment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    payment = update.message.successful_payment
+    payload = payment.invoice_payload  # stars_points_{pkg_id}_{user_id}
+    uid = update.effective_user.id
+    try:
+        parts = payload.split("_")
+        pkg_id = "_".join(parts[2:4])  # e.g. stars_50
+        pkg = next((p for p in STARS_PACKAGES if p["id"] == pkg_id), None)
+        if not pkg:
+            logging.warning(f"Unknown stars package in payload: {payload}")
+            return
+        points = pkg["points"]
+        db_exec("INSERT OR IGNORE INTO user_points (user_id, points) VALUES (?,0)", (uid,))
+        db_exec("UPDATE user_points SET points=points+? WHERE user_id=?", (points, uid))
+        db_exec("INSERT INTO user_points_tx (user_id, delta, reason, created_at) VALUES (?,?,?,?)",
+                (uid, points, f"Купівля за зірки: {pkg['label']}", created_at_now()))
+        uname = update.effective_user.username or str(uid)
+        logging.info(f"Stars payment: {uname} bought {points} points ({pkg['stars']}⭐)")
+        _send_tg_message(MY_ID, f"⭐ Оплата зірками!\n👤 @{uname} (ID: {uid})\n🪙 +{points} балів\n💫 {pkg['stars']} Stars")
+        await update.message.reply_text(
+            f"✅ Оплата успішна!\n\n🪙 На ваш рахунок нараховано *{points} балів*.\n\n"
+            f"Дякуємо за підтримку! 🌸",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logging.error(f"successful_payment_handler error: {e}")
+        await update.message.reply_text("✅ Оплата отримана! Бали буде нараховано найближчим часом.")
+
+
 # --- MAIN ---
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
@@ -3068,6 +3131,8 @@ def main():
     app.add_handler(CommandHandler("ban", ban_command))
     app.add_handler(CommandHandler("unban", unban_command))
     app.add_handler(CommandHandler("restartbot", restartbot_command))
+    app.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
+    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(
         (filters.PHOTO | filters.VIDEO | filters.Document.ALL |
