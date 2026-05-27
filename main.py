@@ -19,12 +19,36 @@ ADMIN_PASSWORD = _env_admin_pwd
 PAYMENT_CARD = os.environ.get("PAYMENT_CARD", "4874070020367247")
 MY_ID = int(os.environ.get("OWNER_ID", "1440236609"))
 SHOP_TAG = os.environ.get("SHOP_TAG", "@NezukoUCShop")
-STARS_RATE = float(os.environ.get("STARS_RATE", "0.73"))
-PREMIUM_PACKS_LIST = [
+STARS_RATE_DEFAULT = float(os.environ.get("STARS_RATE", "0.73"))
+STARS_RATE = STARS_RATE_DEFAULT
+PREMIUM_PACKS_BASE = [
     {"id": "prem_3m",  "label": "Telegram Premium 3 міс",  "price": 530},
     {"id": "prem_6m",  "label": "Telegram Premium 6 міс",  "price": 700},
     {"id": "prem_12m", "label": "Telegram Premium 12 міс", "price": 1250},
 ]
+
+def get_setting(key: str, default: str = "") -> str:
+    row = db_query_one("SELECT value FROM settings WHERE key=?", (key,))
+    return row[0] if row else default
+
+def set_setting(key: str, value: str):
+    db_exec("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?,?,?)",
+            (key, value, created_at_now()))
+
+def get_stars_rate() -> float:
+    v = get_setting("stars_rate")
+    try:
+        return float(v) if v else STARS_RATE_DEFAULT
+    except Exception:
+        return STARS_RATE_DEFAULT
+
+def get_premium_packs() -> list:
+    result = []
+    for p in PREMIUM_PACKS_BASE:
+        v = get_setting(f"{p['id']}_price")
+        price = int(v) if v and v.isdigit() else p["price"]
+        result.append({**p, "price": price})
+    return result
 
 logging.basicConfig(level=logging.INFO)
 
@@ -108,6 +132,7 @@ def run_migrations(connection):
     c.execute("CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, type TEXT, message TEXT, read INTEGER DEFAULT 0, created_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS ai_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, message TEXT, topic TEXT, created_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS security_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, ip TEXT, path TEXT, event TEXT, detail TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)")
     connection.commit()
 
 run_migrations(conn)
@@ -916,9 +941,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
             _json_response(self, {
                 "ok": True,
                 "shop_tag": SHOP_TAG,
-                "stars_rate": STARS_RATE,
+                "stars_rate": get_stars_rate(),
                 "payment_card": PAYMENT_CARD,
-                "premium_packs": PREMIUM_PACKS_LIST
+                "premium_packs": get_premium_packs()
             }); return
 
         if path == "/api/reviews":
@@ -1003,6 +1028,23 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 override = db_query_one("SELECT price FROM price_overrides WHERE pack_name=?", (pack,))
                 result[pack] = {"current": override[0] if override else base_price, "base": base_price}
             _json_response(self, {"ok": True, "prices": result}); return
+
+        if path == "/api/admin/tg-prices":
+            pwd = params.get("password", "")
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            packs = []
+            for p in PREMIUM_PACKS_BASE:
+                v = get_setting(f"{p['id']}_price")
+                price = int(v) if v and v.isdigit() else p["price"]
+                packs.append({"id": p["id"], "label": p["label"], "price": price, "base": p["price"]})
+            _json_response(self, {
+                "ok": True,
+                "stars_rate": get_stars_rate(),
+                "stars_rate_default": STARS_RATE_DEFAULT,
+                "premium_packs": packs
+            }); return
 
         if path == "/api/admin/reviews":
             pwd = params.get("password", "")
@@ -1860,6 +1902,52 @@ class PolicyHandler(BaseHTTPRequestHandler):
             item_id = str(data.get("item_id", ""))
             db_exec("DELETE FROM points_price_overrides WHERE item_id=?", (item_id,))
             _json_response(self, {"ok": True, "message": "Ціну скинуто до базової"}); return
+
+        if path == "/api/admin/update-tg-prices":
+            pwd = str(data.get("password", ""))
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            updated = []
+            stars_rate_raw = data.get("stars_rate")
+            if stars_rate_raw is not None:
+                try:
+                    rate = float(stars_rate_raw)
+                    if rate <= 0: raise ValueError
+                    set_setting("stars_rate", str(rate))
+                    updated.append(f"Курс зірок → {rate} грн/⭐")
+                except Exception:
+                    _json_response(self, {"ok": False, "error": "Невірний курс зірок"}); return
+            prem_ids = {p["id"] for p in PREMIUM_PACKS_BASE}
+            for key, val in data.items():
+                if key.endswith("_price") and key[:-len("_price")] in prem_ids:
+                    pack_id = key[:-len("_price")]
+                    try:
+                        price = int(val)
+                        if price < 1: raise ValueError
+                        set_setting(f"{pack_id}_price", str(price))
+                        label = next((p["label"] for p in PREMIUM_PACKS_BASE if p["id"] == pack_id), pack_id)
+                        updated.append(f"{label} → {price} грн")
+                    except Exception:
+                        _json_response(self, {"ok": False, "error": f"Невірна ціна для {key}"}); return
+            if not updated:
+                _json_response(self, {"ok": False, "error": "Нічого не оновлено"}); return
+            _json_response(self, {"ok": True, "message": "Оновлено: " + ", ".join(updated)}); return
+
+        if path == "/api/admin/reset-tg-prices":
+            pwd = str(data.get("password", ""))
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            key = str(data.get("key", ""))
+            prem_ids = {p["id"] for p in PREMIUM_PACKS_BASE}
+            if key == "stars_rate":
+                db_exec("DELETE FROM settings WHERE key='stars_rate'")
+            elif key.endswith("_price") and key[:-len("_price")] in prem_ids:
+                db_exec("DELETE FROM settings WHERE key=?", (key,))
+            else:
+                _json_response(self, {"ok": False, "error": "Невідомий ключ"}); return
+            _json_response(self, {"ok": True, "message": "Скинуто до базового"}); return
 
         if path == "/api/admin/grant-achievement":
             pwd = str(data.get("password", ""))

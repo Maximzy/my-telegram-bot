@@ -930,6 +930,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div class="sub-tab" data-atab="apromos">🎁 Промокоди</div>
         <div class="sub-tab" data-atab="aprices">💰 Ціни UC</div>
         <div class="sub-tab" data-atab="apointsprices">🪙 Ціни балів</div>
+        <div class="sub-tab" data-atab="atgprices">⭐ TG Ціни</div>
         <div class="sub-tab" data-atab="areviews">🌟 Відгуки</div>
         <div class="sub-tab" data-atab="aachiev">🏅 Досягнення</div>
         <div class="sub-tab" data-atab="afind">🔍 Знайти</div>
@@ -1057,6 +1058,23 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
           <button class="btn" onclick="doUpdatePrice()">💾 Оновити ціну</button>
           <button class="btn-ghost btn" onclick="doResetPrice()">↺ Скинути до базової</button>
         </div>
+      </div>
+
+      <!-- TG Stars & Premium Prices -->
+      <div class="atab" id="atab-atgprices" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="section-title" style="margin:0">⭐ Зірки Telegram</div>
+          <button class="btn-ghost btn btn-sm" onclick="loadATgPrices()">↻</button>
+        </div>
+        <div class="promo-form" style="margin-top:10px">
+          <label style="font-size:12px;color:var(--muted);margin-bottom:2px">Курс: 1 ⭐ = ? грн</label>
+          <input type="number" id="tgStarsRateInput" placeholder="0.73" min="0.01" step="0.01">
+          <div id="tgStarsRateHint" style="font-size:11px;color:var(--muted);margin-top:-4px"></div>
+        </div>
+        <div class="section-title" style="margin-top:16px">💎 Telegram Premium</div>
+        <div id="aTgPremList" style="margin-top:6px"></div>
+        <div class="divider"></div>
+        <button class="btn" onclick="doSaveTgPrices()">💾 Зберегти всі зміни</button>
       </div>
 
       <!-- Reviews admin -->
@@ -1487,6 +1505,7 @@ document.querySelectorAll('#aTabs .sub-tab').forEach(el => {
     else if (tab === 'apromos') loadAPromos();
     else if (tab === 'aprices') loadAPrices();
     else if (tab === 'apointsprices') loadAPointsPrices();
+    else if (tab === 'atgprices') loadATgPrices();
     else if (tab === 'areviews') loadAReviews();
     else if (tab === 'awheel') loadPendingWheels();
     else if (tab === 'atickets') loadATickets();
@@ -2689,6 +2708,52 @@ async function doResetPointsPrice() {
   if (!item_id) { toast('Оберіть товар', 'error'); return; }
   const r = await api('/api/admin/reset-points-price', 'POST', { password: adminPass, item_id });
   if (r.ok) { toast(r.message, 'success'); loadAPointsPrices(); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+async function loadATgPrices() {
+  const el = document.getElementById('aTgPremList');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api(`/api/admin/tg-prices?password=${adminPass}`);
+  if (!r.ok) { el.innerHTML = '<div class="empty">' + esc(r.error || 'Помилка') + '</div>'; return; }
+  const starsInput = document.getElementById('tgStarsRateInput');
+  starsInput.value = r.stars_rate;
+  const hint = document.getElementById('tgStarsRateHint');
+  hint.textContent = `Базовий: ${r.stars_rate_default} грн/⭐`;
+  el.innerHTML = (r.premium_packs || []).map(p => {
+    const changed = p.price !== p.base;
+    return `<div class="card" style="margin-bottom:8px;padding:11px 14px">
+      <div style="font-size:12px;font-weight:700;margin-bottom:6px">${esc(p.label)}</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="number" id="tgPremPrice_${p.id}" value="${p.price}" min="1"
+          style="flex:1;font-size:14px" placeholder="Ціна (грн)">
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap">грн</span>
+        ${changed ? `<button class="btn-ghost btn btn-sm" style="padding:4px 8px;font-size:11px"
+          onclick="doResetTgPrice('${p.id}_price')">↺</button>` : ''}
+      </div>
+      ${changed ? `<div style="font-size:10px;color:var(--muted);margin-top:3px">база: ${p.base} грн</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function doSaveTgPrices() {
+  const rate = parseFloat(document.getElementById('tgStarsRateInput').value) || 0;
+  if (rate <= 0) { toast('Введіть курс зірок > 0', 'error'); return; }
+  const payload = { password: adminPass, stars_rate: rate };
+  const premInputs = document.querySelectorAll('[id^="tgPremPrice_"]');
+  premInputs.forEach(inp => {
+    const packId = inp.id.replace('tgPremPrice_', '');
+    const price = parseInt(inp.value) || 0;
+    if (price > 0) payload[packId + '_price'] = price;
+  });
+  const r = await api('/api/admin/update-tg-prices', 'POST', payload);
+  if (r.ok) { toast(r.message, 'success'); loadATgPrices(); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+async function doResetTgPrice(key) {
+  const r = await api('/api/admin/reset-tg-prices', 'POST', { password: adminPass, key });
+  if (r.ok) { toast(r.message, 'success'); loadATgPrices(); }
   else toast(r.error || 'Помилка', 'error');
 }
 
