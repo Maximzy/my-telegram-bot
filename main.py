@@ -1208,6 +1208,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
             user_id = int(data.get("user_id", 0))
             username = str(data.get("username", ""))
             player_id = str(data.get("player_id", "")).strip()
+            player_nick = str(data.get("player_nick", "")).strip()
             bonus_type = str(data.get("bonus_type", "free_uc_60"))
             if not player_id or len(player_id) < 5:
                 _json_response(self, {"ok": False, "error": "Введи правильний ігровий ID"}); return
@@ -1217,9 +1218,10 @@ class PolicyHandler(BaseHTTPRequestHandler):
             db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (bonus[0],))
             uc_count = 30 if bonus_type == "free_uc_30" else 60
             oid = str(uuid.uuid4())[:8].upper()
-            db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment) VALUES (?,?,?,?,?,?,?,?,?)",
-                    (oid, username, f"🎁 {uc_count} UC Free (бонус)", "pending", user_id, player_id, created_at_now(), 0, "bonus"))
-            _send_tg_message(MY_ID, f"🎁 БЕЗКОШТОВНІ UC!\n🆔 {oid}\n👤 {'@'+username if username else str(user_id)}\n🎮 ID: {player_id}\n💵 {uc_count} UC (безкоштовно)")
+            db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment, player_nick) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (oid, username, f"🎁 {uc_count} UC Free (бонус)", "pending", user_id, player_id, created_at_now(), 0, "bonus", player_nick or None))
+            nick_line = f"\n🪪 Нік: {player_nick}" if player_nick else ""
+            _send_tg_message(MY_ID, f"🎁 БЕЗКОШТОВНІ UC!\n🆔 {oid}\n👤 {'@'+username if username else str(user_id)}\n🎮 ID: {player_id}{nick_line}\n💵 {uc_count} UC (безкоштовно)")
             _json_response(self, {"ok": True, "message": f"Заявку прийнято! {uc_count} UC буде нараховано."}); return
 
         if path == "/api/points/spend":

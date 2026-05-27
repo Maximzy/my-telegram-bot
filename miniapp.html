@@ -1778,7 +1778,9 @@ async function loadBonuses() {
 async function claimFreeUC(uc, bt) {
   const pid = prompt(`Введіть ігровий ID для нарахування ${uc} UC:`);
   if (!pid || pid.trim().length < 5) { toast('Невірний ігровий ID', 'error'); return; }
-  const r = await api('/api/claim-free-uc', 'POST', { user_id: uid, username: uname, player_id: pid.trim(), bonus_type: bt });
+  const pnick = prompt(`Введіть ваш нік в PUBG Mobile (для перевірки ID):`);
+  if (!pnick || !pnick.trim()) { toast('Введіть ваш нік', 'error'); return; }
+  const r = await api('/api/claim-free-uc', 'POST', { user_id: uid, username: uname, player_id: pid.trim(), player_nick: pnick.trim(), bonus_type: bt });
   if (r.ok) { toast(r.message, 'success'); sakura(); lazyLoaded['svc_bonus'] = false; loadBonuses(); }
   else toast(r.error || 'Помилка', 'error');
 }
