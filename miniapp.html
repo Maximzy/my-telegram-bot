@@ -849,6 +849,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div class="sub-tab" data-atab="awheel">🎰 Колесо</div>
         <div class="sub-tab" data-atab="acart">🛒 Кошики</div>
         <div class="sub-tab" data-atab="atickets">🎫 Тікети</div>
+        <div class="sub-tab" data-atab="aai">🤖 AI Радник</div>
       </div>
 
       <!-- Orders -->
@@ -1057,6 +1058,24 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       </div>
 
       <!-- Tickets -->
+      <!-- AI Advisor Tab -->
+      <div class="atab" id="atab-aai" style="display:none">
+        <div id="aiAdvisorStats" style="margin-bottom:10px"></div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
+          <button class="btn btn-sm" style="font-size:11px" onclick="sendAdminAIChip('Що варто додати до бота щоб підвищити продажі?')">💡 Що додати?</button>
+          <button class="btn btn-sm" style="font-size:11px" onclick="sendAdminAIChip('Проаналізуй мій магазин і дай конкретні поради по збільшенню виручки')">📈 Аналіз</button>
+          <button class="btn btn-sm" style="font-size:11px" onclick="sendAdminAIChip('Які акції або знижки можна провести щоб залучити нових покупців?')">🔥 Акції</button>
+          <button class="btn btn-sm" style="font-size:11px" onclick="sendAdminAIChip('Які нові функції бота підвищать залученість та утримання юзерів?')">🚀 Фічі</button>
+          <button class="btn btn-sm" style="font-size:11px" onclick="sendAdminAIChip('Як я можу покращити систему підтримки та комунікацію з покупцями?')">💬 Підтримка</button>
+        </div>
+        <div id="adminAIChatMessages" style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:12px;padding:10px;background:var(--card2);margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px">
+          <textarea id="adminAIInput" placeholder="Запитай AI-радника про бота..." style="flex:1;min-height:50px;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;padding:8px;color:var(--text);font-size:13px;resize:none;box-sizing:border-box;outline:none;font-family:inherit"></textarea>
+          <button class="btn btn-sm" style="align-self:flex-end;white-space:nowrap" onclick="sendAdminAIMsg()">📨</button>
+        </div>
+        <button class="btn-ghost btn" style="width:100%;font-size:11px;margin-top:7px;color:var(--muted)" onclick="clearAdminAIChat()">🗑 Очистити чат</button>
+      </div>
+
       <div class="atab" id="atab-atickets" style="display:none">
         <!-- List view -->
         <div id="aTicketsListView">
@@ -1362,6 +1381,7 @@ document.querySelectorAll('#aTabs .sub-tab').forEach(el => {
     else if (tab === 'areviews') loadAReviews();
     else if (tab === 'awheel') loadPendingWheels();
     else if (tab === 'atickets') loadATickets();
+    else if (tab === 'aai') loadAdminAI();
   });
 });
 
@@ -2130,9 +2150,80 @@ async function loadAStats() {
       <div class="stat-box"><div class="stat-val" style="color:var(--warn)">${r.pending}</div><div class="stat-lbl">⏳ Очікують</div></div>
       <div class="stat-box"><div class="stat-val" style="color:var(--pts)">${r.users}</div><div class="stat-lbl">👥 Користувачів</div></div>
       <div class="stat-box"><div class="stat-val" style="color:var(--acc)">${r.open_tickets ?? 0}</div><div class="stat-lbl">🎫 Відкриті тікети</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--acc)">${r.ai_today ?? 0}</div><div class="stat-lbl">🤖 AI запитів сьогодні</div></div>
       <div class="stat-box" style="grid-column:1/-1"><div class="stat-val" style="font-size:26px">${r.total_sum} грн</div><div class="stat-lbl">💰 Загальні продажі</div></div>
       <div class="stat-box" style="grid-column:1/-1"><div class="stat-val" style="font-size:26px;color:var(--success)">${r.today_sum} грн</div><div class="stat-lbl">📅 Сьогодні</div></div>
     </div>`;
+}
+
+// ── ADMIN AI ADVISOR ──────────────────────────────────────────────────────────
+let adminAIHistory = [];
+
+async function loadAdminAI() {
+  const statsEl = document.getElementById('aiAdvisorStats');
+  const r = await api(`/api/admin/ai_stats?password=${adminPass}`);
+  if (r.ok) {
+    const topicsHtml = r.topics.length ? r.topics.map(t =>
+      `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)">
+        <span style="color:var(--text)">${t.topic}</span>
+        <span style="color:var(--acc);font-weight:800">${t.count}</span>
+      </div>`).join('') : '<div style="font-size:12px;color:var(--muted)">Ще немає запитів</div>';
+    statsEl.innerHTML = `
+      <div class="card" style="margin-bottom:8px;padding:12px">
+        <div style="font-size:12px;font-weight:700;color:var(--acc);margin-bottom:8px">📊 AI Статистика</div>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <div class="stat-box" style="flex:1;padding:8px"><div class="stat-val" style="font-size:20px">${r.total}</div><div class="stat-lbl" style="font-size:10px">Всього</div></div>
+          <div class="stat-box" style="flex:1;padding:8px"><div class="stat-val" style="font-size:20px;color:var(--acc)">${r.today}</div><div class="stat-lbl" style="font-size:10px">Сьогодні</div></div>
+        </div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Теми запитів</div>
+        ${topicsHtml}
+      </div>`;
+  }
+  if (!adminAIHistory.length) {
+    adminAIHistory = [{role:'assistant', text:'👋 Привіт! Я твій AI-радник.\n\nМожу запропонувати нові фічі для бота, ідеї акцій, поради по збільшенню продажів або відповісти на будь-яке питання по управлінню магазином.\n\nЩо тебе цікавить?'}];
+    renderAdminAIMessages();
+  }
+}
+
+function renderAdminAIMessages() {
+  const el = document.getElementById('adminAIChatMessages');
+  el.innerHTML = adminAIHistory.map(m => {
+    const isBot = m.role === 'assistant';
+    return `<div style="display:flex;flex-direction:column;align-items:${isBot?'flex-start':'flex-end'};margin-bottom:10px">
+      <div style="max-width:90%;background:${isBot?'var(--card)':'var(--acc)'};color:${isBot?'var(--text)':'#fff'};border-radius:${isBot?'12px 12px 12px 3px':'12px 12px 3px 12px'};padding:9px 13px;font-size:12px;line-height:1.6;word-break:break-word">${m.text.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')}</div>
+    </div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendAdminAIMsg() {
+  const input = document.getElementById('adminAIInput');
+  const msg = (input.value || '').trim();
+  if (!msg) return;
+  input.value = '';
+  adminAIHistory.push({role:'user', text: msg});
+  renderAdminAIMessages();
+  const el = document.getElementById('adminAIChatMessages');
+  const loader = document.createElement('div');
+  loader.style.cssText = 'display:flex;align-items:flex-start;margin-bottom:10px';
+  loader.innerHTML = '<div style="background:var(--card);border-radius:12px 12px 12px 3px;padding:9px 14px"><div class="spinner" style="width:14px;height:14px;margin:2px"></div></div>';
+  el.appendChild(loader);
+  el.scrollTop = el.scrollHeight;
+  const r = await api('/api/admin/ai_chat', 'POST', { password: adminPass, message: msg, history: adminAIHistory.slice(-8) });
+  loader.remove();
+  adminAIHistory.push({role:'assistant', text: r.ok ? r.response : '❌ Помилка. Спробуй ще раз.'});
+  renderAdminAIMessages();
+}
+
+function sendAdminAIChip(text) {
+  document.getElementById('adminAIInput').value = text;
+  sendAdminAIMsg();
+}
+
+function clearAdminAIChat() {
+  adminAIHistory = [];
+  document.getElementById('adminAIChatMessages').innerHTML = '';
+  loadAdminAI();
 }
 
 async function loadAdmins() {

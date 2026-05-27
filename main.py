@@ -94,6 +94,7 @@ def run_migrations(connection):
     if "rating" not in _tkt_cols:
         c.execute("ALTER TABLE tickets ADD COLUMN rating INTEGER")
     c.execute("CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, type TEXT, message TEXT, read INTEGER DEFAULT 0, created_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS ai_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, message TEXT, topic TEXT, created_at TEXT)")
     connection.commit()
 
 run_migrations(conn)
@@ -709,9 +710,21 @@ class PolicyHandler(BaseHTTPRequestHandler):
             total_sum = get_done_sum()
             today_sum = get_done_sum(today_only=True)
             open_tickets = db_query_one("SELECT COUNT(*) FROM tickets WHERE status IN ('open','answered','waiting')")[0]
+            ai_today = db_query_one("SELECT COUNT(*) FROM ai_logs WHERE created_at LIKE ?", (created_at_now()[:10] + '%',))[0] or 0
+            ai_total = db_query_one("SELECT COUNT(*) FROM ai_logs")[0] or 0
             _json_response(self, {"ok": True, "done": done, "canceled": canceled, "pending": pending,
                                   "total_sum": total_sum, "today_sum": today_sum, "users": total_users,
-                                  "open_tickets": open_tickets}); return
+                                  "open_tickets": open_tickets, "ai_today": ai_today, "ai_total": ai_total}); return
+
+        if path == "/api/admin/ai_stats":
+            pwd = params.get("password", "")
+            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            total = db_query_one("SELECT COUNT(*) FROM ai_logs")[0] or 0
+            today = db_query_one("SELECT COUNT(*) FROM ai_logs WHERE created_at LIKE ?", (created_at_now()[:10] + '%',))[0] or 0
+            topics = db_query("SELECT topic, COUNT(*) as cnt FROM ai_logs GROUP BY topic ORDER BY cnt DESC LIMIT 6")
+            topic_list = [{"topic": r[0], "count": r[1]} for r in topics]
+            _json_response(self, {"ok": True, "total": total, "today": today, "topics": topic_list}); return
 
         if path == "/api/admin/admins":
             pwd = params.get("password", "")
@@ -1077,6 +1090,22 @@ class PolicyHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 logging.warning(f"ticket admin msg send error: {e}")
             _json_response(self, {"ok": True}); return
+
+        if path == "/api/admin/ai_chat":
+            pwd = str(data.get("password", ""))
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            message = str(data.get("message", "")).strip()
+            history = data.get("history", [])
+            if not message:
+                _json_response(self, {"ok": False, "error": "Немає повідомлення"}); return
+            contents = []
+            for h in (history[-8:] if len(history) > 8 else history):
+                role = "model" if h.get("role") == "assistant" else "user"
+                contents.append({"role": role, "parts": [{"text": str(h.get("text", ""))[:600]}]})
+            contents.append({"role": "user", "parts": [{"text": ADMIN_ADVISOR_PROMPT + "\n\nПитання: " + message}]})
+            response = _gemini_api_call(contents, max_tokens=700)
+            _json_response(self, {"ok": True, "response": response}); return
 
         if path == "/api/ticket/close":
             user_id = int(data.get("user_id", 0))
@@ -2207,22 +2236,54 @@ GEMINI_SYSTEM_PROMPT = """Ти — AI-помічник магазину UC Shop 
 - Якщо не знаєш — скажи "Зверніться до підтримки @Manager_Nezuko"
 """
 
-def _gemini_sync_call(user_message: str) -> str:
+ADMIN_ADVISOR_PROMPT = """Ти — AI-консультант для власника Telegram-бота магазину UC Shop (PUBG Mobile).
+
+Бот вже має:
+- Магазин UC (від 30 до 32400 UC), Prime та Prime Plus підписки, Набори Підйом
+- Міні-додаток (Web App) з повним інтерфейсом
+- Систему тікетів з чатом та рейтингом 1-5 зірок
+- Пуш-сповіщення, систему балів та нагород
+- Колесо фортуни, промокоди, реферальну систему
+- Досягнення, ТОП донатерів, відгуки, розсилки
+- Статистику, контроль цін, бан юзерів, кошик, профілі
+- AI-помічник для юзерів (відповідає на питання)
+
+Твоя роль: допомагати власнику покращувати бота — пропонуй нові фічі, маркетингові ідеї, акції, UX покращення що підвищать продажі та залученість.
+Правила: відповідай ЛИШЕ українською, будь конкретним і практичним, якщо пропонуєш фічу — поясни користь і як реалізувати.
+"""
+
+def _gemini_api_call(contents: list, max_tokens: int = 400) -> str:
     if not GEMINI_API_KEY:
         return "❌ AI-помічник тимчасово недоступний."
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={GEMINI_API_KEY}"
     payload = json.dumps({
-        "contents": [{"role": "user", "parts": [{"text": GEMINI_SYSTEM_PROMPT + "\n\nПитання користувача: " + user_message}]}],
-        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 400}
+        "contents": contents,
+        "generationConfig": {"temperature": 0.7, "maxOutputTokens": max_tokens}
     }).encode("utf-8")
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=20) as resp:
             result = json.loads(resp.read().decode("utf-8"))
             return result["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception as e:
         logging.warning(f"Gemini API error: {e}")
         return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
+
+def _detect_ai_topic(text: str) -> str:
+    t = text.lower()
+    if any(w in t for w in ['ціна', ' uc', 'купи', 'prime', 'скільки', 'коштує', 'вартість', 'пак']):
+        return 'Ціни та покупки'
+    if any(w in t for w in ['pubg', 'гра', 'режим', 'зброя', 'карта', 'battle', 'royal', 'персонаж']):
+        return 'PUBG Mobile'
+    if any(w in t for w in ['замовлен', 'оплат', 'карт', 'нарахув', 'статус', 'де мої']):
+        return 'Замовлення та оплата'
+    if any(w in t for w in ['тікет', 'підтримк', 'допомог', 'проблем']):
+        return 'Підтримка'
+    return 'Інше'
+
+def _gemini_sync_call(user_message: str) -> str:
+    contents = [{"role": "user", "parts": [{"text": GEMINI_SYSTEM_PROMPT + "\n\nПитання користувача: " + user_message}]}]
+    return _gemini_api_call(contents)
 
 async def gemini_reply(user_message: str) -> str:
     try:
@@ -2242,6 +2303,27 @@ async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     question = " ".join(context.args)
     await context.bot.send_chat_action(update.effective_chat.id, "typing")
     response = await gemini_reply(question)
+    await update.message.reply_text(f"🤖 {response}")
+
+async def aichat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if not is_admin(uid):
+        return
+    if not context.args:
+        await update.message.reply_text(
+            "🤖 *AI-радник для бота*\n\n"
+            "Я допоможу з ідеями для розвитку магазину!\n\n"
+            "Приклади:\n"
+            "`/aichat Що варто додати до бота?`\n"
+            "`/aichat Які акції можна провести?`\n"
+            "`/aichat Як збільшити продажі?`",
+            parse_mode="Markdown"
+        )
+        return
+    question = " ".join(context.args)
+    await context.bot.send_chat_action(update.effective_chat.id, "typing")
+    contents = [{"role": "user", "parts": [{"text": ADMIN_ADVISOR_PROMPT + "\n\nПитання: " + question}]}]
+    response = await asyncio.to_thread(_gemini_api_call, contents, 700)
     await update.message.reply_text(f"🤖 {response}")
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2616,6 +2698,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_chat_action(update.effective_chat.id, "typing")
             response = await gemini_reply(text)
+            topic = _detect_ai_topic(text)
+            db_exec("INSERT INTO ai_logs (user_id, message, topic, created_at) VALUES (?,?,?,?)",
+                    (uid, text[:200], topic, created_at_now()))
             await update.message.reply_text(
                 f"🤖 {response}",
                 reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)
@@ -2797,6 +2882,7 @@ async def _send_db_to_owner(context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("ai", ai_command))
+    app.add_handler(CommandHandler("aichat", aichat_command))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("shop", shop_command))
     app.add_handler(CommandHandler("buy", buy_command))
