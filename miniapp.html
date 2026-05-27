@@ -861,7 +861,8 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div class="sub-tab" data-atab="astats">📊 Статистика</div>
         <div class="sub-tab" data-atab="aadmins">👤 Адміни</div>
         <div class="sub-tab" data-atab="apromos">🎁 Промокоди</div>
-        <div class="sub-tab" data-atab="aprices">💰 Ціни</div>
+        <div class="sub-tab" data-atab="aprices">💰 Ціни UC</div>
+        <div class="sub-tab" data-atab="apointsprices">🪙 Ціни балів</div>
         <div class="sub-tab" data-atab="areviews">🌟 Відгуки</div>
         <div class="sub-tab" data-atab="aachiev">🏅 Досягнення</div>
         <div class="sub-tab" data-atab="afind">🔍 Знайти</div>
@@ -954,6 +955,23 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
             <input type="checkbox" id="npSecret"> Секретний промокод 🔐
           </label>
           <button class="btn" onclick="createPromo()">✅ Створити промокод</button>
+        </div>
+      </div>
+
+      <!-- Points Shop Prices -->
+      <div class="atab" id="atab-apointsprices" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="section-title" style="margin:0">Ціни магазину балів</div>
+          <button class="btn-ghost btn btn-sm" onclick="loadAPointsPrices()">↻</button>
+        </div>
+        <div id="aPointsPricesList" style="margin-top:8px;max-height:280px;overflow-y:auto"></div>
+        <div class="divider"></div>
+        <div class="section-title">Змінити ціну товару</div>
+        <div class="promo-form">
+          <select id="pointsPriceItemSel"><option value="">— Оберіть товар —</option></select>
+          <input type="number" id="pointsPriceNewVal" placeholder="Нова ціна (балів)" min="1">
+          <button class="btn" onclick="doUpdatePointsPrice()">💾 Оновити ціну</button>
+          <button class="btn-ghost btn" onclick="doResetPointsPrice()">↺ Скинути до базової</button>
         </div>
       </div>
 
@@ -1399,6 +1417,7 @@ document.querySelectorAll('#aTabs .sub-tab').forEach(el => {
     else if (tab === 'aadmins') loadAdmins();
     else if (tab === 'apromos') loadAPromos();
     else if (tab === 'aprices') loadAPrices();
+    else if (tab === 'apointsprices') loadAPointsPrices();
     else if (tab === 'areviews') loadAReviews();
     else if (tab === 'awheel') loadPendingWheels();
     else if (tab === 'atickets') loadATickets();
@@ -2028,17 +2047,12 @@ async function sendReview() {
 
 // ─── POINTS SHOP ─────────────────────────────────────────────────────────────
 async function loadPointsShop() {
-  const r = await api('/api/points?user_id=' + uid);
-  document.getElementById('ptsBalance').innerHTML = (r.points || 0) + ' <img src="/points_coin.png" style="width:36px;height:36px;object-fit:contain;vertical-align:middle">';
-  const SHOP = [
-    { id: 'uc30', name: '🎁 30 UC безкоштовно', cost: 1500 },
-    { id: 'uc60', name: '🎁 60 UC безкоштовно', cost: 3000 },
-    { id: 'disc_s1', name: 'Знижка 1% (малі UC)', cost: 500 },
-    { id: 'disc_s2', name: 'Знижка 2% (малі UC)', cost: 1000 },
-    { id: 'disc_m1', name: 'Знижка 1% (середні UC)', cost: 750 },
-    { id: 'disc_m2', name: 'Знижка 2% (середні UC)', cost: 1500 },
-    { id: 'extra_spin', name: '🎰 Повторний прокрут рулетки', cost: 300 },
-  ];
+  const [rPts, rShop] = await Promise.all([
+    api('/api/points?user_id=' + uid),
+    api('/api/points/shop')
+  ]);
+  document.getElementById('ptsBalance').innerHTML = (rPts.points || 0) + ' <img src="/points_coin.png" style="width:36px;height:36px;object-fit:contain;vertical-align:middle">';
+  const SHOP = rShop.items || [];
   document.getElementById('ptsItems').innerHTML = SHOP.map(i => `
     <div class="pts-item">
       <div><div class="pts-item-name">${i.name}</div><div class="pts-item-cost">${i.cost} <img src="/points_coin.png" style="width:14px;height:14px;object-fit:contain;vertical-align:middle"></div></div>
@@ -2420,6 +2434,46 @@ async function doResetPrice() {
   if (!pack) { toast('Оберіть пак', 'error'); return; }
   const r = await api('/api/admin/reset-price', 'POST', { password: adminPass, pack_name: pack });
   if (r.ok) { toast(r.message, 'success'); loadAPrices(); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+async function loadAPointsPrices() {
+  const el = document.getElementById('aPointsPricesList');
+  el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api(`/api/admin/points-shop-prices`, 'POST', { password: adminPass });
+  if (!r.ok) { el.innerHTML = '<div class="empty">' + esc(r.error) + '</div>'; return; }
+  const sel = document.getElementById('pointsPriceItemSel');
+  sel.innerHTML = '<option value="">— Оберіть товар —</option>';
+  el.innerHTML = Object.entries(r.items).map(([id, data]) => {
+    const opt = document.createElement('option');
+    opt.value = id; opt.textContent = data.name;
+    sel.appendChild(opt);
+    const changed = data.current !== data.base;
+    return `<div class="card" style="margin-bottom:6px;padding:9px 13px">
+      <div style="font-size:11px;font-weight:600">${esc(data.name)}</div>
+      <div style="font-size:13px;margin-top:2px">
+        <span style="color:var(--pts);font-weight:700">${data.current} балів</span>
+        ${changed ? `<span style="font-size:10px;color:var(--muted);margin-left:6px">база: ${data.base} балів</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function doUpdatePointsPrice() {
+  const item_id = document.getElementById('pointsPriceItemSel').value;
+  const cost = parseInt(document.getElementById('pointsPriceNewVal').value) || 0;
+  if (!item_id) { toast('Оберіть товар', 'error'); return; }
+  if (cost < 1) { toast('Введіть ціну > 0', 'error'); return; }
+  const r = await api('/api/admin/update-points-price', 'POST', { password: adminPass, item_id, cost });
+  if (r.ok) { toast(r.message, 'success'); loadAPointsPrices(); }
+  else toast(r.error || 'Помилка', 'error');
+}
+
+async function doResetPointsPrice() {
+  const item_id = document.getElementById('pointsPriceItemSel').value;
+  if (!item_id) { toast('Оберіть товар', 'error'); return; }
+  const r = await api('/api/admin/reset-points-price', 'POST', { password: adminPass, item_id });
+  if (r.ok) { toast(r.message, 'success'); loadAPointsPrices(); }
   else toast(r.error || 'Помилка', 'error');
 }
 

@@ -85,6 +85,7 @@ def run_migrations(connection):
     c.execute("CREATE TABLE IF NOT EXISTS pending_wheel_spins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, created_at TEXT, status TEXT DEFAULT 'pending', prize_id TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS user_profile (user_id INTEGER PRIMARY KEY, first_seen TEXT, last_seen TEXT, consecutive_days INTEGER DEFAULT 0, last_login_date TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS price_overrides (pack_name TEXT PRIMARY KEY, price INTEGER, updated_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS points_price_overrides (item_id TEXT PRIMARY KEY, cost INTEGER, updated_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS banned_users (user_id INTEGER PRIMARY KEY, reason TEXT, banned_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS cart (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, pack TEXT, added_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, chat_id INTEGER, username TEXT, category TEXT, message TEXT, status TEXT DEFAULT 'open', admin_reply TEXT, created_at TEXT, replied_at TEXT)")
@@ -695,6 +696,11 @@ class PolicyHandler(BaseHTTPRequestHandler):
             pts = get_points(user_id)
             _json_response(self, {"ok": True, "points": pts}); return
 
+        if path == "/api/points/shop":
+            overrides = {r[0]: r[1] for r in db_query("SELECT item_id, cost FROM points_price_overrides")}
+            items = [dict(i, cost=overrides.get(i["id"], i["cost"])) for i in POINTS_SHOP]
+            _json_response(self, {"ok": True, "items": items}); return
+
         if path == "/api/online-count":
             cutoff = (datetime.now() - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
             count = db_query_one("SELECT COUNT(*) FROM user_profile WHERE last_seen >= ?", (cutoff,))
@@ -1303,19 +1309,21 @@ class PolicyHandler(BaseHTTPRequestHandler):
             item = next((i for i in POINTS_SHOP if i["id"] == item_id), None)
             if not item:
                 _json_response(self, {"ok": False, "error": "Невідомий товар"}); return
+            override = db_query_one("SELECT cost FROM points_price_overrides WHERE item_id=?", (item_id,))
+            actual_cost = override[0] if override else item["cost"]
             pts = get_points(user_id)
-            if pts < item["cost"]:
-                _json_response(self, {"ok": False, "error": f"Недостатньо балів. Потрібно {item['cost']}, є {pts}"}); return
-            db_exec("UPDATE user_points SET points=points-? WHERE user_id=?", (item["cost"], user_id))
+            if pts < actual_cost:
+                _json_response(self, {"ok": False, "error": f"Недостатньо балів. Потрібно {actual_cost}, є {pts}"}); return
+            db_exec("UPDATE user_points SET points=points-? WHERE user_id=?", (actual_cost, user_id))
             db_exec("INSERT INTO user_points_tx (user_id, delta, reason, created_at) VALUES (?,?,?,?)",
-                    (user_id, -item["cost"], f"Покупка: {item['name']}", created_at_now()))
+                    (user_id, -actual_cost, f"Покупка: {item['name']}", created_at_now()))
             if item["bonus_type"] == "extra_spin":
                 db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)",
                         (user_id, "extra_spin", 1, created_at_now()))
             else:
                 db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)",
                         (user_id, item["bonus_type"], 1, created_at_now()))
-            _json_response(self, {"ok": True, "message": f"✅ {item['name']} додано! Залишок балів: {pts - item['cost']}"}); return
+            _json_response(self, {"ok": True, "message": f"✅ {item['name']} додано! Залишок балів: {pts - actual_cost}"}); return
 
         if path == "/api/wheel/spin-free":
             user_id = int(data.get("user_id", 0))
@@ -1524,6 +1532,42 @@ class PolicyHandler(BaseHTTPRequestHandler):
             pack_name = str(data.get("pack_name", ""))
             db_exec("DELETE FROM price_overrides WHERE pack_name=?", (pack_name,))
             _json_response(self, {"ok": True, "message": f"Ціна скинута до базової"}); return
+
+        if path == "/api/admin/points-shop-prices":
+            pwd = str(data.get("password", ""))
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            overrides = {r[0]: r[1] for r in db_query("SELECT item_id, cost FROM points_price_overrides")}
+            result = {}
+            for item in POINTS_SHOP:
+                result[item["id"]] = {
+                    "name": item["name"],
+                    "base": item["cost"],
+                    "current": overrides.get(item["id"], item["cost"])
+                }
+            _json_response(self, {"ok": True, "items": result}); return
+
+        if path == "/api/admin/update-points-price":
+            pwd = str(data.get("password", ""))
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            item_id = str(data.get("item_id", ""))
+            cost = int(data.get("cost", 0))
+            if not any(i["id"] == item_id for i in POINTS_SHOP):
+                _json_response(self, {"ok": False, "error": "Товар не знайдено"}); return
+            if cost < 1:
+                _json_response(self, {"ok": False, "error": "Ціна має бути більше 0"}); return
+            db_exec("INSERT OR REPLACE INTO points_price_overrides (item_id, cost, updated_at) VALUES (?,?,?)",
+                    (item_id, cost, created_at_now()))
+            _json_response(self, {"ok": True, "message": f"Ціну оновлено: {item_id} → {cost} балів"}); return
+
+        if path == "/api/admin/reset-points-price":
+            pwd = str(data.get("password", ""))
+            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
+                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            item_id = str(data.get("item_id", ""))
+            db_exec("DELETE FROM points_price_overrides WHERE item_id=?", (item_id,))
+            _json_response(self, {"ok": True, "message": "Ціну скинуто до базової"}); return
 
         if path == "/api/admin/grant-achievement":
             pwd = str(data.get("password", ""))
