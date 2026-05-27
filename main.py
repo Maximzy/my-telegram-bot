@@ -57,7 +57,7 @@ def run_migrations(connection):
     c.execute("CREATE TABLE IF NOT EXISTS reviews (user TEXT, text TEXT)")
     c.execute("PRAGMA table_info(orders)")
     _oc = [r[1] for r in c.fetchall()]
-    for _col in ["created_at", "completed_at", "amount", "payment"]:
+    for _col in ["created_at", "completed_at", "amount", "payment", "player_nick"]:
         if _col not in _oc:
             c.execute(f"ALTER TABLE orders ADD COLUMN {_col} TEXT")
     c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_id ON orders(id)")
@@ -292,7 +292,7 @@ def push_notification(user_id, ntype, message):
     except Exception as e:
         logging.warning(f"push_notification error: {e}")
 
-def _notify_admin_order(order_id, pack, player_id, amount, user_id, username, mix_packs_list=None):
+def _notify_admin_order(order_id, pack, player_id, amount, user_id, username, mix_packs_list=None, player_nick=None):
     try:
         user_label_str = f"@{username}" if username else str(user_id)
         rise_marker = "⭐️ НАБІР ПІДЙОМ\n" if "Набір Підйом" in pack else ""
@@ -307,7 +307,8 @@ def _notify_admin_order(order_id, pack, player_id, amount, user_id, username, mi
             pack_info = f"🎮 МІК UC ({len(mix_packs_list)} пак{'и' if len(mix_packs_list) > 1 else ''}):\n{pack_lines}"
         else:
             pack_info = f"🎁 {pack}"
-        text = (f"💰 ОПЛАТА (Mini App)!\n{rise_marker}🆔 {order_id}\n👤 {user_label_str}\n{pack_info}\n🎮 ID: {player_id}\n💵 Сума: {amount} грн")
+        nick_line = f"\n🪪 Нік: {player_nick}" if player_nick else ""
+        text = (f"💰 ОПЛАТА (Mini App)!\n{rise_marker}🆔 {order_id}\n👤 {user_label_str}\n{pack_info}\n🎮 ID: {player_id}{nick_line}\n💵 Сума: {amount} грн")
         ok_btn = json.dumps({"inline_keyboard": [[
             {"text": "✅ Готово", "callback_data": f"ok_{order_id}"},
             {"text": "❌ Відхилити", "callback_data": f"no_{order_id}"}
@@ -940,6 +941,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
             username = str(data.get("username", ""))
             pack = str(data.get("pack", ""))
             player_id = str(data.get("player_id", ""))
+            player_nick = str(data.get("player_nick", "")).strip()
             base_amount = int(data.get("amount", 0))
             flash_order = bool(data.get("flash_order", False))
             mix_packs = data.get("mix_packs", None)
@@ -977,11 +979,12 @@ class PolicyHandler(BaseHTTPRequestHandler):
                     db_exec("DELETE FROM ref_discounts WHERE id=?", (disc_id,))
             order_id = str(uuid.uuid4())[:8].upper()
             db_exec(
-                "INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount) VALUES (?,?,?,?,?,?,?,?)",
-                (order_id, username, pack, "pending", user_id, player_id, created_at_now(), str(final_price))
+                "INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, player_nick) VALUES (?,?,?,?,?,?,?,?,?)",
+                (order_id, username, pack, "pending", user_id, player_id, created_at_now(), str(final_price), player_nick or None)
             )
             _notify_admin_order(order_id, pack, player_id, final_price, user_id, username,
-                               mix_packs_list=mix_packs if mix_packs is not None else None)
+                               mix_packs_list=mix_packs if mix_packs is not None else None,
+                               player_nick=player_nick or None)
             update_user_profile(user_id)
             if flash_order:
                 grant_achievement(user_id, "flash")
@@ -2656,37 +2659,53 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── Флоу замовлення ────────────────────────────────────────────────────────
 
     if isinstance(state, dict) and state.get("step") == "FREE_UC_ID":
-        game_id = text
+        state["game_id"] = text
+        state["step"] = "FREE_UC_NICK"
+        await update.message.reply_text(f"🪪 Введіть ваш нік в PUBG Mobile (для перевірки ID):", reply_markup=ReplyKeyboardRemove()); return
+
+    if isinstance(state, dict) and state.get("step") == "FREE_UC_NICK":
+        game_id = state["game_id"]
+        nick = text.strip()
         bonus_id = state["bonus_id"]
         uc = state.get("uc", 60)
         bt = state.get("bt", "free_uc_60")
         db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (bonus_id,))
         oid = str(uuid.uuid4())[:8]
-        db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment) VALUES (?,?,?,?,?,?,?,?,?)",
-                (oid, update.effective_user.username, f"🎁 {uc} UC Free (бонус)", "pending", uid, game_id, created_at_now(), 0, "bonus"))
+        db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment, player_nick) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (oid, update.effective_user.username, f"🎁 {uc} UC Free (бонус)", "pending", uid, game_id, created_at_now(), 0, "bonus", nick or None))
         if MY_ID != 0:
             try:
+                nick_line = f"\n🪪 Нік: {nick}" if nick else ""
                 btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Надіслано", callback_data=f"ok_{oid}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{oid}")]])
-                await context.bot.send_message(MY_ID, f"🎁 БЕЗКОШТОВНІ UC!\n🆔 {oid}\n👤 {user_label(update.effective_user.username, uid)}\n🎮 ID: {game_id}\n💵 {uc} UC (безкоштовно)", reply_markup=btns)
+                await context.bot.send_message(MY_ID, f"🎁 БЕЗКОШТОВНІ UC!\n🆔 {oid}\n👤 {user_label(update.effective_user.username, uid)}\n🎮 ID: {game_id}{nick_line}\n💵 {uc} UC (безкоштовно)", reply_markup=btns)
             except: pass
         user_states[uid] = None
         await update.message.reply_text(f"✅ Заявку прийнято! {uc} UC буде нараховано.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
         return
 
     if isinstance(state, dict) and state.get("step") == "ID":
-        state["pid"] = text; state["step"] = "OK"
-        await update.message.reply_text(f"📝 {state['pack']}\nID: {text}\nНапишіть 'ОК' для підтвердження."); return
+        state["pid"] = text
+        state["step"] = "NICK"
+        await update.message.reply_text(f"🪪 Введіть ваш нік в PUBG Mobile (для перевірки ID):"); return
+
+    if isinstance(state, dict) and state.get("step") == "NICK":
+        state["nick"] = text.strip()
+        state["step"] = "OK"
+        await update.message.reply_text(
+            f"📝 {state['pack']}\n🎮 ID: {state['pid']}\n🪪 Нік: {state['nick']}\nНапишіть 'ОК' для підтвердження."
+        ); return
 
     if isinstance(state, dict) and state.get("step") == "OK" and text.upper() in ["ОК", "OK"]:
         pack = state["pack"]
         pid = state["pid"]
+        nick = state.get("nick", "")
         price = get_pack_price(pack)
         disc_pct, disc_src, disc_id = get_user_discount(uid, pack)
         final_price = apply_discount(price, disc_pct) if disc_pct else price
 
         oid = str(uuid.uuid4())[:8]
-        db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment) VALUES (?,?,?,?,?,?,?,?,?)",
-                (oid, update.effective_user.username, pack, "pending", uid, pid, created_at_now(), final_price, "card"))
+        db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment, player_nick) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (oid, update.effective_user.username, pack, "pending", uid, pid, created_at_now(), final_price, "card", nick or None))
 
         if disc_pct and disc_src == "promo":
             db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (disc_id,))
@@ -2695,9 +2714,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         update_user_profile(uid)
 
+        nick_line = f"\n🪪 Нік: *{nick}*" if nick else ""
         price_text = f"💵 Сума: *{final_price} грн*"
         if disc_pct:
             price_text += f" _(знижка {disc_pct}%, було {price} грн)_"
+
+        if MY_ID != 0:
+            try:
+                btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Готово", callback_data=f"ok_{oid}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{oid}")]])
+                await context.bot.send_message(MY_ID,
+                    f"💰 ОПЛАТА (Bot)!\n🆔 {oid}\n👤 {user_label(update.effective_user.username, uid)}\n🎁 {pack}\n🎮 ID: {pid}{nick_line.replace('*','')}\n💵 Сума: {final_price} грн",
+                    reply_markup=btns)
+            except: pass
 
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Я оплатив", callback_data=f"paid_{oid}")]])
         await update.message.reply_text(
