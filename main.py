@@ -1,4 +1,4 @@
-import sqlite3, uuid, logging, threading, os, re, json, urllib.request, urllib.parse, random, asyncio, time
+import sqlite3, uuid, logging, threading, os, re, json, urllib.request, urllib.parse, random, asyncio, time, collections, secrets, hmac as _hmac_mod, hashlib as _hashlib_mod
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, KeyboardButton, LabeledPrice
@@ -11,9 +11,13 @@ if TOKEN.upper().startswith("TELEGRAM_BOT_TOKEN"):
     TOKEN = TOKEN[len("TELEGRAM_BOT_TOKEN"):].strip()
 if not TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN environment variable is not set!")
-ADMIN_PASSWORD = "NezukoAdmin"
-PAYMENT_CARD = "4874070020367247"
-MY_ID = 1440236609
+_env_admin_pwd = os.environ.get("ADMIN_PASSWORD", "").strip()
+if not _env_admin_pwd:
+    logging.warning("⚠️  ADMIN_PASSWORD не задан в env — використовується значення за замовчуванням. Встановіть секрет ADMIN_PASSWORD!")
+    _env_admin_pwd = "NezukoAdmin"
+ADMIN_PASSWORD = _env_admin_pwd
+PAYMENT_CARD = os.environ.get("PAYMENT_CARD", "4874070020367247")
+MY_ID = int(os.environ.get("OWNER_ID", "1440236609"))
 
 logging.basicConfig(level=logging.INFO)
 
@@ -260,6 +264,58 @@ ADMIN_KB = [
 user_states = {}
 admin_last_seen = 0.0
 
+# ── RATE LIMITING & BRUTE-FORCE PROTECTION ────────────────────────────────────
+_rl_lock = threading.Lock()
+_rl_buckets: dict = collections.defaultdict(list)          # key -> [timestamps]
+_rl_admin_fails: dict = collections.defaultdict(list)      # ip  -> [timestamps]
+_rl_admin_lockout: dict = {}                               # ip  -> lockout_until
+MAX_POST_BYTES = 512 * 1024  # 512 KB hard limit per request
+
+def _rl_allow(key: str, max_calls: int, window_sec: int) -> bool:
+    """Sliding-window rate limiter. Returns True if request is allowed."""
+    now = time.time()
+    with _rl_lock:
+        bucket = _rl_buckets[key]
+        bucket[:] = [t for t in bucket if now - t < window_sec]
+        if len(bucket) >= max_calls:
+            return False
+        bucket.append(now)
+        return True
+
+def _rl_admin_check(ip: str, password: str) -> tuple:
+    """Admin password check with brute-force lockout.
+    Returns (ok: bool, error: str)."""
+    now = time.time()
+    with _rl_lock:
+        if ip in _rl_admin_lockout and now < _rl_admin_lockout[ip]:
+            wait = int(_rl_admin_lockout[ip] - now)
+            return False, f"IP заблоковано. Зачекайте {wait} сек."
+        fails = _rl_admin_fails[ip]
+        fails[:] = [t for t in fails if now - t < 300]
+        if len(fails) >= 5:
+            _rl_admin_lockout[ip] = now + 900  # 15-хвилинне блокування
+            _rl_admin_fails[ip] = []
+            logging.warning(f"[SECURITY] Admin brute-force lockout: {ip}")
+            return False, "Забагато невдалих спроб. IP заблоковано на 15 хвилин."
+
+    ok = _hmac_mod.compare_digest(str(password), ADMIN_PASSWORD)
+    with _rl_lock:
+        if ok:
+            _rl_admin_fails[ip] = []
+        else:
+            _rl_admin_fails[ip].append(time.time())
+            remaining = max(0, 5 - len(_rl_admin_fails[ip]))
+            logging.warning(f"[SECURITY] Failed admin login from {ip}, remaining attempts: {remaining}")
+            return False, f"Невірний пароль. Залишилось спроб: {remaining}"
+    return True, ""
+
+def _get_client_ip(handler) -> str:
+    """Extract real client IP, considering proxy headers."""
+    xff = handler.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return handler.client_address[0] if handler.client_address else "unknown"
+
 def is_admin_online():
     return (time.time() - admin_last_seen) < 120
 
@@ -316,12 +372,30 @@ def _load_miniapp_html():
     except Exception:
         return "<h1>Mini App не знайдено</h1>"
 
+_ALLOWED_ORIGINS = {
+    "https://web.telegram.org",
+    "https://t.me",
+}
+
+def _cors_origin(handler) -> str:
+    origin = handler.headers.get("Origin", "")
+    if not origin or origin == "null":
+        return "null"
+    own = _get_domain()
+    if own and origin in (f"https://{own}", f"http://{own}"):
+        return origin
+    if origin in _ALLOWED_ORIGINS:
+        return origin
+    return "null"
+
 def _json_response(handler, data, status=200):
     body = json.dumps(data, ensure_ascii=False).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.send_header("Access-Control-Allow-Origin", _cors_origin(handler))
+    handler.send_header("Vary", "Origin")
+    handler.send_header("X-Content-Type-Options", "nosniff")
     handler.end_headers()
     handler.wfile.write(body)
 
@@ -330,6 +404,9 @@ def _html_response(handler, html):
     handler.send_response(200)
     handler.send_header("Content-Type", "text/html; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("X-Content-Type-Options", "nosniff")
+    handler.send_header("X-Frame-Options", "SAMEORIGIN")
+    handler.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
     handler.end_headers()
     handler.wfile.write(body)
 
@@ -565,15 +642,17 @@ def deliver_wheel_prize(user_id, username, prize):
 class PolicyHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", _cors_origin(self))
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Vary", "Origin")
         self.end_headers()
 
     def do_GET(self):
         path = self.path.split("?")[0]
         query = self.path[len(path)+1:] if "?" in self.path else ""
         params = dict(urllib.parse.parse_qsl(query))
+        ip = _get_client_ip(self)
 
         if path == "/favicon.ico":
             self.send_response(204); self.end_headers(); return
@@ -759,8 +838,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/orders":
             pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             rows = db_query("SELECT id, user, pack, player_id, chat_id, created_at, amount, player_nick FROM orders WHERE status='pending' ORDER BY rowid DESC")
             orders = [{"id": r[0], "user": f"@{r[1]}" if r[1] else str(r[4]), "pack": r[2],
                        "player_id": r[3], "chat_id": r[4], "created_at": (r[5] or "")[:16], "amount": r[6] or "?", "player_nick": r[7] or ""} for r in rows]
@@ -768,8 +848,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/stats":
             pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             done = db_query_one("SELECT COUNT(*) FROM orders WHERE status='done'")[0]
             canceled = db_query_one("SELECT COUNT(*) FROM orders WHERE status='canceled'")[0]
             pending = db_query_one("SELECT COUNT(*) FROM orders WHERE status='pending'")[0]
@@ -785,8 +866,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/ai_stats":
             pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             total = db_query_one("SELECT COUNT(*) FROM ai_logs")[0] or 0
             today = db_query_one("SELECT COUNT(*) FROM ai_logs WHERE created_at LIKE ?", (created_at_now()[:10] + '%',))[0] or 0
             topics = db_query("SELECT topic, COUNT(*) as cnt FROM ai_logs GROUP BY topic ORDER BY cnt DESC LIMIT 6")
@@ -795,16 +877,18 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/admins":
             pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             rows = db_query("SELECT id FROM admins")
             admins = [{"id": r[0]} for r in rows]
             _json_response(self, {"ok": True, "admins": admins, "owner_id": MY_ID}); return
 
         if path == "/api/admin/promos":
             pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             rows = db_query("SELECT code, bonus_type, bonus_value, uses_left, total_uses, created_at, secret FROM promo_codes ORDER BY rowid DESC")
             promos = [{"code": r[0], "bonus_type": r[1], "bonus_label": BONUS_TYPES.get(r[1], r[1]),
                        "bonus_value": r[2], "uses_left": r[3], "total_uses": r[4],
@@ -813,8 +897,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/prices":
             pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             result = {}
             for pack, base_price in ALL_PACKS.items():
                 override = db_query_one("SELECT price FROM price_overrides WHERE pack_name=?", (pack,))
@@ -823,16 +908,18 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/reviews":
             pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             rows = db_query("SELECT rowid, user, text FROM reviews ORDER BY rowid DESC LIMIT 30")
             reviews = [{"id": r[0], "user": r[1], "text": r[2]} for r in rows]
             _json_response(self, {"ok": True, "reviews": reviews}); return
 
         if path == "/api/admin/find":
             pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             query = params.get("order_id", "").strip()
             if not query:
                 _json_response(self, {"ok": False, "error": "Вкажи ID замовлення"}); return
@@ -856,8 +943,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/pending-wheels":
             pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             rows = db_query("SELECT id, user_id, username, created_at FROM pending_wheel_spins WHERE status='pending' ORDER BY id DESC")
             spins = [{"id": r[0], "user_id": r[1],
                       "user": f"@{r[2]}" if r[2] else str(r[1]),
@@ -866,8 +954,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/wheel-history":
             pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             rows = db_query("SELECT id, user_id, username, created_at, status, prize_id FROM pending_wheel_spins WHERE status != 'pending' ORDER BY id DESC LIMIT 50")
             prize_map = {p["id"]: p["name"] for p in PAID_WHEEL_PRIZES}
             history = [{"id": r[0], "user_id": r[1],
@@ -887,8 +976,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/carts":
             pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             rows = db_query("SELECT id, user_id, pack, added_at FROM cart ORDER BY id DESC LIMIT 200")
             items = [{"id": r[0], "user_id": r[1], "pack": r[2], "added_at": (r[3] or "")[:16]} for r in rows]
             _json_response(self, {"ok": True, "items": items}); return
@@ -928,8 +1018,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/tickets":
             pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             status_filter = params.get("status", "all")
             if status_filter == "all":
                 rows = db_query("SELECT id, user_id, username, category, message, status, created_at, rating FROM tickets ORDER BY id DESC LIMIT 200")
@@ -943,8 +1034,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/ticket/messages":
             pwd = params.get("password", "")
-            if not is_trusted_admin(params.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             ticket_id = int(params.get("ticket_id", 0) or 0)
             if not ticket_id:
                 _json_response(self, {"ok": False, "messages": []}); return
@@ -963,13 +1055,19 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length)
+        if length > MAX_POST_BYTES:
+            _json_response(self, {"ok": False, "error": "Request too large"}, 413); return
+        body = self.rfile.read(min(length, MAX_POST_BYTES))
         try:
             data = json.loads(body)
         except Exception:
             _json_response(self, {"ok": False, "error": "Bad JSON"}, 400); return
 
         path = self.path.split("?")[0]
+        ip = _get_client_ip(self)
+
+        if not _rl_allow(f"ip:{ip}", 120, 60):
+            _json_response(self, {"ok": False, "error": "Забагато запитів. Зачекайте."}, 429); return
 
         if path == "/api/resolve-user":
             import hmac, hashlib
@@ -1004,10 +1102,12 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/submit-order":
             user_id = int(data.get("user_id", 0))
-            username = str(data.get("username", ""))
+            if user_id and not _rl_allow(f"order:{user_id}", 5, 60):
+                _json_response(self, {"ok": False, "error": "Забагато замовлень. Зачекайте хвилину."}, 429); return
+            username = str(data.get("username", ""))[:64]
             pack = str(data.get("pack", ""))
-            player_id = str(data.get("player_id", ""))
-            player_nick = str(data.get("player_nick", "")).strip()
+            player_id = str(data.get("player_id", ""))[:32]
+            player_nick = str(data.get("player_nick", "")).strip()[:64]
             base_amount = int(data.get("amount", 0))
             flash_order = bool(data.get("flash_order", False))
             mix_packs = data.get("mix_packs", None)
@@ -1078,9 +1178,11 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/ticket":
             user_id = int(data.get("user_id", 0))
-            category = str(data.get("category", "")).strip()
+            if user_id and not _rl_allow(f"ticket:{user_id}", 3, 300):
+                _json_response(self, {"ok": False, "error": "Забагато тікетів. Зачекайте 5 хвилин."}, 429); return
+            category = str(data.get("category", "")).strip()[:64]
             message = str(data.get("message", "")).strip()
-            username = str(data.get("username", "")).strip()
+            username = str(data.get("username", "")).strip()[:64]
             if not user_id or not category or not message:
                 _json_response(self, {"ok": False, "error": "Невірні дані"}); return
             if len(message) > 1000:
@@ -1099,8 +1201,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/ticket/reply":
             pwd = data.get("password", "")
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}); return
             ticket_id = int(data.get("ticket_id", 0))
             reply = str(data.get("reply", "")).strip()
             if not ticket_id or not reply:
@@ -1122,8 +1225,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/ticket/status":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             ticket_id = int(data.get("ticket_id", 0))
             status = str(data.get("status", "")).strip()
             valid_statuses = ("open", "waiting", "closed", "answered")
@@ -1139,8 +1243,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/ticket/message":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             ticket_id = int(data.get("ticket_id", 0))
             message = str(data.get("message", "")).strip()
             if not ticket_id or not message:
@@ -1163,8 +1268,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/ai_chat":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             message = str(data.get("message", "")).strip()
             history = data.get("history", [])
             if not message:
@@ -1179,8 +1285,12 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/user/ai-chat":
             user_id = int(data.get("user_id", 0))
-            message = str(data.get("message", "")).strip()
+            if user_id and not _rl_allow(f"ai:{user_id}", 15, 60):
+                _json_response(self, {"ok": False, "error": "Забагато запитів до AI. Зачекайте хвилину."}, 429); return
+            message = str(data.get("message", "")).strip()[:500]
             history = data.get("history", [])
+            if not isinstance(history, list):
+                history = []
             if not message:
                 _json_response(self, {"ok": False, "error": "Немає повідомлення"}); return
             if not GEMINI_API_KEY:
@@ -1282,7 +1392,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/submit-review":
             user_id = int(data.get("user_id", 0))
-            username = str(data.get("username", "")).strip()
+            if user_id and not _rl_allow(f"review:{user_id}", 3, 3600):
+                _json_response(self, {"ok": False, "error": "Забагато відгуків. Зачекайте годину."}, 429); return
+            username = str(data.get("username", "")).strip()[:64]
             text = str(data.get("text", "")).strip()
             if not text or len(text) < 3:
                 _json_response(self, {"ok": False, "error": "Відгук занадто короткий"}); return
@@ -1294,9 +1406,11 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/claim-free-uc":
             user_id = int(data.get("user_id", 0))
-            username = str(data.get("username", ""))
-            player_id = str(data.get("player_id", "")).strip()
-            player_nick = str(data.get("player_nick", "")).strip()
+            if user_id and not _rl_allow(f"freeuc:{user_id}", 2, 3600):
+                _json_response(self, {"ok": False, "error": "Забагато запитів. Зачекайте годину."}, 429); return
+            username = str(data.get("username", ""))[:64]
+            player_id = str(data.get("player_id", "")).strip()[:32]
+            player_nick = str(data.get("player_nick", "")).strip()[:64]
             bonus_type = str(data.get("bonus_type", "free_uc_60"))
             if not player_id or len(player_id) < 5:
                 _json_response(self, {"ok": False, "error": "Введи правильний ігровий ID"}); return
@@ -1314,6 +1428,8 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/points/spend":
             user_id = int(data.get("user_id", 0))
+            if user_id and not _rl_allow(f"pts:{user_id}", 10, 60):
+                _json_response(self, {"ok": False, "error": "Забагато запитів. Зачекайте."}, 429); return
             item_id = str(data.get("item_id", ""))
             item = next((i for i in POINTS_SHOP if i["id"] == item_id), None)
             if not item:
@@ -1395,14 +1511,16 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/auth":
             pwd = str(data.get("password", ""))
-            if is_trusted_admin(data.get("auth_uid", 0), pwd):
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if _ok_adm:
                 _json_response(self, {"ok": True}); return
-            _json_response(self, {"ok": False, "error": "Невірний пароль"}); return
+            _json_response(self, {"ok": False, "error": _err_adm}); return
 
         if path == "/api/admin/action":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             order_id = str(data.get("order_id", ""))
             action = str(data.get("action", ""))
             res = db_query_one("SELECT chat_id, pack, user, player_id FROM orders WHERE id=?", (order_id,))
@@ -1431,8 +1549,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/approve-wheel":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             spin_id = int(data.get("spin_id", 0))
             spin = db_query_one("SELECT user_id, username, status FROM pending_wheel_spins WHERE id=?", (spin_id,))
             if not spin:
@@ -1447,8 +1566,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/toggle-admin":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             target_id = int(data.get("user_id", 0))
             action = str(data.get("action", ""))
             if not target_id:
@@ -1465,8 +1585,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/create-promo":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             code = str(data.get("code", "")).strip().upper()
             bonus_type = str(data.get("bonus_type", ""))
             uses = int(data.get("uses", -1))
@@ -1501,8 +1622,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/delete-promo":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             code = str(data.get("code", "")).strip().upper()
             if not code:
                 _json_response(self, {"ok": False, "error": "Вкажи код"}); return
@@ -1512,8 +1634,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/delete-review":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             review_id = int(data.get("review_id", 0))
             if not review_id:
                 _json_response(self, {"ok": False, "error": "Невірний ID"}); return
@@ -1522,8 +1645,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/update-price":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             pack_name = str(data.get("pack_name", ""))
             price = int(data.get("price", 0))
             if pack_name not in ALL_PACKS:
@@ -1536,16 +1660,18 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/reset-price":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             pack_name = str(data.get("pack_name", ""))
             db_exec("DELETE FROM price_overrides WHERE pack_name=?", (pack_name,))
             _json_response(self, {"ok": True, "message": f"Ціна скинута до базової"}); return
 
         if path == "/api/admin/points-shop-prices":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             overrides = {r[0]: r[1] for r in db_query("SELECT item_id, cost FROM points_price_overrides")}
             result = {}
             for item in POINTS_SHOP:
@@ -1558,8 +1684,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/update-points-price":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             item_id = str(data.get("item_id", ""))
             cost = int(data.get("cost", 0))
             if not any(i["id"] == item_id for i in POINTS_SHOP):
@@ -1572,16 +1699,18 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/reset-points-price":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             item_id = str(data.get("item_id", ""))
             db_exec("DELETE FROM points_price_overrides WHERE item_id=?", (item_id,))
             _json_response(self, {"ok": True, "message": "Ціну скинуто до базової"}); return
 
         if path == "/api/admin/grant-achievement":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             target_id = int(data.get("user_id", 0))
             ach_id = str(data.get("achievement_id", ""))
             if not target_id or ach_id not in ACHIEVEMENTS:
@@ -1593,8 +1722,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/revoke-achievement":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             target_id = int(data.get("user_id", 0))
             ach_id = str(data.get("achievement_id", ""))
             if not target_id or not ach_id:
@@ -1604,8 +1734,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/broadcast":
             pwd = str(data.get("password", ""))
-            if not is_trusted_admin(data.get("auth_uid", 0), pwd):
-                _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             message = str(data.get("message", "")).strip()
             if not message:
                 _json_response(self, {"ok": False, "error": "Повідомлення порожнє"}); return
@@ -1677,14 +1808,14 @@ def is_admin(uid):
     return bool(db_query_one("SELECT id FROM admins WHERE id=?", (uid,)))
 
 def is_trusted_admin(user_id, password):
-    """Return True if password matches OR user_id is a trusted admin (owner or in admins table)."""
-    try:
-        uid_int = int(user_id) if user_id else 0
-    except (ValueError, TypeError):
-        uid_int = 0
-    if uid_int and is_admin(uid_int):
-        return True
-    return str(password) == ADMIN_PASSWORD
+    """Return True ONLY if password matches ADMIN_PASSWORD.
+    user_id alone is never sufficient — prevents ID-spoofing auth bypass."""
+    return _hmac_mod.compare_digest(str(password), ADMIN_PASSWORD)
+
+def is_trusted_admin_post(ip: str, password: str) -> tuple:
+    """For POST admin endpoints: password check WITH brute-force protection.
+    Returns (ok: bool, error_msg: str)."""
+    return _rl_admin_check(ip, password)
 
 def is_banned(uid):
     return bool(db_query_one("SELECT user_id FROM banned_users WHERE user_id=?", (uid,)))
