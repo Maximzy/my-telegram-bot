@@ -1750,7 +1750,7 @@ async function loadOrders() {
         <span class="status-badge ${cls[o.status]||''}">${lbl[o.status]||o.status}</span>
       </div>
       <div class="order-pack">${esc(o.pack)}</div>
-      <div class="order-meta">ID: ${esc(o.player_id)} · ${esc(o.created_at)} · ${esc(o.amount)} грн</div>
+      <div class="order-meta">ID: ${esc(o.player_id)}${o.player_nick ? ` · 🪪 ${esc(o.player_nick)}` : ''} · ${esc(o.created_at)} · ${esc(o.amount)} грн</div>
     </div>`).join('');
 }
 
@@ -2137,7 +2137,7 @@ async function loadAOrders() {
     <div class="order-card">
       <div class="order-header"><span class="order-id">#${esc(o.id)}</span><span class="status-badge s-pending">⏳ Очікує</span></div>
       <div class="order-pack">${esc(o.pack)}</div>
-      <div class="order-meta">${esc(o.user)} · ID: ${esc(o.player_id)}<br>${esc(o.created_at)} · ${esc(o.amount)} грн</div>
+      <div class="order-meta">${esc(o.user)} · ID: ${esc(o.player_id)}${o.player_nick ? ` · 🪪 ${esc(o.player_nick)}` : ''}<br>${esc(o.created_at)} · ${esc(o.amount)} грн</div>
       <div class="order-acts">
         <button class="btn btn-sm" style="background:var(--success)" onclick="aAction('${esc(o.id)}','ok')">✅ Виконано</button>
         <button class="btn btn-sm btn-danger" onclick="aAction('${esc(o.id)}','no')">❌ Відхилити</button>
@@ -2409,7 +2409,7 @@ async function doFind() {
       <div class="order-header"><span class="order-id">#${esc(o.id)}</span><span class="status-badge ${cls[o.status]||''}">${lbl[o.status]||o.status}</span></div>
       <div class="order-pack">${esc(o.pack)}</div>
       <div class="order-meta">${esc(o.user)} · Chat ID: ${esc(String(o.chat_id))}</div>
-      <div class="order-meta">🎮 ${esc(o.player_id)} · ${esc(o.created_at)} · ${esc(String(o.amount))} грн</div>
+      <div class="order-meta">🎮 ${esc(o.player_id)}${o.player_nick ? ` · 🪪 ${esc(o.player_nick)}` : ''} · ${esc(o.created_at)} · ${esc(String(o.amount))} грн</div>
       ${o.status === 'pending' ? `<div class="order-acts">
         <button class="btn btn-sm" style="background:var(--success)" onclick="aAction('${esc(o.id)}','ok')">✅ Виконано</button>
         <button class="btn btn-sm btn-danger" onclick="aAction('${esc(o.id)}','no')">❌ Відхилити</button>

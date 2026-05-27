@@ -546,11 +546,11 @@ class PolicyHandler(BaseHTTPRequestHandler):
             if not user_id:
                 _json_response(self, {"orders": []}); return
             rows = db_query(
-                "SELECT id, pack, status, player_id, created_at, amount FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 20",
+                "SELECT id, pack, status, player_id, created_at, amount, player_nick FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 20",
                 (user_id,)
             )
             orders = [{"id": r[0], "pack": r[1], "status": r[2], "player_id": r[3],
-                       "created_at": (r[4] or "")[:16], "amount": r[5] or "?"} for r in rows]
+                       "created_at": (r[4] or "")[:16], "amount": r[5] or "?", "player_nick": r[6] or ""} for r in rows]
             _json_response(self, {"orders": orders}); return
 
         if path == "/api/all-orders":
@@ -558,11 +558,11 @@ class PolicyHandler(BaseHTTPRequestHandler):
             if not user_id:
                 _json_response(self, {"orders": []}); return
             rows = db_query(
-                "SELECT id, pack, status, player_id, created_at, amount FROM orders WHERE chat_id=? ORDER BY rowid DESC",
+                "SELECT id, pack, status, player_id, created_at, amount, player_nick FROM orders WHERE chat_id=? ORDER BY rowid DESC",
                 (user_id,)
             )
             orders = [{"id": r[0], "pack": r[1], "status": r[2], "player_id": r[3],
-                       "created_at": (r[4] or "")[:16], "amount": r[5] or "?"} for r in rows]
+                       "created_at": (r[4] or "")[:16], "amount": r[5] or "?", "player_nick": r[6] or ""} for r in rows]
             _json_response(self, {"orders": orders}); return
 
         if path == "/api/bonuses":
@@ -695,9 +695,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
             pwd = params.get("password", "")
             if not is_trusted_admin(params.get("auth_uid", 0), pwd):
                 _json_response(self, {"ok": False, "error": "Невірний пароль"}, 403); return
-            rows = db_query("SELECT id, user, pack, player_id, chat_id, created_at, amount FROM orders WHERE status='pending' ORDER BY rowid DESC")
+            rows = db_query("SELECT id, user, pack, player_id, chat_id, created_at, amount, player_nick FROM orders WHERE status='pending' ORDER BY rowid DESC")
             orders = [{"id": r[0], "user": f"@{r[1]}" if r[1] else str(r[4]), "pack": r[2],
-                       "player_id": r[3], "chat_id": r[4], "created_at": (r[5] or "")[:16], "amount": r[6] or "?"} for r in rows]
+                       "player_id": r[3], "chat_id": r[4], "created_at": (r[5] or "")[:16], "amount": r[6] or "?", "player_nick": r[7] or ""} for r in rows]
             _json_response(self, {"ok": True, "orders": orders}); return
 
         if path == "/api/admin/stats":
@@ -772,7 +772,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 _json_response(self, {"ok": False, "error": "Вкажи ID замовлення"}); return
             query_upper = query.upper()
             query_lower = query.lower().lstrip("@")
-            sel = "SELECT id, user, pack, status, chat_id, player_id, created_at, amount FROM orders"
+            sel = "SELECT id, user, pack, status, chat_id, player_id, created_at, amount, player_nick FROM orders"
             rows = (
                 db_query(f"{sel} WHERE id=?", (query_upper,)) or
                 db_query(f"{sel} WHERE player_id=?", (query,)) or
@@ -784,7 +784,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 _json_response(self, {"ok": False, "error": "Замовлення не знайдено"}); return
             orders = [{"id": r[0], "user": f"@{r[1]}" if r[1] else str(r[4]),
                        "pack": r[2], "status": r[3], "chat_id": r[4],
-                       "player_id": r[5], "created_at": (r[6] or "")[:16], "amount": r[7] or "?"} for r in rows]
+                       "player_id": r[5], "created_at": (r[6] or "")[:16], "amount": r[7] or "?", "player_nick": r[8] or ""} for r in rows]
             result = orders[0] if len(orders) == 1 else orders
             _json_response(self, {"ok": True, "order": result, "orders": orders, "count": len(orders)}); return
 
