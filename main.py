@@ -745,6 +745,12 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 self.send_response(404); self.end_headers()
             return
 
+        if path in ("/", ""):
+            self.send_response(302)
+            self.send_header("Location", "/app")
+            self.end_headers()
+            return
+
         if path == "/app":
             _html_response(self, _load_miniapp_html()); return
 
