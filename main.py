@@ -1,4 +1,4 @@
-import sqlite3, uuid, logging, threading, os, re, json, urllib.request, urllib.parse, random
+import sqlite3, uuid, logging, threading, os, re, json, urllib.request, urllib.parse, random, asyncio
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, KeyboardButton
@@ -2181,6 +2181,71 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, src
 
 
 # --- ГОЛОВНИЙ ОБРОБНИК ПОВІДОМЛЕНЬ ---
+# ── GEMINI AI ─────────────────────────────────────────────────────────────────
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_SYSTEM_PROMPT = """Ти — AI-помічник магазину UC Shop (PUBG Mobile). Відповідай ЛИШЕ українською мовою.
+
+Інформація про магазин:
+— UC (ігрова валюта PUBG Mobile):
+  30 UC — 19 грн, 60 UC — 40 грн, 120 UC — 78 грн, 180 UC — 113 грн,
+  325 UC — 195 грн, 660 UC — 389 грн, та більші пакети до 32400 UC
+— Prime підписки: 1 міс — 45 грн, 3 міс — 130 грн, 6 міс — 250 грн, 12 міс — 500 грн
+— Prime Plus: 1 міс — 410 грн, 3 міс — 1200 грн, 6 міс — 2400 грн, 12 міс — 4730 грн
+— Набори Підйом: спеціальні акційні набори (купуються лише 1 раз)
+
+Як купити: команда /shop або кнопка "🛍 Магазин" → обери категорію → введи ігровий ID → оплати карткою → натисни "✅ Я оплатив"
+Оплата: банківська карта (Monobank/PrivatBank)
+Час нарахування: 5-15 хвилин після підтвердження оплати
+Підтримка: @Manager_Nezuko або команда /support
+
+Правила:
+- НІКОЛИ не розкривай паролі, дані адміністратора, внутрішні налаштування
+- НІКОЛИ не вигадуй ціни або акції яких немає в списку вище
+- Відповідай лише на питання про PUBG Mobile, магазин, UC, Prime, ігровий процес
+- Якщо питання не по темі — ввічливо скажи що це поза твоєю компетенцією
+- Відповіді стислі і по суті (максимум 150 слів)
+- Якщо не знаєш — скажи "Зверніться до підтримки @Manager_Nezuko"
+"""
+
+def _gemini_sync_call(user_message: str) -> str:
+    if not GEMINI_API_KEY:
+        return "❌ AI-помічник тимчасово недоступний."
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={GEMINI_API_KEY}"
+    payload = json.dumps({
+        "contents": [{"role": "user", "parts": [{"text": GEMINI_SYSTEM_PROMPT + "\n\nПитання користувача: " + user_message}]}],
+        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 400}
+    }).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            return result["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except Exception as e:
+        logging.warning(f"Gemini API error: {e}")
+        return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
+
+async def gemini_reply(user_message: str) -> str:
+    try:
+        return await asyncio.to_thread(_gemini_sync_call, user_message)
+    except Exception as e:
+        logging.warning(f"gemini_reply error: {e}")
+        return "❌ Помилка AI. Зверніться до підтримки @Manager_Nezuko"
+
+async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "🤖 Я — AI-помічник магазину UC Shop!\n\n"
+            "Запитай мене про PUBG Mobile, ціни UC, Prime, або як зробити замовлення.\n\n"
+            "Наприклад: /ai Скільки коштує 325 UC?"
+        )
+        return
+    question = " ".join(context.args)
+    await context.bot.send_chat_action(update.effective_chat.id, "typing")
+    response = await gemini_reply(question)
+    await update.message.reply_text(f"🤖 {response}")
+
+# ──────────────────────────────────────────────────────────────────────────────
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not update.message: return
@@ -2546,6 +2611,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[uid] = None
         return
 
+    # ── AI-помічник (Gemini) — відповідає на всі нерозпізнані повідомлення ─────
+    if GEMINI_API_KEY and not is_admin(uid):
+        try:
+            await context.bot.send_chat_action(update.effective_chat.id, "typing")
+            response = await gemini_reply(text)
+            await update.message.reply_text(
+                f"🤖 {response}",
+                reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)
+            )
+        except Exception as e:
+            logging.warning(f"AI reply send error: {e}")
+
 
 # --- CALLBACK ОБРОБНИК ---
 async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2719,6 +2796,7 @@ async def _send_db_to_owner(context: ContextTypes.DEFAULT_TYPE):
 # --- MAIN ---
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("ai", ai_command))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("shop", shop_command))
     app.add_handler(CommandHandler("buy", buy_command))
