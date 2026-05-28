@@ -305,6 +305,94 @@
 }
 .nz-promo-right { font-size: 42px; filter: drop-shadow(0 0 12px rgba(74,222,128,.4)); }
 
+/* ── DONATE CARD ──────────────────────────────── */
+.nz-donate-card {
+  background: linear-gradient(135deg,#1a0022,#0e0e22);
+  border: 1px solid rgba(255,45,120,.25);
+  border-radius: 18px;
+  padding: 18px 16px 14px;
+  margin-bottom: 16px;
+}
+.nz-donate-header {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 16px; font-weight: 800; color: var(--pink);
+  margin-bottom: 6px;
+}
+.nz-donate-desc { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+.nz-donate-btns {
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.nz-donate-amt {
+  flex: 1 1 calc(33% - 8px);
+  background: rgba(255,45,120,.1);
+  border: 1px solid rgba(255,45,120,.3);
+  border-radius: 10px;
+  color: var(--pink2); font-size: 13px; font-weight: 700;
+  padding: 9px 6px; cursor: pointer;
+  transition: background .15s, transform .1s;
+}
+.nz-donate-amt:active { transform: scale(.96); }
+.nz-donate-amt:hover { background: rgba(255,45,120,.2); }
+.nz-donate-custom { color: var(--muted); border-color: var(--border); background: rgba(255,255,255,.04); }
+.nz-donate-method { display: flex; flex-direction: column; gap: 9px; }
+.nz-donate-chosen { font-size: 13px; color: var(--muted); margin-bottom: 2px; }
+.nz-donate-chosen b { color: var(--text); }
+.nz-donate-way {
+  width: 100%; padding: 11px 14px;
+  border-radius: 11px; border: none;
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  text-align: left; transition: opacity .15s;
+}
+.nz-donate-way:hover { opacity: .88; }
+.nz-dw-card  { background: linear-gradient(90deg,#1d4ed8,#2563eb); color: #fff; }
+.nz-dw-stars { background: linear-gradient(90deg,#7c3aed,#9333ea); color: #fff; }
+.nz-donate-back {
+  background: none; border: none; color: var(--muted);
+  font-size: 12px; cursor: pointer; padding: 4px 0; text-align: left;
+}
+
+/* ── LOGS ─────────────────────────────────────── */
+.nz-log-tabs {
+  display: flex; gap: 8px; margin-bottom: 12px;
+}
+.nz-log-tab {
+  flex: 1; padding: 8px 0;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted); font-size: 12px; font-weight: 700;
+  cursor: pointer; transition: all .15s;
+}
+.nz-log-tab-active {
+  background: rgba(255,45,120,.12);
+  border-color: rgba(255,45,120,.35);
+  color: var(--pink);
+}
+.nz-log-list { display: flex; flex-direction: column; gap: 8px; }
+.nz-log-item {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.nz-log-icon { font-size: 18px; flex-shrink: 0; }
+.nz-log-body { flex: 1; min-width: 0; }
+.nz-log-action { font-size: 12px; font-weight: 700; line-height: 1.2; }
+.nz-log-detail {
+  font-size: 10px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-top: 2px;
+}
+.nz-log-ts { font-size: 10px; color: var(--muted); flex-shrink: 0; }
+
+/* ── PLACEHOLDER ──────────────────────────────── */
+.nz-placeholder {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  min-height: 300px; color: var(--muted);
+}
+
 /* ── BOTTOM NAV ───────────────────────────────── */
 .nz-nav {
   position: sticky; bottom: 0;

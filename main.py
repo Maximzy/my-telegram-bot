@@ -135,6 +135,7 @@ def run_migrations(connection):
     c.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS admin_action_log (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, action TEXT, detail TEXT, ts TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS fake_pay_log (user_id INTEGER PRIMARY KEY, count INTEGER DEFAULT 0, last_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS donations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, amount INTEGER, method TEXT, status TEXT DEFAULT 'pending', created_at TEXT)")
     connection.commit()
 
 run_migrations(conn)
@@ -258,9 +259,11 @@ MAIN_KB = [
     ["🎁 Промокод", "👥 Реферал"],
     ["⭐ Бали за зірки"],
     ["📋 Мої замовлення", "📄 Політика"],
-    ["🆘 Підтримка"],
+    ["💖 Підтримати бота", "🆘 Підтримка"],
     ["⚙️ Адмін"]
 ]
+
+DONATE_AMOUNTS = [20, 50, 100, 200, 500]
 
 def get_main_kb(uid):
     kb = list(MAIN_KB)
@@ -1074,6 +1077,25 @@ class PolicyHandler(BaseHTTPRequestHandler):
             _json_response(self, {"ok": True, "done": done, "canceled": canceled, "pending": pending,
                                   "total_sum": total_sum, "today_sum": today_sum, "users": total_users,
                                   "open_tickets": open_tickets, "ai_today": ai_today, "ai_total": ai_total}); return
+
+        if path == "/api/admin/action-log":
+            pwd = params.get("password", "")
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            rows = db_query("SELECT id, admin_id, action, detail, ts FROM admin_action_log ORDER BY id DESC LIMIT 100")
+            logs = [{"id": r[0], "admin_id": r[1], "action": r[2], "detail": r[3], "ts": (r[4] or "")[:16]} for r in rows]
+            _json_response(self, {"ok": True, "logs": logs}); return
+
+        if path == "/api/admin/donations":
+            pwd = params.get("password", "")
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            rows = db_query("SELECT id, user_id, username, amount, method, status, created_at FROM donations ORDER BY id DESC LIMIT 50")
+            donations = [{"id": r[0], "user_id": r[1], "user": f"@{r[2]}" if r[2] else str(r[1]),
+                          "amount": r[3], "method": r[4], "status": r[5], "created_at": (r[6] or "")[:16]} for r in rows]
+            _json_response(self, {"ok": True, "donations": donations}); return
 
         if path == "/api/admin/ai_stats":
             pwd = params.get("password", "")
@@ -2990,6 +3012,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Відгук збережено.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
         return
 
+    if state == "WAIT_DONATE_CUSTOM":
+        user_states[uid] = None
+        try:
+            amount = int(text.strip().replace(" ", "").replace(",", ""))
+            if amount < 5 or amount > 50000:
+                raise ValueError
+        except (ValueError, TypeError):
+            await update.message.reply_text("❌ Вкажіть коректну суму від 5 до 50000 грн.",
+                                            reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
+            return
+        stars_amount = max(1, round(amount * 0.5))
+        btns = InlineKeyboardMarkup([
+            [InlineKeyboardButton("💳 Карткою (UAH)", callback_data=f"donate_card_{amount}")],
+            [InlineKeyboardButton(f"⭐ Telegram Stars ({stars_amount}⭐)", callback_data=f"donate_stars_{amount}")],
+            [InlineKeyboardButton("🔙 Назад", callback_data="donate_back")],
+        ])
+        await update.message.reply_text(
+            f"💖 Підтримка на *{amount} грн*\n\nОбери спосіб оплати:",
+            reply_markup=btns, parse_mode="Markdown"
+        )
+        return
+
     if state == "WAIT_BROADCAST" and is_admin(uid):
         user_states[uid] = "ADMIN_MODE"
         await send_broadcast(update, context, update.message)
@@ -3239,6 +3283,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         ); return
 
+    if text == "💖 Підтримати бота":
+        btns = InlineKeyboardMarkup(
+            [[InlineKeyboardButton(f"💳 {a} грн", callback_data=f"donate_amount_{a}") for a in DONATE_AMOUNTS[:3]],
+             [InlineKeyboardButton(f"💳 {a} грн", callback_data=f"donate_amount_{a}") for a in DONATE_AMOUNTS[3:]],
+             [InlineKeyboardButton("✍️ Своя сума", callback_data="donate_custom")]]
+        )
+        await update.message.reply_text(
+            "💖 *Підтримати бота*\n\nОбери суму підтримки (гривнями або зірками Telegram):",
+            reply_markup=btns, parse_mode="Markdown"
+        )
+        return
+
     if text == "🆘 Підтримка":
         await support_command(update, context); return
 
@@ -3424,6 +3480,112 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "leave_review":
         user_states[q.from_user.id] = "WAIT_REVIEW"
         await context.bot.send_message(q.from_user.id, "✍️ Напишіть ваш відгук:")
+        return
+
+    # ── Донат: вибір суми ────────────────────────────────────────────────────
+    if data.startswith("donate_amount_") or data == "donate_custom":
+        if data == "donate_custom":
+            user_states[q.from_user.id] = "WAIT_DONATE_CUSTOM"
+            await q.edit_message_text("✍️ Введіть суму підтримки в гривнях (наприклад: 150):")
+            return
+        amount = int(data.split("_")[-1])
+        stars_amount = max(1, round(amount * 0.5))
+        btns = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"💳 Карткою (UAH)", callback_data=f"donate_card_{amount}")],
+            [InlineKeyboardButton(f"⭐ Telegram Stars ({stars_amount}⭐)", callback_data=f"donate_stars_{amount}")],
+            [InlineKeyboardButton("🔙 Назад", callback_data="donate_back")],
+        ])
+        await q.edit_message_text(
+            f"💖 Підтримка на *{amount} грн*\n\nОбери спосіб оплати:",
+            reply_markup=btns, parse_mode="Markdown"
+        )
+        return
+
+    if data == "donate_back":
+        btns = InlineKeyboardMarkup(
+            [[InlineKeyboardButton(f"💳 {a} грн", callback_data=f"donate_amount_{a}") for a in DONATE_AMOUNTS[:3]],
+             [InlineKeyboardButton(f"💳 {a} грн", callback_data=f"donate_amount_{a}") for a in DONATE_AMOUNTS[3:]],
+             [InlineKeyboardButton("✍️ Своя сума", callback_data="donate_custom")]]
+        )
+        await q.edit_message_text(
+            "💖 *Підтримати бота*\n\nОбери суму підтримки (гривнями або зірками Telegram):",
+            reply_markup=btns, parse_mode="Markdown"
+        )
+        return
+
+    if data.startswith("donate_card_"):
+        amount = int(data.split("_")[-1])
+        don_uid = q.from_user.id
+        don_id = db_exec("INSERT INTO donations (user_id, username, amount, method, status, created_at) VALUES (?,?,?,?,?,?)",
+                         (don_uid, q.from_user.username or "", amount, "card", "pending", created_at_now())).lastrowid
+        btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Я переказав", callback_data=f"donate_confirmed_{don_id}")]])
+        await q.edit_message_text(
+            f"💳 *Переказ на карту*\n\n"
+            f"Карта: `{PAYMENT_CARD}`\n"
+            f"Сума: *{amount} грн*\n\n"
+            f"Після переказу натисни кнопку нижче 👇",
+            reply_markup=btn, parse_mode="Markdown"
+        )
+        return
+
+    if data.startswith("donate_stars_"):
+        amount = int(data.split("_")[-1])
+        stars_amount = max(1, round(amount * 0.5))
+        don_uid = q.from_user.id
+        don_id = db_exec("INSERT INTO donations (user_id, username, amount, method, status, created_at) VALUES (?,?,?,?,?,?)",
+                         (don_uid, q.from_user.username or "", amount, "stars", "pending", created_at_now())).lastrowid
+        try:
+            await context.bot.send_invoice(
+                chat_id=don_uid,
+                title="💖 Підтримка бота",
+                description=f"Підтримка Nezuko UC Shop на {stars_amount}⭐",
+                payload=f"donate_stars_{don_id}_{don_uid}",
+                provider_token="",
+                currency="XTR",
+                prices=[LabeledPrice(f"Підтримка ({amount} грн)", stars_amount)],
+            )
+            await q.edit_message_text("⭐ Інвойс надіслано! Оплатіть зірками у повідомленні вище.")
+        except Exception as e:
+            await q.edit_message_text(f"❌ Помилка створення інвойсу: {e}")
+        return
+
+    if data.startswith("donate_confirmed_"):
+        don_id = int(data.split("_")[-1])
+        don = db_query_one("SELECT user_id, username, amount, method FROM donations WHERE id=?", (don_id,))
+        if not don:
+            await q.answer("Донат не знайдено."); return
+        db_exec("UPDATE donations SET status='unverified' WHERE id=?", (don_id,))
+        btns = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Підтвердити", callback_data=f"donate_ok_{don_id}"),
+            InlineKeyboardButton("❌ Відхилити", callback_data=f"donate_no_{don_id}")
+        ]])
+        try:
+            await context.bot.send_message(MY_ID,
+                f"💖 ДОНАТ!\n👤 {user_label(don[1], don[0])}\n💵 {don[2]} грн\n💳 {don[3]}\n🆔 #{don_id}",
+                reply_markup=btns)
+        except: pass
+        await q.edit_message_text("🙏 Дякуємо! Адмін перевірить переказ і підтвердить незабаром.")
+        return
+
+    if data.startswith("donate_ok_"):
+        if not is_admin(q.from_user.id): return
+        don_id = int(data.split("_")[-1])
+        don = db_query_one("SELECT user_id, username, amount FROM donations WHERE id=?", (don_id,))
+        if don:
+            db_exec("UPDATE donations SET status='done' WHERE id=?", (don_id,))
+            log_admin_action(q.from_user.id, "DONATE_OK", f"don_id={don_id} amount={don[2]} user={don[0]}")
+            _send_tg_message(don[0], f"💖 Дякуємо за підтримку на {don[2]} грн! Ти справжній герой 🌸")
+        await q.edit_message_text(f"✅ Донат #{don_id} підтверджено.")
+        return
+
+    if data.startswith("donate_no_"):
+        if not is_admin(q.from_user.id): return
+        don_id = int(data.split("_")[-1])
+        don = db_query_one("SELECT user_id, amount FROM donations WHERE id=?", (don_id,))
+        if don:
+            db_exec("UPDATE donations SET status='canceled' WHERE id=?", (don_id,))
+            _send_tg_message(don[0], f"❌ Ваш донат ({don[1]} грн) не підтверджено. Зверніться в підтримку.")
+        await q.edit_message_text(f"❌ Донат #{don_id} відхилено.")
         return
 
     if data.startswith("delrev_"):
