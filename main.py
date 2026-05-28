@@ -304,6 +304,41 @@ _rl_admin_fails: dict = collections.defaultdict(list)      # ip  -> [timestamps]
 _rl_admin_lockout: dict = {}                               # ip  -> lockout_until
 MAX_POST_BYTES = 512 * 1024  # 512 KB hard limit per request
 
+# Brute-force protection for Telegram admin password
+_tg_admin_fails: dict = collections.defaultdict(list)     # uid -> [timestamps]
+_tg_admin_lockout: dict = {}                              # uid -> lockout_until
+TG_ADMIN_MAX_FAILS = 3       # max wrong attempts
+TG_ADMIN_LOCKOUT_SEC = 1800  # 30 min lockout after max fails
+
+def _tg_admin_check(uid: int, password: str) -> tuple:
+    """Telegram admin password check with brute-force lockout.
+    Returns (ok: bool, error: str)."""
+    now = time.time()
+    with _rl_lock:
+        if uid in _tg_admin_lockout and now < _tg_admin_lockout[uid]:
+            wait_min = int((_tg_admin_lockout[uid] - now) / 60) + 1
+            return False, f"🚫 Забагато спроб. Заблоковано на {wait_min} хв."
+        fails = _tg_admin_fails[uid]
+        fails[:] = [t for t in fails if now - t < 3600]
+    ok = _hmac_mod.compare_digest(str(password), ADMIN_PASSWORD)
+    with _rl_lock:
+        if ok:
+            _tg_admin_fails[uid] = []
+            if uid in _tg_admin_lockout:
+                del _tg_admin_lockout[uid]
+        else:
+            _tg_admin_fails[uid].append(time.time())
+            count = len(_tg_admin_fails[uid])
+            if count >= TG_ADMIN_MAX_FAILS:
+                _tg_admin_lockout[uid] = time.time() + TG_ADMIN_LOCKOUT_SEC
+                _tg_admin_fails[uid] = []
+                logging.warning(f"[SECURITY] Telegram admin brute-force lockout: uid={uid}")
+                return False, f"🚫 Перевищено ліміт спроб. Заблоковано на 30 хвилин."
+            remaining = TG_ADMIN_MAX_FAILS - count
+            logging.warning(f"[SECURITY] Wrong Telegram admin password: uid={uid}, remaining={remaining}")
+            return False, f"❌ Невірний пароль. Залишилось спроб: {remaining}"
+    return True, ""
+
 def _rl_allow(key: str, max_calls: int, window_sec: int) -> bool:
     """Sliding-window rate limiter. Returns True if request is allowed."""
     now = time.time()
@@ -3013,13 +3048,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await admin_panel(update, context); return
 
     if state == "WAIT_PASS":
-        if text == ADMIN_PASSWORD:
-            db_exec("INSERT OR IGNORE INTO admins VALUES (?)", (uid,))
+        ok, err_msg = _tg_admin_check(uid, text)
+        if ok:
             user_states[uid] = "ADMIN_MODE"
+            username = update.effective_user.username or str(uid)
+            logging.warning(f"[SECURITY] Successful admin login: uid={uid} @{username}")
+            try:
+                await context.bot.send_message(MY_ID, f"✅ Вхід в адмін-панель\n👤 @{username} (ID: {uid})")
+            except Exception:
+                pass
             await update.message.reply_text("✅ Доступ надано!", reply_markup=ReplyKeyboardMarkup(ADMIN_KB, resize_keyboard=True))
         else:
             user_states[uid] = None
-            await update.message.reply_text("❌ Невірно", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
+            username = update.effective_user.username or str(uid)
+            try:
+                await context.bot.send_message(MY_ID, f"⚠️ Невдала спроба входу в адмін\n👤 @{username} (ID: {uid})\n{err_msg}")
+            except Exception:
+                pass
+            await update.message.reply_text(err_msg, reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
         return
 
     if text == "🛍 Магазин":
