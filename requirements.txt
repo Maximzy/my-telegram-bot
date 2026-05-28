@@ -23,3 +23,9 @@ six==1.17.0
 telegram
 typing_extensions==4.15.0
 tzlocal==5.3.1
+anyio==4.13.0
+APScheduler==3.10.4
+httpx==0.28.1
+python-telegram-bot[job-queue]==21.0.1
+pytz==2026.2
+tzlocal==5.3.1
