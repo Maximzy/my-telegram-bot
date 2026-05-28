@@ -2717,6 +2717,8 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, src
 # --- ГОЛОВНИЙ ОБРОБНИК ПОВІДОМЛЕНЬ ---
 # ── GEMINI AI ─────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+_ai_cooldown: dict = {}
+GEMINI_COOLDOWN_SEC = 10
 GEMINI_SYSTEM_PROMPT = """Ти — AI-помічник магазину UC Shop (PUBG Mobile). Відповідай ЛИШЕ українською мовою.
 
 Інформація про магазин:
@@ -3246,6 +3248,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── AI-помічник (Gemini) — відповідає на всі нерозпізнані повідомлення ─────
     if GEMINI_API_KEY and not is_admin(uid):
+        now = time.time()
+        last = _ai_cooldown.get(uid, 0)
+        if now - last < GEMINI_COOLDOWN_SEC:
+            wait = int(GEMINI_COOLDOWN_SEC - (now - last)) + 1
+            await update.message.reply_text(f"⏳ Зачекай {wait} сек перед наступним запитом до AI.")
+            return
+        _ai_cooldown[uid] = now
         try:
             await context.bot.send_chat_action(update.effective_chat.id, "typing")
             response = await gemini_reply(text)
