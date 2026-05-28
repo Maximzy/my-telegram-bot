@@ -133,6 +133,8 @@ def run_migrations(connection):
     c.execute("CREATE TABLE IF NOT EXISTS ai_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, message TEXT, topic TEXT, created_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS security_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, ip TEXT, path TEXT, event TEXT, detail TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS admin_action_log (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, action TEXT, detail TEXT, ts TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS fake_pay_log (user_id INTEGER PRIMARY KEY, count INTEGER DEFAULT 0, last_at TEXT)")
     connection.commit()
 
 run_migrations(conn)
@@ -309,6 +311,57 @@ _tg_admin_fails: dict = collections.defaultdict(list)     # uid -> [timestamps]
 _tg_admin_lockout: dict = {}                              # uid -> lockout_until
 TG_ADMIN_MAX_FAILS = 3       # max wrong attempts
 TG_ADMIN_LOCKOUT_SEC = 1800  # 30 min lockout after max fails
+
+# 2FA OTP storage: uid -> {code, expires_at}
+_admin_otp: dict = {}
+ADMIN_OTP_TTL = 300  # 5 minutes
+
+# Admin session activity tracker: uid -> last_activity timestamp
+_admin_last_activity: dict = {}
+ADMIN_SESSION_TTL = 1800  # 30 min inactivity = auto logout
+
+# Fake payment abuse tracker: uid -> [timestamps]
+_fake_pay_attempts: dict = collections.defaultdict(list)
+FAKE_PAY_MAX = 3
+FAKE_PAY_WINDOW = 3600  # within 1 hour
+
+def _generate_otp() -> str:
+    return str(secrets.randbelow(900000) + 100000)
+
+def _admin_touch(uid: int):
+    """Update admin session activity timestamp."""
+    _admin_last_activity[uid] = time.time()
+
+def _admin_session_valid(uid: int) -> bool:
+    """Return True if admin session is still active (not expired)."""
+    last = _admin_last_activity.get(uid, 0)
+    return (time.time() - last) < ADMIN_SESSION_TTL
+
+def _admin_logout(uid: int):
+    """Expire admin session."""
+    _admin_last_activity.pop(uid, None)
+    _admin_otp.pop(uid, None)
+
+def log_admin_action(admin_id: int, action: str, detail: str = ""):
+    """Log admin action to DB."""
+    try:
+        db_exec("INSERT INTO admin_action_log (admin_id, action, detail, ts) VALUES (?,?,?,?)",
+                (admin_id, action[:128], detail[:512], created_at_now()))
+    except Exception:
+        pass
+
+def _check_fake_pay(uid: int) -> bool:
+    """Track fake payment attempts. Returns True if user should be autobanned."""
+    now = time.time()
+    attempts = _fake_pay_attempts[uid]
+    attempts[:] = [t for t in attempts if now - t < FAKE_PAY_WINDOW]
+    attempts.append(now)
+    return len(attempts) >= FAKE_PAY_MAX
+
+def _check_suspicious_player_id(player_id: str, current_uid: int) -> bool:
+    """Return True if player_id was used by 3+ different Telegram accounts."""
+    rows = db_query("SELECT DISTINCT chat_id FROM orders WHERE player_id=? AND chat_id != ?", (player_id, current_uid))
+    return len(rows) >= 2  # 2 others + current = 3+ total
 
 def _tg_admin_check(uid: int, password: str) -> tuple:
     """Telegram admin password check with brute-force lockout.
@@ -2258,6 +2311,12 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if is_admin(uid):
+        if not _admin_session_valid(uid):
+            _admin_logout(uid)
+            user_states[uid] = "WAIT_PASS"
+            await update.message.reply_text("⏰ Сесія закінчилась. Введіть пароль:", reply_markup=ReplyKeyboardRemove())
+            return
+        _admin_touch(uid)
         user_states[uid] = "ADMIN_MODE"
         await update.message.reply_text("🔘 Адмін-панель:", reply_markup=ReplyKeyboardMarkup(ADMIN_KB, resize_keyboard=True))
     else:
@@ -2887,12 +2946,22 @@ async def aichat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not update.message: return
-    # Перевірка бану — заблоковані мовчки ігноруються
     if is_banned(uid) and not is_admin(uid):
+        return
+    if not _rl_allow(f"msg:{uid}", 20, 60):
         return
     if not update.message.text: return
     text = update.message.text
     state = user_states.get(uid)
+    # Auto-logout expired admin sessions
+    if state == "ADMIN_MODE" and is_admin(uid) and not _admin_session_valid(uid):
+        _admin_logout(uid)
+        user_states[uid] = None
+        await update.message.reply_text("⏰ Сесія адміна закінчилась. Введіть /admin для повторного входу.",
+                                        reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
+        return
+    if state == "ADMIN_MODE" and is_admin(uid):
+        _admin_touch(uid)
 
     # ── Глобальні кнопки (завжди спрацьовують, незалежно від стану) ───────────
 
@@ -3049,23 +3118,54 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if state == "WAIT_PASS":
         ok, err_msg = _tg_admin_check(uid, text)
+        username = update.effective_user.username or str(uid)
         if ok:
-            user_states[uid] = "ADMIN_MODE"
-            username = update.effective_user.username or str(uid)
-            logging.warning(f"[SECURITY] Successful admin login: uid={uid} @{username}")
+            otp = _generate_otp()
+            _admin_otp[uid] = {"code": otp, "expires_at": time.time() + ADMIN_OTP_TTL}
+            user_states[uid] = "WAIT_2FA"
+            logging.warning(f"[SECURITY] Admin password OK, 2FA sent: uid={uid} @{username}")
             try:
-                await context.bot.send_message(MY_ID, f"✅ Вхід в адмін-панель\n👤 @{username} (ID: {uid})")
+                await context.bot.send_message(MY_ID, f"🔐 Спроба входу в адмін!\n👤 @{username} (ID: {uid})\n\n2FA код: <b>{otp}</b>\nДійсний 5 хвилин.", parse_mode="HTML")
             except Exception:
                 pass
-            await update.message.reply_text("✅ Доступ надано!", reply_markup=ReplyKeyboardMarkup(ADMIN_KB, resize_keyboard=True))
+            await update.message.reply_text("✅ Пароль вірний!\n🔐 Введіть 2FA код який щойно прийшов власнику бота:", reply_markup=ReplyKeyboardRemove())
         else:
             user_states[uid] = None
-            username = update.effective_user.username or str(uid)
             try:
                 await context.bot.send_message(MY_ID, f"⚠️ Невдала спроба входу в адмін\n👤 @{username} (ID: {uid})\n{err_msg}")
             except Exception:
                 pass
             await update.message.reply_text(err_msg, reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
+        return
+
+    if state == "WAIT_2FA":
+        username = update.effective_user.username or str(uid)
+        otp_data = _admin_otp.get(uid)
+        if not otp_data or time.time() > otp_data["expires_at"]:
+            _admin_otp.pop(uid, None)
+            user_states[uid] = None
+            await update.message.reply_text("⏰ 2FA код прострочений. Почніть заново /admin.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
+            return
+        if _hmac_mod.compare_digest(str(text).strip(), str(otp_data["code"])):
+            _admin_otp.pop(uid, None)
+            user_states[uid] = "ADMIN_MODE"
+            _admin_touch(uid)
+            log_admin_action(uid, "LOGIN", f"@{username}")
+            logging.warning(f"[SECURITY] Admin 2FA passed, logged in: uid={uid} @{username}")
+            try:
+                await context.bot.send_message(MY_ID, f"✅ Вхід в адмін-панель підтверджено 2FA\n👤 @{username} (ID: {uid})")
+            except Exception:
+                pass
+            await update.message.reply_text("✅ Доступ надано!", reply_markup=ReplyKeyboardMarkup(ADMIN_KB, resize_keyboard=True))
+        else:
+            user_states[uid] = None
+            _admin_otp.pop(uid, None)
+            logging.warning(f"[SECURITY] Wrong 2FA code: uid={uid} @{username}")
+            try:
+                await context.bot.send_message(MY_ID, f"❌ Невірний 2FA код\n👤 @{username} (ID: {uid})")
+            except Exception:
+                pass
+            await update.message.reply_text("❌ Невірний код. Почніть заново /admin.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
         return
 
     if text == "🛍 Магазин":
@@ -3356,12 +3456,15 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data.startswith("ok_"):
+        if not is_admin(q.from_user.id): return
+        _admin_touch(q.from_user.id)
         order_id = data[3:]
         res = db_query_one("SELECT chat_id, pack FROM orders WHERE id=?", (order_id,))
         if not res:
             await q.edit_message_text("❌ Замовлення не знайдено."); return
         chat_id, pack = res
         db_exec("UPDATE orders SET status='done', completed_at=? WHERE id=?", (created_at_now(), order_id))
+        log_admin_action(q.from_user.id, "ORDER_DONE", f"order={order_id} pack={pack} user={chat_id}")
         ref = db_query_one("SELECT referrer_id FROM referrals WHERE referred_id=?", (chat_id,))
         if ref:
             db_exec("INSERT INTO ref_discounts (user_id, created_at) VALUES (?,?)", (ref[0], created_at_now()))
@@ -3378,12 +3481,15 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data.startswith("no_"):
+        if not is_admin(q.from_user.id): return
+        _admin_touch(q.from_user.id)
         order_id = data[3:]
         res = db_query_one("SELECT chat_id, pack FROM orders WHERE id=?", (order_id,))
         if not res:
             await q.edit_message_text("❌ Замовлення не знайдено."); return
         chat_id, pack = res
         db_exec("UPDATE orders SET status='canceled' WHERE id=?", (order_id,))
+        log_admin_action(q.from_user.id, "ORDER_CANCELED", f"order={order_id} pack={pack} user={chat_id}")
         try: await context.bot.send_message(chat_id, f"❌ Замовлення ({pack}) відхилено. Зверніться в підтримку.")
         except: pass
         await q.edit_message_text(f"❌ Замовлення {order_id} відхилено.")
@@ -3420,14 +3526,29 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("paid_"):
         order_id = data[5:]
-        res = db_query_one("SELECT pack, player_id, amount FROM orders WHERE id=?", (order_id,))
+        pay_uid = q.from_user.id
+        res = db_query_one("SELECT pack, player_id, amount, status FROM orders WHERE id=?", (order_id,))
         if not res:
             await q.answer("Замовлення не знайдено."); return
-        pack, player_id, amount = res
+        pack, player_id, amount, status = res
+        if status != "pending":
+            await q.answer("Це замовлення вже оброблено."); return
+        if _check_fake_pay(pay_uid):
+            db_exec("INSERT OR IGNORE INTO banned_users (user_id, reason, banned_at) VALUES (?,?,?)",
+                    (pay_uid, "Авто-бан: підозра у фейкових оплатах", created_at_now()))
+            logging.warning(f"[SECURITY] Auto-banned for fake payments: uid={pay_uid}")
+            try:
+                await context.bot.send_message(MY_ID, f"🚫 Авто-бан за фейкові оплати\n👤 {user_label(q.from_user.username, pay_uid)}")
+            except: pass
+            await q.answer("⛔ Ваш акаунт заблоковано."); return
+        if _check_suspicious_player_id(player_id, pay_uid):
+            try:
+                await context.bot.send_message(MY_ID, f"🕵️ Підозрілий PUBG ID!\n🎮 ID: {player_id}\n👤 {user_label(q.from_user.username, pay_uid)}\nЦей ID вже використовувався з інших акаунтів!")
+            except: pass
         try:
             btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Готово", callback_data=f"ok_{order_id}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{order_id}")]])
             rise_marker = "⭐️ НАБІР ПІДЙОМ\n" if "Набір Підйом" in pack else ""
-            await context.bot.send_message(MY_ID, f"💰 ОПЛАТА!\n{rise_marker}🆔 {order_id}\n👤 {user_label(q.from_user.username, q.from_user.id)}\n🎁 {pack}\n🎮 ID: {player_id}\n💵 {amount} грн", reply_markup=btns)
+            await context.bot.send_message(MY_ID, f"💰 ОПЛАТА!\n{rise_marker}🆔 {order_id}\n👤 {user_label(q.from_user.username, pay_uid)}\n🎁 {pack}\n🎮 ID: {player_id}\n💵 {amount} грн", reply_markup=btns)
         except: pass
         await q.edit_message_text(f"✅ Дякуємо! Замовлення прийнято.\n🆔 {order_id}\nАдмін підтвердить незабаром.")
         return
