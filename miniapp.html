@@ -471,7 +471,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <img src="/nezuko_tg_gifts_banner.png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.75" draggable="false">
         <div class="group-card-inner" style="background:linear-gradient(0,rgba(0,15,50,.92) 0%,rgba(0,10,40,.3) 65%,transparent 100%)">
           <div class="group-card-title" style="color:#7ab4ff">✈️ Telegram</div>
-          <div class="group-card-sub">Зірки · Premium</div>
+          <div class="group-card-sub">Зірки · Premium · Старі подарки</div>
         </div>
       </div>
       <div class="section-title">Популярне</div>
@@ -1648,7 +1648,7 @@ function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 
 // ─── SHOP ────────────────────────────────────────────────────────────────────
 const CAT_FILTER = {
-  uc: k => !k.includes('Prime') && !k.includes('⭐️'),
+  uc: k => k.includes('UC'),
   prime: k => k.includes('👑 Prime') && !k.includes('Plus'),
   primeplus: k => k.includes('Prime Plus'),
   rise: k => k.includes('⭐️ Набір Підйом')
@@ -1725,6 +1725,10 @@ function showGroup(group) {
         <div class="category-card subcat-card" style="background:linear-gradient(135deg,#0a1020,#111830);border-color:rgba(90,150,255,.2)" onclick="showTgShop('premium')">
           <div class="subcat-icon" style="font-size:58px;filter:drop-shadow(0 0 14px rgba(90,150,255,.7))">💎</div>
           <div class="subcat-label" style="color:#7ab4ff">Telegram Premium</div>
+        </div>
+        <div class="category-card subcat-card" style="grid-column:1/-1;background:linear-gradient(135deg,#1a0a2e,#2d1050);border-color:rgba(255,45,120,.25)" onclick="showGifts()">
+          <div class="subcat-icon" style="font-size:58px;filter:drop-shadow(0 0 14px rgba(255,45,120,.7))">🧸</div>
+          <div class="subcat-label" style="color:#ff6ba8">Старі подарки Telegram</div>
         </div>
       </div>`;
   }
