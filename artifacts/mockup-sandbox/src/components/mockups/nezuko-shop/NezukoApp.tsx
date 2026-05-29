@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import { Home, ShoppingBag, Zap, Trophy, User, Star, ChevronRight, Flame, Gift, ScrollText, Heart, Shield } from 'lucide-react';
 
 /* ── Gift images ─────────────────────────────────── */
+import nezukoPubgBanner from '/nezuko_pubg_banner.png';
+import nezukoTgBanner   from '/nezuko_tg_gifts_banner.png';
 import giftEaster   from '/gift_easter.png';
 import giftApril    from '/gift_april.png';
 import giftPatrick  from '/gift_patrick.png';
@@ -155,23 +157,19 @@ export function NezukoApp() {
           {/* ── Category selector ── */}
           <div className="nz-section-label">Категорії</div>
           <div className="nz-cat-cards">
-            <button className="nz-cat-card nz-cc-pubg" onClick={() => { goTab('shop'); setShopCat('pubg'); }}>
-              <div className="nz-cc-bg nz-cc-bg-pubg" />
-              <div className="nz-cc-body">
-                <span className="nz-cc-emoji">🔫</span>
-                <div className="nz-cc-title">PUBG Mobile</div>
+            <button className="nz-cat-card" onClick={() => { goTab('shop'); setShopCat('pubg'); }}>
+              <img src={nezukoPubgBanner} alt="PUBG" className="nz-cc-banner-img" />
+              <div className="nz-cc-overlay">
+                <div className="nz-cc-title">🔫 PUBG Mobile</div>
                 <div className="nz-cc-sub">UC · Prime · Підйом</div>
               </div>
-              <div className="nz-cc-char">🌸⚔️</div>
             </button>
-            <button className="nz-cat-card nz-cc-tg" onClick={() => { goTab('shop'); setShopCat('tg'); }}>
-              <div className="nz-cc-bg nz-cc-bg-tg" />
-              <div className="nz-cc-body">
-                <span className="nz-cc-emoji">🧸</span>
-                <div className="nz-cc-title">Telegram</div>
+            <button className="nz-cat-card" onClick={() => { goTab('shop'); setShopCat('tg'); }}>
+              <img src={nezukoTgBanner} alt="Telegram Gifts" className="nz-cc-banner-img" />
+              <div className="nz-cc-overlay nz-cc-overlay-tg">
+                <div className="nz-cc-title">🧸 Telegram</div>
                 <div className="nz-cc-sub">Старі подарки</div>
               </div>
-              <div className="nz-cc-char">🌸🎀</div>
             </button>
           </div>
 
@@ -231,10 +229,10 @@ export function NezukoApp() {
           {/* PUBG section */}
           {(shopCat === 'all' || shopCat === 'pubg') && (<>
             <div className="nz-pubg-banner">
-              <div className="nz-pubg-bg" />
+              <img src={nezukoPubgBanner} alt="PUBG Nezuko" className="nz-banner-img" />
               <div className="nz-pubg-content">
                 <div className="nz-pubg-title">🔫 PUBG Mobile UC</div>
-                <div className="nz-pubg-sub">Незуко стріляє по всіх! 🌸⚔️</div>
+                <div className="nz-pubg-sub">Незуко в бою! 🌸⚔️</div>
               </div>
             </div>
             <div className="nz-packs" style={{marginBottom:16}}>
@@ -255,7 +253,7 @@ export function NezukoApp() {
           {/* Telegram Gifts section */}
           {(shopCat === 'all' || shopCat === 'tg') && (<>
             <div className="nz-tg-banner">
-              <div className="nz-tg-bg" />
+              <img src={nezukoTgBanner} alt="Telegram Gifts Nezuko" className="nz-banner-img" />
               <div className="nz-tg-content">
                 <div className="nz-tg-title">🧸 Старі подарки Telegram</div>
                 <div className="nz-tg-sub">Незуко тримає ведмедика 🌸🎀</div>

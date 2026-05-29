@@ -855,15 +855,23 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if _ip_is_blocked(ip):
             self.send_response(403); self.end_headers(); return
-        if path not in ("/favicon.ico", "/nezuko.png", "/nezuko_bg.png", "/uc_icon.png", "/prime_crown.png", "/points_coin.png", "/nezuko_love.png", "/crate_icon.png"):
+        _STATIC_IMG_SET = {"/favicon.ico","/nezuko.png","/nezuko_bg.png","/uc_icon.png","/prime_crown.png","/points_coin.png","/nezuko_love.png","/crate_icon.png","/nezuko_pubg_banner.png","/nezuko_tg_gifts_banner.png","/gift_easter.png","/gift_april.png","/gift_patrick.png","/gift_march8.png","/gift_valentine.png","/gift_loveu.png","/gift_xmas_bear.png","/gift_xmas_tree.png"}
+        if path not in _STATIC_IMG_SET:
             if not _rl_allow(f"ip-get:{ip}", 200, 60):
                 self.send_response(429); self.end_headers(); return
 
         if path == "/favicon.ico":
             self.send_response(204); self.end_headers(); return
 
-        if path in ("/nezuko.png", "/nezuko_bg.png", "/uc_icon.png", "/prime_crown.png", "/points_coin.png", "/nezuko_love.png", "/crate_icon.png"):
-            fname = {"nezuko_bg.png":"nezuko_bg.png","nezuko.png":"nezuko.png","uc_icon.png":"uc_icon.png","prime_crown.png":"prime_crown.png","points_coin.png":"points_coin.png","nezuko_love.png":"nezuko_love.png","crate_icon.png":"crate_icon.png"}.get(path.lstrip("/"), "nezuko.png")
+        _STATIC_IMAGES = {
+            "nezuko_bg.png","nezuko.png","uc_icon.png","prime_crown.png",
+            "points_coin.png","nezuko_love.png","crate_icon.png",
+            "nezuko_pubg_banner.png","nezuko_tg_gifts_banner.png",
+            "gift_easter.png","gift_april.png","gift_patrick.png","gift_march8.png",
+            "gift_valentine.png","gift_loveu.png","gift_xmas_bear.png","gift_xmas_tree.png",
+        }
+        if path in ("/nezuko.png", "/nezuko_bg.png", "/uc_icon.png", "/prime_crown.png", "/points_coin.png", "/nezuko_love.png", "/crate_icon.png") or path.lstrip("/") in _STATIC_IMAGES:
+            fname = path.lstrip("/")
             img_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "attached_assets", fname)
             if os.path.exists(img_path):
                 with open(img_path, "rb") as f:

@@ -343,6 +343,14 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
   100%{opacity:0;transform:translateY(110vh) rotate(540deg) scale(0.5)}
 }
 
+/* ── GIFT ITEMS ─────────────────────────── */
+.gift-item-card{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:7px 5px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;transition:border-color .15s,transform .12s;text-align:center}
+.gift-item-card:active{transform:scale(.93);border-color:var(--acc)}
+.gift-item-card.selected{border-color:var(--acc);box-shadow:0 0 12px rgba(255,45,120,.3)}
+.gift-item-img{width:52px;height:52px;object-fit:contain}
+.gift-item-name{font-size:9px;font-weight:700;color:var(--text);line-height:1.25;word-break:break-word}
+.gift-item-price{font-size:10px;font-weight:800;color:var(--acc2)}
+
 /* ── UTILS ──────────────────────────────── */
 .divider{height:1px;background:var(--border);margin:12px 0}
 .empty{text-align:center;padding:36px 16px;color:var(--muted);font-size:13px}
@@ -442,6 +450,23 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
     <!-- Step 1 – Categories -->
     <div id="shopCats">
       <div class="section-title">Оберіть категорію</div>
+      <!-- PUBG + TG Gift hero banners -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div onclick="showPacks('uc')" style="position:relative;border-radius:16px;overflow:hidden;height:110px;cursor:pointer;background:#0a1628;border:1px solid rgba(59,130,246,.35)">
+          <img src="/nezuko_pubg_banner.png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.6" draggable="false">
+          <div style="position:absolute;bottom:0;left:0;right:0;padding:8px 10px;background:linear-gradient(0,rgba(0,0,0,.75),transparent)">
+            <div style="font-size:12px;font-weight:800;color:#fff">🔫 PUBG Mobile</div>
+            <div style="font-size:9px;color:rgba(255,255,255,.65)">UC · Prime · Підйом</div>
+          </div>
+        </div>
+        <div onclick="showGifts()" style="position:relative;border-radius:16px;overflow:hidden;height:110px;cursor:pointer;background:#1a0a2e;border:1px solid rgba(255,45,120,.3)">
+          <img src="/nezuko_tg_gifts_banner.png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.6" draggable="false">
+          <div style="position:absolute;bottom:0;left:0;right:0;padding:8px 10px;background:linear-gradient(0,rgba(60,0,40,.8),transparent)">
+            <div style="font-size:12px;font-weight:800;color:#fff">🧸 Telegram</div>
+            <div style="font-size:9px;color:rgba(255,255,255,.65)">Старі подарки</div>
+          </div>
+        </div>
+      </div>
       <div class="category-grid" style="margin-bottom:10px">
         <div class="category-card" onclick="showPacks('uc')">
           <div class="category-icon"><img src="/uc_icon.png" style="width:48px;height:48px;object-fit:contain;filter:drop-shadow(0 0 8px #ffd16699)" draggable="false"></div>
@@ -467,6 +492,10 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div class="category-card" style="background:linear-gradient(135deg,#0a1020,#111830);border-color:rgba(90,150,255,.2)" onclick="showTgShop('premium')">
           <div class="category-icon" style="font-size:40px;margin-bottom:8px;filter:drop-shadow(0 0 10px rgba(90,150,255,.6))">💎</div>
           <div class="category-label" style="color:#7ab4ff">Telegram Premium</div>
+        </div>
+        <div class="category-card" style="grid-column:1/-1;background:linear-gradient(135deg,#1a0a2e,#2d1050);border-color:rgba(255,45,120,.25)" onclick="showGifts()">
+          <div class="category-icon" style="font-size:40px;margin-bottom:8px;filter:drop-shadow(0 0 10px rgba(255,45,120,.6))">🧸</div>
+          <div class="category-label" style="color:#ff6ba8">Старі подарки Telegram</div>
         </div>
       </div>
       <div class="section-title">Популярне</div>
@@ -581,6 +610,98 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <div style="font-size:11px;color:var(--muted);margin-top:5px">Ваш @тег — на нього буде відправлено замовлення</div>
 
       <button class="btn mt-12" onclick="goToTgPay()">Далі →</button>
+    </div>
+
+    <!-- Telegram Old Gifts -->
+    <div id="shopGifts" style="display:none">
+      <div class="back-btn" onclick="backGiftsToCats()">← Назад</div>
+      <div style="position:relative;border-radius:16px;overflow:hidden;margin-bottom:14px;min-height:90px;display:flex;align-items:flex-end;background:#1a0a2e;border:1px solid rgba(255,45,120,.35)">
+        <img src="/nezuko_tg_gifts_banner.png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.55" draggable="false">
+        <div style="position:relative;z-index:2;padding:12px 16px;width:100%;background:linear-gradient(0,rgba(60,0,40,.8),transparent)">
+          <div style="font-size:15px;font-weight:800;color:#fff;margin-bottom:2px">🧸 Старі подарки Telegram</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.65)">Колекційні — більше не продаються в Telegram · <span style="color:#ff6ba8;font-weight:700">50 грн / шт</span></div>
+        </div>
+      </div>
+      <div class="section-title">Оберіть подарунок</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
+        <div class="gift-item-card" onclick="selectGift('🐣 Пасхальний','gift_easter.png')">
+          <img src="/gift_easter.png" class="gift-item-img" draggable="false">
+          <div class="gift-item-name">🐣 Пасхальний</div>
+          <div class="gift-item-price">₴50</div>
+        </div>
+        <div class="gift-item-card" onclick="selectGift('🎉 1 Квітня','gift_april.png')">
+          <img src="/gift_april.png" class="gift-item-img" draggable="false">
+          <div class="gift-item-name">🎉 1 Квітня</div>
+          <div class="gift-item-price">₴50</div>
+        </div>
+        <div class="gift-item-card" onclick="selectGift('🍀 Патрика','gift_patrick.png')">
+          <img src="/gift_patrick.png" class="gift-item-img" draggable="false">
+          <div class="gift-item-name">🍀 Патрика</div>
+          <div class="gift-item-price">₴50</div>
+        </div>
+        <div class="gift-item-card" onclick="selectGift('🌸 8 Березня','gift_march8.png')">
+          <img src="/gift_march8.png" class="gift-item-img" draggable="false">
+          <div class="gift-item-name">🌸 8 Березня</div>
+          <div class="gift-item-price">₴50</div>
+        </div>
+        <div class="gift-item-card" onclick="selectGift('❤️ Валентина','gift_valentine.png')">
+          <img src="/gift_valentine.png" class="gift-item-img" draggable="false">
+          <div class="gift-item-name">❤️ Валентина</div>
+          <div class="gift-item-price">₴50</div>
+        </div>
+        <div class="gift-item-card" onclick="selectGift('💝 Серце Валентина','gift_loveu.png')">
+          <img src="/gift_loveu.png" class="gift-item-img" draggable="false">
+          <div class="gift-item-name">💝 Серце</div>
+          <div class="gift-item-price">₴50</div>
+        </div>
+        <div class="gift-item-card" onclick="selectGift('🧸 Новорічний','gift_xmas_bear.png')">
+          <img src="/gift_xmas_bear.png" class="gift-item-img" draggable="false">
+          <div class="gift-item-name">🧸 Новорічний</div>
+          <div class="gift-item-price">₴50</div>
+        </div>
+        <div class="gift-item-card" onclick="selectGift('🎄 Ялинка Новорічна','gift_xmas_tree.png')">
+          <img src="/gift_xmas_tree.png" class="gift-item-img" draggable="false">
+          <div class="gift-item-name">🎄 Ялинка</div>
+          <div class="gift-item-price">₴50</div>
+        </div>
+      </div>
+      <div class="section-title">Ваш Telegram тег</div>
+      <input type="text" id="giftTgTagInput" placeholder="@ваш_тег" autocomplete="off">
+      <div style="font-size:11px;color:var(--muted);margin-top:5px">Надішлемо подарунок на ваш акаунт</div>
+      <div id="giftSelected" style="display:none;margin-top:12px;padding:12px 14px;background:var(--card2);border:1px solid var(--border);border-radius:14px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:3px">Обраний подарунок:</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <img id="giftSelImg" src="" style="width:44px;height:44px;object-fit:contain">
+          <div>
+            <div id="giftSelName" style="font-size:14px;font-weight:800;color:#fff"></div>
+            <div style="font-size:16px;font-weight:900;color:var(--acc)">50 грн</div>
+          </div>
+        </div>
+      </div>
+      <button class="btn mt-12" onclick="goToGiftPay()">Далі →</button>
+    </div>
+
+    <!-- Gift Payment -->
+    <div id="shopGiftPay" style="display:none">
+      <div class="back-btn" onclick="backToGifts()">← Назад</div>
+      <div class="card">
+        <div class="section-title" style="margin-top:0">Замовлення</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+          <img id="giftPayImg" src="" style="width:52px;height:52px;object-fit:contain">
+          <div>
+            <div id="giftPayName" style="font-size:15px;font-weight:700"></div>
+            <div style="font-size:12px;color:var(--muted)">Telegram: <span id="giftPayTag" style="color:var(--acc);font-weight:700"></span></div>
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div style="font-size:26px;font-weight:900;color:var(--acc)">50 грн</div>
+      </div>
+      <div class="card">
+        <div class="section-title" style="margin-top:0">💳 Оплата карткою</div>
+        <div style="font-size:17px;font-weight:700;letter-spacing:2px;color:var(--acc);cursor:pointer;margin-bottom:6px" onclick="copyGiftCard()">4874 0700 2036 7247</div>
+        <div style="font-size:11px;color:var(--muted);cursor:pointer" onclick="copyGiftCard()">Натисніть щоб скопіювати</div>
+      </div>
+      <button class="btn" onclick="submitGiftOrder()">✅ Я оплатив</button>
     </div>
 
     <!-- TG Stars / Premium – Step 2 (Payment) -->
@@ -1866,6 +1987,66 @@ function goToTgPay() {
 function backTgToCats() {
   document.getElementById('shopTg').style.display = 'none';
   showWithAnim(document.getElementById('shopCats'));
+}
+
+/* ── GIFTS ── */
+let curGiftName = '', curGiftImg = '';
+function showGifts() {
+  ['shopCats','shopPacks','shopId','shopMix','shopPay','shopDone','shopTg','shopTgPay','shopGiftPay'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = 'none';
+  });
+  curGiftName = ''; curGiftImg = '';
+  document.querySelectorAll('.gift-item-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('giftSelected').style.display = 'none';
+  document.getElementById('giftTgTagInput').value = '';
+  showWithAnim(document.getElementById('shopGifts'));
+}
+function backGiftsToCats() {
+  document.getElementById('shopGifts').style.display = 'none';
+  showWithAnim(document.getElementById('shopCats'));
+}
+function selectGift(name, imgFile) {
+  curGiftName = name; curGiftImg = '/' + imgFile;
+  document.querySelectorAll('.gift-item-card').forEach(c => c.classList.remove('selected'));
+  event.currentTarget.classList.add('selected');
+  document.getElementById('giftSelName').textContent = name;
+  document.getElementById('giftSelImg').src = curGiftImg;
+  document.getElementById('giftSelected').style.display = 'block';
+}
+function goToGiftPay() {
+  const tag = document.getElementById('giftTgTagInput').value.trim();
+  if (!curGiftName) { toast('Оберіть подарунок', 'error'); return; }
+  if (!tag) { toast('Введіть ваш Telegram тег', 'error'); return; }
+  document.getElementById('giftPayName').textContent = curGiftName;
+  document.getElementById('giftPayImg').src = curGiftImg;
+  document.getElementById('giftPayTag').textContent = tag;
+  document.getElementById('shopGifts').style.display = 'none';
+  showWithAnim(document.getElementById('shopGiftPay'));
+}
+function backToGifts() {
+  document.getElementById('shopGiftPay').style.display = 'none';
+  showWithAnim(document.getElementById('shopGifts'));
+}
+function copyGiftCard() {
+  navigator.clipboard.writeText('4874070020367247')
+    .then(() => toast('Картку скопійовано!', 'success'))
+    .catch(() => {});
+}
+async function submitGiftOrder() {
+  const tag = document.getElementById('giftPayTag').textContent.trim();
+  if (!tag || !curGiftName) { toast('Помилка даних', 'error'); return; }
+  const btn = event.currentTarget;
+  btn.disabled = true; btn.textContent = 'Відправляємо...';
+  try {
+    const r = await api('/api/submit-tg-order', 'POST', {
+      user_id: userId, pack: curGiftName, tg_tag: tag, amount: 50, category: 'gift'
+    });
+    if (r.ok) {
+      document.getElementById('shopGiftPay').style.display = 'none';
+      toast('✅ Замовлення прийнято! Адмін відправить подарунок найближчим часом.', 'success');
+      setTimeout(() => { showWithAnim(document.getElementById('shopCats')); }, 2200);
+    } else { toast(r.error || 'Помилка', 'error'); btn.disabled = false; btn.textContent = '✅ Я оплатив'; }
+  } catch { toast('Помилка мережі', 'error'); btn.disabled = false; btn.textContent = '✅ Я оплатив'; }
 }
 
 function backToTgStep1() {

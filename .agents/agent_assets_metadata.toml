@@ -18,6 +18,18 @@ uri = "file://attached_assets/nezuko_love.png"
 type = "image"
 title = "nezuko love heart cute"
 
+[[generated]]
+id = "kCn2rSaw45rbmEYBpgLzh"
+uri = "file://attached_assets/nezuko_pubg_banner.png"
+type = "image"
+title = "nezuko pubg shooting banner"
+
+[[generated]]
+id = "V1hzDMPeNX5XYtBo4CMOS"
+uri = "file://attached_assets/nezuko_tg_gifts_banner.png"
+type = "image"
+title = "nezuko holding teddy bear gifts banner"
+
 [[outputs]]
 id = "HvEuesN1vTAPtTV58peQ-"
 uri = "file://attached_assets/nezuko.png"

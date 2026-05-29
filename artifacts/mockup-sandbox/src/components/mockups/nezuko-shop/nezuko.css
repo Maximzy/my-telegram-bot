@@ -407,41 +407,33 @@
   border-radius: 16px;
   border: none;
   overflow: hidden;
-  min-height: 90px;
+  height: 110px;
   cursor: pointer;
   display: flex;
-  transition: opacity .15s;
+  align-items: flex-end;
+  transition: opacity .15s, transform .15s;
   padding: 0;
   text-align: left;
 }
-.nz-cat-card:active { opacity: .82; }
-.nz-cc-bg {
+.nz-cat-card:active { opacity: .85; transform: scale(.97); }
+.nz-cc-banner-img {
   position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
   border-radius: 16px;
-  pointer-events: none;
 }
-.nz-cc-bg-pubg {
-  background: linear-gradient(135deg, #0a1628 0%, #1a2a40 60%, #0d1f33 100%);
-  border: 1px solid rgba(59,130,246,.35);
-  box-shadow: inset 0 0 24px rgba(59,130,246,.08);
-}
-.nz-cc-bg-tg {
-  background: linear-gradient(135deg, #1a0a2e 0%, #2a1040 60%, #1a0a28 100%);
-  border: 1px solid rgba(255,45,120,.3);
-  box-shadow: inset 0 0 24px rgba(255,45,120,.07);
-}
-.nz-cc-body {
+.nz-cc-overlay {
   position: relative; z-index: 2;
-  padding: 12px 12px 10px;
-  display: flex; flex-direction: column; gap: 3px;
+  width: 100%;
+  padding: 8px 10px;
+  background: linear-gradient(0deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.3) 70%, transparent 100%);
+  border-radius: 0 0 16px 16px;
 }
-.nz-cc-emoji { font-size: 22px; line-height: 1; }
-.nz-cc-title { font-size: 13px; font-weight: 800; color: #fff; margin-top: 4px; }
-.nz-cc-sub   { font-size: 10px; color: rgba(255,255,255,.5); }
-.nz-cc-char  {
-  position: absolute; bottom: 6px; right: 8px;
-  font-size: 20px; opacity: .6; z-index: 2;
+.nz-cc-overlay-tg {
+  background: linear-gradient(0deg, rgba(80,0,60,.8) 0%, rgba(80,0,60,.3) 70%, transparent 100%);
 }
+.nz-cc-title { font-size: 12px; font-weight: 800; color: #fff; line-height: 1.2; }
+.nz-cc-sub   { font-size: 9px; color: rgba(255,255,255,.65); margin-top: 1px; }
 
 /* ── SHOP CATEGORY TABS ───────────────────────── */
 .nz-shop-tabs {
@@ -462,26 +454,33 @@
   color: var(--pink);
 }
 
+/* ── SHARED BANNER IMAGE ──────────────────────── */
+.nz-banner-img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  opacity: .55;
+}
+
 /* ── PUBG BANNER ──────────────────────────────── */
 .nz-pubg-banner {
   position: relative;
   border-radius: 16px;
   overflow: hidden;
   margin-bottom: 12px;
-  min-height: 64px;
-  display: flex; align-items: center;
-}
-.nz-pubg-bg {
-  position: absolute; inset: 0;
+  min-height: 90px;
+  display: flex; align-items: flex-end;
   background: linear-gradient(135deg, #0a1628 0%, #1a3050 100%);
   border: 1px solid rgba(59,130,246,.35);
 }
 .nz-pubg-content {
   position: relative; z-index: 2;
-  padding: 14px 16px;
+  padding: 12px 16px;
+  width: 100%;
+  background: linear-gradient(0deg, rgba(0,0,0,.7) 0%, transparent 100%);
 }
 .nz-pubg-title { font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 2px; }
-.nz-pubg-sub   { font-size: 11px; color: rgba(255,255,255,.55); }
+.nz-pubg-sub   { font-size: 11px; color: rgba(255,255,255,.7); }
 
 /* ── TELEGRAM GIFTS BANNER ────────────────────── */
 .nz-tg-banner {
@@ -489,17 +488,16 @@
   border-radius: 16px;
   overflow: hidden;
   margin-bottom: 12px;
-  min-height: 64px;
-  display: flex; align-items: center;
-}
-.nz-tg-bg {
-  position: absolute; inset: 0;
+  min-height: 90px;
+  display: flex; align-items: flex-end;
   background: linear-gradient(135deg, #1a0a2e 0%, #2d1050 100%);
   border: 1px solid rgba(255,45,120,.35);
 }
 .nz-tg-content {
   position: relative; z-index: 2;
-  padding: 14px 16px;
+  padding: 12px 16px;
+  width: 100%;
+  background: linear-gradient(0deg, rgba(60,0,40,.8) 0%, transparent 100%);
 }
 .nz-tg-title      { font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 2px; }
 .nz-tg-sub        { font-size: 11px; color: rgba(255,255,255,.55); margin-bottom: 4px; }
