@@ -421,14 +421,23 @@ def _rl_allow(key: str, max_calls: int, window_sec: int) -> bool:
         return True
 
 def _rl_admin_check(ip: str, password: str) -> tuple:
-    """Admin password check without IP-based lockout.
-    The password itself is the security mechanism.
+    """Admin password check: accepts raw ADMIN_PASSWORD or a valid session token.
+    No IP-based lockout — the password/token is the security mechanism.
     Returns (ok: bool, error: str)."""
-    ok = _hmac_mod.compare_digest(str(password), ADMIN_PASSWORD)
-    if not ok:
-        logging.warning(f"[SECURITY] Failed admin login from {ip}")
-        return False, "Невірний пароль."
-    return True, ""
+    pwd = str(password)
+    # Accept raw admin password
+    if _hmac_mod.compare_digest(pwd, ADMIN_PASSWORD):
+        return True, ""
+    # Accept valid init-data session token
+    session = _admin_sessions.get(pwd)
+    if session:
+        s_uid, s_exp = session
+        if time.time() < s_exp:
+            return True, ""
+        else:
+            del _admin_sessions[pwd]
+    logging.warning(f"[SECURITY] Failed admin login from {ip}")
+    return False, "Невірний пароль."
 
 def _get_client_ip(handler) -> str:
     """Extract real client IP, considering proxy headers."""
