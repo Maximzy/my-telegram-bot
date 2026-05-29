@@ -163,7 +163,17 @@ RISE_PACKS = {
     "⭐️ Набір Підйом 2 (180 UC + 9 міні матеріалів) - 119 грн": 119,
     "⭐️ Набір Підйом 3 (300 UC + 79 міні емблем) - 199 грн": 199,
 }
-ALL_PACKS = {**PACKS, **PRIME_PACKS, **PRIME_PLUS_PACKS, **RISE_PACKS}
+TG_GIFTS = {
+    "🐣 Пасхальний": 50,
+    "🎉 1 Квітня": 50,
+    "🍀 Патрика": 50,
+    "🌸 8 Березня": 50,
+    "❤️ Валентина": 50,
+    "💝 Серце Валентина": 50,
+    "🧸 Новорічний": 50,
+    "🎄 Ялинка Новорічна": 50,
+}
+ALL_PACKS = {**PACKS, **PRIME_PACKS, **PRIME_PLUS_PACKS, **RISE_PACKS, **TG_GIFTS}
 SMALL_UC = set(list(PACKS.keys())[:6])
 MEDIUM_UC = set(list(PACKS.keys())[6:9])
 
@@ -288,7 +298,7 @@ def get_main_kb(uid):
     return kb
 
 SHOP_KB = ReplyKeyboardMarkup(
-    [["💸 Купити UC"], ["👑 Prime", "👑 Prime Plus"], ["⭐️ Набори Підйом"], ["🔙 Назад"]],
+    [["💸 Купити UC"], ["👑 Prime", "👑 Prime Plus"], ["⭐️ Набори Підйом"], ["🎁 Старі подарки Telegram"], ["🔙 Назад"]],
     resize_keyboard=True
 )
 ADMIN_KB = [
@@ -510,7 +520,7 @@ def _ai_ticket_auto_reply(ticket_id, category, user_chat_id, delay=50):
         time.sleep(delay)
         if is_admin_online():
             return
-        if not GEMINI_API_KEY:
+        if not OPENAI_API_KEY:
             return
         try:
             ticket = db_query_one("SELECT status FROM tickets WHERE id=?", (ticket_id,))
@@ -526,8 +536,8 @@ def _ai_ticket_auto_reply(ticket_id, category, user_chat_id, delay=50):
                 f"Дай коротку корисну відповідь від імені підтримки. "
                 f"Якщо питання складне — скажи що менеджер відповість найближчим часом."
             )
-            contents = [{"role": "user", "parts": [{"text": prompt}]}]
-            response = _gemini_api_call(contents, max_tokens=400)
+            messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+            response = _openai_api_call(messages, max_tokens=400)
             if not response or response.startswith("❌"):
                 return
             ai_note = response + "\n\n_(🤖 Автовідповідь AI — менеджер підтвердить найближчим часом)_"
@@ -1323,6 +1333,28 @@ class PolicyHandler(BaseHTTPRequestHandler):
             _ip_violation(ip, path, "IP rate limit exceeded")
             _json_response(self, {"ok": False, "error": "Забагато запитів. Зачекайте."}, 429); return
 
+        if path == "/api/check-admin":
+            init_data = str(data.get("init_data", ""))
+            if not init_data:
+                _json_response(self, {"ok": False, "is_admin": False, "error": "no init_data"}); return
+            try:
+                parsed = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
+                received_hash = parsed.pop("hash", "")
+                data_check = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+                secret = _hmac_mod.new(b"WebAppData", TOKEN.encode(), _hashlib_mod.sha256).digest()
+                computed = _hmac_mod.new(secret, data_check.encode(), _hashlib_mod.sha256).hexdigest()
+                if not _hmac_mod.compare_digest(computed, received_hash):
+                    _json_response(self, {"ok": False, "is_admin": False, "error": "invalid hash"}); return
+                user_str = parsed.get("user", "")
+                user_obj = json.loads(user_str) if user_str else {}
+                user_id = int(user_obj.get("id", 0))
+                if not user_id:
+                    _json_response(self, {"ok": False, "is_admin": False, "error": "no user"}); return
+                admin_row = db_query_one("SELECT id FROM admins WHERE id=?", (user_id,))
+                _json_response(self, {"ok": True, "is_admin": bool(admin_row), "user_id": user_id}); return
+            except Exception as e:
+                _json_response(self, {"ok": False, "is_admin": False, "error": str(e)}); return
+
         if path == "/api/resolve-user":
             init_data = str(data.get("init_data", ""))
             if not init_data:
@@ -1570,12 +1602,11 @@ class PolicyHandler(BaseHTTPRequestHandler):
             history = data.get("history", [])
             if not message:
                 _json_response(self, {"ok": False, "error": "Немає повідомлення"}); return
-            contents = []
+            oai_msgs = [{"role": "system", "content": ADMIN_ADVISOR_PROMPT}]
             for h in (history[-8:] if len(history) > 8 else history):
-                role = "model" if h.get("role") == "assistant" else "user"
-                contents.append({"role": role, "parts": [{"text": str(h.get("text", ""))[:600]}]})
-            contents.append({"role": "user", "parts": [{"text": ADMIN_ADVISOR_PROMPT + "\n\nПитання: " + message}]})
-            response = _gemini_api_call(contents, max_tokens=700)
+                oai_msgs.append({"role": "assistant" if h.get("role") == "assistant" else "user", "content": str(h.get("text", ""))[:600]})
+            oai_msgs.append({"role": "user", "content": message})
+            response = _openai_api_call(oai_msgs, max_tokens=700)
             _json_response(self, {"ok": True, "response": response}); return
 
         if path == "/api/user/ai-chat":
@@ -1588,14 +1619,14 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 history = []
             if not message:
                 _json_response(self, {"ok": False, "error": "Немає повідомлення"}); return
-            if not GEMINI_API_KEY:
+            if not OPENAI_API_KEY:
                 _json_response(self, {"ok": False, "error": "AI тимчасово недоступний"}); return
-            contents = []
+            oai_messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}]
             for h in (history[-6:] if len(history) > 6 else history):
-                role = "model" if h.get("role") == "assistant" else "user"
-                contents.append({"role": role, "parts": [{"text": str(h.get("text", ""))[:400]}]})
-            contents.append({"role": "user", "parts": [{"text": GEMINI_SYSTEM_PROMPT + "\n\nПитання: " + message}]})
-            response = _gemini_api_call(contents, max_tokens=400)
+                role = "assistant" if h.get("role") == "assistant" else "user"
+                oai_messages.append({"role": role, "content": str(h.get("text", ""))[:400]})
+            oai_messages.append({"role": "user", "content": message})
+            response = _openai_api_call(oai_messages, max_tokens=400)
             if user_id:
                 topic = _detect_ai_topic(message)
                 db_exec("INSERT INTO ai_logs (user_id, message, topic, created_at) VALUES (?,?,?,?)",
@@ -2832,10 +2863,10 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, src
 
 # --- ГОЛОВНИЙ ОБРОБНИК ПОВІДОМЛЕНЬ ---
 # ── GEMINI AI ─────────────────────────────────────────────────────────────────
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 _ai_cooldown: dict = {}
-GEMINI_COOLDOWN_SEC = 10
-GEMINI_SYSTEM_PROMPT = """Ти — AI-помічник магазину UC Shop (PUBG Mobile). Відповідай ЛИШЕ українською мовою.
+AI_COOLDOWN_SEC = 5
+AI_SYSTEM_PROMPT = """Ти — AI-помічник магазину UC Shop (PUBG Mobile). Відповідай ЛИШЕ українською мовою.
 
 Інформація про магазин:
 — UC (ігрова валюта PUBG Mobile):
@@ -2844,6 +2875,7 @@ GEMINI_SYSTEM_PROMPT = """Ти — AI-помічник магазину UC Shop 
 — Prime підписки: 1 міс — 45 грн, 3 міс — 130 грн, 6 міс — 250 грн, 12 міс — 500 грн
 — Prime Plus: 1 міс — 410 грн, 3 міс — 1200 грн, 6 міс — 2400 грн, 12 міс — 4730 грн
 — Набори Підйом: спеціальні акційні набори (купуються лише 1 раз)
+— Старі подарки Telegram: Пасхальний, 1 Квітня, Патрика, 8 Березня, Валентина, Серце Валентина, Новорічний, Ялинка — по 50 грн
 
 Як купити: команда /shop або кнопка "🛍 Магазин" → обери категорію → введи ігровий ID → оплати карткою → натисни "✅ Я оплатив"
 Оплата: банківська карта (Monobank/PrivatBank)
@@ -2863,48 +2895,48 @@ ADMIN_ADVISOR_PROMPT = """Ти — AI-консультант для власни
 
 Бот вже має:
 - Магазин UC (від 30 до 32400 UC), Prime та Prime Plus підписки, Набори Підйом
+- Старі подарки Telegram (Пасхальний, 1 Квітня та інші — по 50 грн)
 - Міні-додаток (Web App) з повним інтерфейсом
 - Систему тікетів з чатом та рейтингом 1-5 зірок
 - Пуш-сповіщення, систему балів та нагород
 - Колесо фортуни, промокоди, реферальну систему
 - Досягнення, ТОП донатерів, відгуки, розсилки
 - Статистику, контроль цін, бан юзерів, кошик, профілі
-- AI-помічник для юзерів (відповідає на питання)
+- AI-помічник для юзерів на базі ChatGPT
 
 Твоя роль: допомагати власнику покращувати бота — пропонуй нові фічі, маркетингові ідеї, акції, UX покращення що підвищать продажі та залученість.
 Правила: відповідай ЛИШЕ українською, будь конкретним і практичним, якщо пропонуєш фічу — поясни користь і як реалізувати.
 """
 
-def _gemini_api_call(contents: list, max_tokens: int = 400) -> str:
-    if not GEMINI_API_KEY:
+def _openai_api_call(messages: list, max_tokens: int = 400) -> str:
+    if not OPENAI_API_KEY:
         return "❌ AI-помічник тимчасово недоступний."
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={GEMINI_API_KEY}"
+    url = "https://api.openai.com/v1/chat/completions"
     payload = json.dumps({
-        "contents": contents,
-        "generationConfig": {"temperature": 0.7, "maxOutputTokens": max_tokens}
+        "model": "gpt-4o-mini",
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": max_tokens
     }).encode("utf-8")
-    for attempt in range(3):
-        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except urllib.error.HTTPError as e:
-            if e.code == 429:
-                if attempt < 2:
-                    logging.warning(f"Gemini 429 rate limit, retry {attempt+1}/2...")
-                    time.sleep(2 + attempt * 2)
-                    continue
-                return "⏳ AI зараз перевантажений — надто багато запитів. Спробуй через 1-2 хвилини."
-            body = ""
-            try: body = e.read().decode()[:200]
-            except: pass
-            logging.warning(f"Gemini HTTP {e.code}: {body}")
-            return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
-        except Exception as e:
-            logging.warning(f"Gemini API error: {e}")
-            return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
-    return "⏳ AI зараз перевантажений. Спробуй через хвилину."
+    req = urllib.request.Request(url, data=payload, headers={
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENAI_API_KEY}"
+    }, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            return result["choices"][0]["message"]["content"].strip()
+    except urllib.error.HTTPError as e:
+        body = ""
+        try: body = e.read().decode()[:200]
+        except: pass
+        logging.warning(f"OpenAI HTTP {e.code}: {body}")
+        if e.code == 429:
+            return "⏳ AI зараз перевантажений — надто багато запитів. Спробуй через хвилину."
+        return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
+    except Exception as e:
+        logging.warning(f"OpenAI API error: {e}")
+        return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
 
 def _detect_ai_topic(text: str) -> str:
     t = text.lower()
@@ -2918,15 +2950,18 @@ def _detect_ai_topic(text: str) -> str:
         return 'Підтримка'
     return 'Інше'
 
-def _gemini_sync_call(user_message: str) -> str:
-    contents = [{"role": "user", "parts": [{"text": GEMINI_SYSTEM_PROMPT + "\n\nПитання користувача: " + user_message}]}]
-    return _gemini_api_call(contents)
+def _openai_sync_call(user_message: str) -> str:
+    messages = [
+        {"role": "system", "content": AI_SYSTEM_PROMPT},
+        {"role": "user", "content": user_message}
+    ]
+    return _openai_api_call(messages)
 
-async def gemini_reply(user_message: str) -> str:
+async def openai_reply(user_message: str) -> str:
     try:
-        return await asyncio.to_thread(_gemini_sync_call, user_message)
+        return await asyncio.to_thread(_openai_sync_call, user_message)
     except Exception as e:
-        logging.warning(f"gemini_reply error: {e}")
+        logging.warning(f"openai_reply error: {e}")
         return "❌ Помилка AI. Зверніться до підтримки @Manager_Nezuko"
 
 async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2939,7 +2974,7 @@ async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     question = " ".join(context.args)
     await context.bot.send_chat_action(update.effective_chat.id, "typing")
-    response = await gemini_reply(question)
+    response = await openai_reply(question)
     await update.message.reply_text(f"🤖 {response}")
 
 async def aichat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2959,8 +2994,8 @@ async def aichat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     question = " ".join(context.args)
     await context.bot.send_chat_action(update.effective_chat.id, "typing")
-    contents = [{"role": "user", "parts": [{"text": ADMIN_ADVISOR_PROMPT + "\n\nПитання: " + question}]}]
-    response = await asyncio.to_thread(_gemini_api_call, contents, 700)
+    msgs = [{"role": "system", "content": ADMIN_ADVISOR_PROMPT}, {"role": "user", "content": question}]
+    response = await asyncio.to_thread(_openai_api_call, msgs, 700)
     await update.message.reply_text(f"🤖 {response}")
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -3283,6 +3318,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         ); return
 
+    if text == "🎁 Старі подарки Telegram":
+        gift_price = get_pack_price(list(TG_GIFTS.keys())[0])
+        msg = f"🎁 *Старі подарки Telegram*\n\n_Ці подарки більше не продаються в Telegram — колекційні!\nЦіна кожного: {gift_price} грн_\n\nОбери подарунок:"
+        kb = [[g] for g in TG_GIFTS.keys()]
+        kb.append(["🔙 Назад"])
+        await update.message.reply_text(msg, reply_markup=ReplyKeyboardMarkup(kb, resize_keyboard=True), parse_mode="Markdown")
+        return
+
     if text == "💖 Підтримати бота":
         btns = InlineKeyboardMarkup(
             [[InlineKeyboardButton(f"💳 {a} грн", callback_data=f"donate_amount_{a}") for a in DONATE_AMOUNTS[:3]],
@@ -3448,18 +3491,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[uid] = None
         return
 
-    # ── AI-помічник (Gemini) — відповідає на всі нерозпізнані повідомлення ─────
-    if GEMINI_API_KEY and not is_admin(uid):
+    # ── AI-помічник (ChatGPT) — відповідає на всі нерозпізнані повідомлення ─────
+    if OPENAI_API_KEY and not is_admin(uid):
         now = time.time()
         last = _ai_cooldown.get(uid, 0)
-        if now - last < GEMINI_COOLDOWN_SEC:
-            wait = int(GEMINI_COOLDOWN_SEC - (now - last)) + 1
+        if now - last < AI_COOLDOWN_SEC:
+            wait = int(AI_COOLDOWN_SEC - (now - last)) + 1
             await update.message.reply_text(f"⏳ Зачекай {wait} сек перед наступним запитом до AI.")
             return
         _ai_cooldown[uid] = now
         try:
             await context.bot.send_chat_action(update.effective_chat.id, "typing")
-            response = await gemini_reply(text)
+            response = await openai_reply(text)
             topic = _detect_ai_topic(text)
             db_exec("INSERT INTO ai_logs (user_id, message, topic, created_at) VALUES (?,?,?,?)",
                     (uid, text[:200], topic, created_at_now()))
