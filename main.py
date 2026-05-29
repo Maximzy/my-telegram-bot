@@ -420,31 +420,50 @@ def _rl_allow(key: str, max_calls: int, window_sec: int) -> bool:
         bucket.append(now)
         return True
 
+def _is_internal_ip(ip: str) -> bool:
+    """Return True if the IP is a private/internal address (e.g. Replit proxy)."""
+    return (
+        ip.startswith("127.") or
+        ip.startswith("10.") or
+        ip.startswith("192.168.") or
+        ip == "unknown" or
+        (ip.startswith("172.") and any(
+            ip.startswith(f"172.{i}.") for i in range(16, 32)
+        ))
+    )
+
 def _rl_admin_check(ip: str, password: str) -> tuple:
     """Admin password check with brute-force lockout.
-    Returns (ok: bool, error: str)."""
+    Returns (ok: bool, error: str).
+    Internal/proxy IPs (Replit) are not subject to IP lockout."""
     now = time.time()
-    with _rl_lock:
-        if ip in _rl_admin_lockout and now < _rl_admin_lockout[ip]:
-            wait = int(_rl_admin_lockout[ip] - now)
-            return False, f"IP заблоковано. Зачекайте {wait} сек."
-        fails = _rl_admin_fails[ip]
-        fails[:] = [t for t in fails if now - t < 300]
-        if len(fails) >= 5:
-            _rl_admin_lockout[ip] = now + 900  # 15-хвилинне блокування
-            _rl_admin_fails[ip] = []
-            logging.warning(f"[SECURITY] Admin brute-force lockout: {ip}")
-            return False, "Забагато невдалих спроб. IP заблоковано на 15 хвилин."
+    internal = _is_internal_ip(ip)
+    if not internal:
+        with _rl_lock:
+            if ip in _rl_admin_lockout and now < _rl_admin_lockout[ip]:
+                wait = int(_rl_admin_lockout[ip] - now)
+                return False, f"IP заблоковано. Зачекайте {wait} сек."
+            fails = _rl_admin_fails[ip]
+            fails[:] = [t for t in fails if now - t < 300]
+            if len(fails) >= 5:
+                _rl_admin_lockout[ip] = now + 900  # 15-хвилинне блокування
+                _rl_admin_fails[ip] = []
+                logging.warning(f"[SECURITY] Admin brute-force lockout: {ip}")
+                return False, "Забагато невдалих спроб. IP заблоковано на 15 хвилин."
 
     ok = _hmac_mod.compare_digest(str(password), ADMIN_PASSWORD)
-    with _rl_lock:
-        if ok:
-            _rl_admin_fails[ip] = []
-        else:
-            _rl_admin_fails[ip].append(time.time())
-            remaining = max(0, 5 - len(_rl_admin_fails[ip]))
-            logging.warning(f"[SECURITY] Failed admin login from {ip}, remaining attempts: {remaining}")
-            return False, f"Невірний пароль. Залишилось спроб: {remaining}"
+    if not internal:
+        with _rl_lock:
+            if ok:
+                _rl_admin_fails[ip] = []
+            else:
+                _rl_admin_fails[ip].append(time.time())
+                remaining = max(0, 5 - len(_rl_admin_fails[ip]))
+                logging.warning(f"[SECURITY] Failed admin login from {ip}, remaining attempts: {remaining}")
+                return False, f"Невірний пароль. Залишилось спроб: {remaining}"
+    else:
+        if not ok:
+            return False, "Невірний пароль."
     return True, ""
 
 def _get_client_ip(handler) -> str:
@@ -3565,6 +3584,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ── AI-помічник (Gemini) — відповідає на всі нерозпізнані повідомлення ─────
+    # Якщо користувач знаходиться в активному стані очікування вводу —
+    # не передавати в AI, а нагадати що потрібно ввести.
+    if state is not None:
+        await update.message.reply_text(
+            "⬆️ Будь ласка, введіть відповідь на попереднє запитання або натисніть /start щоб почати заново.",
+            reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)
+        )
+        return
+
     if GEMINI_API_KEY and not is_admin(uid):
         now = time.time()
         last = _ai_cooldown.get(uid, 0)
@@ -3585,6 +3613,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception as e:
             logging.warning(f"AI reply send error: {e}")
+    elif not is_admin(uid):
+        await update.message.reply_text(
+            "Не розумію команду. Скористайтесь меню нижче або введіть /start.",
+            reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)
+        )
 
 
 # --- CALLBACK ОБРОБНИК ---
