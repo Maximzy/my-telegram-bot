@@ -93,6 +93,14 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 .category-card:active{border-color:var(--acc);box-shadow:0 0 20px rgba(255,45,120,.25);transform:scale(.96)}
 .category-icon{font-size:36px;margin-bottom:8px;display:block}
 .category-label{font-size:13px;font-weight:800;color:var(--text)}
+.group-card{position:relative;border-radius:20px;overflow:hidden;height:180px;cursor:pointer;margin-bottom:14px;transition:transform .18s,box-shadow .18s}
+.group-card:active{transform:scale(.97);box-shadow:0 0 28px rgba(255,45,120,.35)}
+.group-card-inner{position:absolute;bottom:0;left:0;right:0;padding:16px 18px;background:linear-gradient(0,rgba(0,0,0,.88) 0%,rgba(0,0,0,.35) 60%,transparent 100%)}
+.group-card-title{font-size:22px;font-weight:900;color:#fff;margin-bottom:4px;text-shadow:0 2px 8px rgba(0,0,0,.5)}
+.group-card-sub{font-size:12px;color:rgba(255,255,255,.72);font-weight:600}
+.subcat-card{padding:28px 12px!important}
+.subcat-card .category-icon,.subcat-icon{font-size:56px;margin-bottom:10px;display:block}
+.subcat-card .category-label,.subcat-label{font-size:15px;font-weight:800;color:var(--text)}
 .pack-item{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:border-color .15s,background .15s,transform .15s;margin-bottom:8px}
 .pack-item:active{border-color:var(--acc);background:var(--card2);transform:scale(.98)}
 .pack-name{font-size:14px;font-weight:700}
@@ -447,59 +455,33 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 <!-- ═══ TAB: МАГАЗИН ═══ -->
 <div id="tab-shop" class="tab active">
   <div class="page" style="padding-top:12px">
-    <!-- Step 1 – Categories -->
+    <!-- Step 1 – Group selection -->
     <div id="shopCats">
       <div class="section-title">Оберіть категорію</div>
-      <!-- PUBG + TG Gift hero banners -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-        <div onclick="showPacks('uc')" style="position:relative;border-radius:16px;overflow:hidden;height:110px;cursor:pointer;background:#0a1628;border:1px solid rgba(59,130,246,.35)">
-          <img src="/nezuko_pubg_banner.png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.6" draggable="false">
-          <div style="position:absolute;bottom:0;left:0;right:0;padding:8px 10px;background:linear-gradient(0,rgba(0,0,0,.75),transparent)">
-            <div style="font-size:12px;font-weight:800;color:#fff">🔫 PUBG Mobile</div>
-            <div style="font-size:9px;color:rgba(255,255,255,.65)">UC · Prime · Підйом</div>
-          </div>
-        </div>
-        <div onclick="showGifts()" style="position:relative;border-radius:16px;overflow:hidden;height:110px;cursor:pointer;background:#1a0a2e;border:1px solid rgba(255,45,120,.3)">
-          <img src="/nezuko_tg_gifts_banner.png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.6" draggable="false">
-          <div style="position:absolute;bottom:0;left:0;right:0;padding:8px 10px;background:linear-gradient(0,rgba(60,0,40,.8),transparent)">
-            <div style="font-size:12px;font-weight:800;color:#fff">🧸 Telegram</div>
-            <div style="font-size:9px;color:rgba(255,255,255,.65)">Старі подарки</div>
-          </div>
+      <!-- PUBG group card -->
+      <div class="group-card" onclick="showGroup('pubg')" style="background:#071220;border:1px solid rgba(59,130,246,.4)">
+        <img src="/nezuko_pubg_banner.png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.75" draggable="false">
+        <div class="group-card-inner">
+          <div class="group-card-title">🔫 PUBG Mobile</div>
+          <div class="group-card-sub">UC · Prime · Prime Plus · Набори Підйом</div>
         </div>
       </div>
-      <div class="category-grid" style="margin-bottom:10px">
-        <div class="category-card" onclick="showPacks('uc')">
-          <div class="category-icon"><img src="/uc_icon.png" style="width:48px;height:48px;object-fit:contain;filter:drop-shadow(0 0 8px #ffd16699)" draggable="false"></div>
-          <div class="category-label">UC</div>
-        </div>
-        <div class="category-card" onclick="showPacks('prime')">
-          <div class="category-icon"><img src="/prime_crown.png" style="width:48px;height:48px;object-fit:contain;filter:drop-shadow(0 0 8px #ffd16699)" draggable="false"></div>
-          <div class="category-label">Prime</div>
-        </div>
-        <div class="category-card" style="grid-column:1/-1;position:relative" onclick="showPacks('primeplus')">
-          <div class="category-icon"><img src="/prime_crown.png" style="width:48px;height:48px;object-fit:contain;filter:drop-shadow(0 0 12px #ffd166cc) drop-shadow(0 0 4px #fff8)" draggable="false"></div>
-          <div class="category-label">Prime Plus</div>
-          <span class="hl" style="position:absolute;bottom:5px;right:10px;font-size:12px;transform:rotate(8deg)">N</span>
-        </div>
-        <div class="category-card" style="grid-column:1/-1;background:linear-gradient(135deg,#1a1000,#251a00);border-color:rgba(255,209,102,.2)" onclick="showPacks('rise')">
-          <div class="category-icon"><img src="/crate_icon.png" style="width:52px;height:52px;object-fit:contain;filter:drop-shadow(0 0 8px rgba(255,150,0,.55))"></div>
-          <div class="category-label" style="color:#ffd166">Набори Підйом</div>
-        </div>
-        <div class="category-card" style="background:linear-gradient(135deg,#120d22,#1a1030);border-color:rgba(180,130,255,.2)" onclick="showTgShop('stars')">
-          <div class="category-icon" style="font-size:40px;margin-bottom:8px;filter:drop-shadow(0 0 10px rgba(255,210,80,.6))">⭐</div>
-          <div class="category-label" style="color:#e8c840">Зірки Telegram</div>
-        </div>
-        <div class="category-card" style="background:linear-gradient(135deg,#0a1020,#111830);border-color:rgba(90,150,255,.2)" onclick="showTgShop('premium')">
-          <div class="category-icon" style="font-size:40px;margin-bottom:8px;filter:drop-shadow(0 0 10px rgba(90,150,255,.6))">💎</div>
-          <div class="category-label" style="color:#7ab4ff">Telegram Premium</div>
-        </div>
-        <div class="category-card" style="grid-column:1/-1;background:linear-gradient(135deg,#1a0a2e,#2d1050);border-color:rgba(255,45,120,.25)" onclick="showGifts()">
-          <div class="category-icon" style="font-size:40px;margin-bottom:8px;filter:drop-shadow(0 0 10px rgba(255,45,120,.6))">🧸</div>
-          <div class="category-label" style="color:#ff6ba8">Старі подарки Telegram</div>
+      <!-- Telegram group card -->
+      <div class="group-card" onclick="showGroup('tg')" style="background:linear-gradient(135deg,#07132a,#0d1f4a);border:1px solid rgba(90,150,255,.4)">
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:22px;font-size:58px;opacity:.22;padding-bottom:26px;pointer-events:none">⭐💎🧸</div>
+        <div class="group-card-inner" style="background:linear-gradient(0,rgba(0,15,50,.92) 0%,rgba(0,10,40,.3) 65%,transparent 100%)">
+          <div class="group-card-title" style="color:#7ab4ff">✈️ Telegram</div>
+          <div class="group-card-sub">Зірки · Premium · Старі подарки</div>
         </div>
       </div>
       <div class="section-title">Популярне</div>
       <div id="popularList"></div>
+    </div>
+
+    <!-- Step 1b – Sub-categories -->
+    <div id="shopSubCats" style="display:none">
+      <div class="back-btn" onclick="backToGroups()">← Назад</div>
+      <div id="subCatsList"></div>
     </div>
 
     <!-- Step 2 – Pack list -->
@@ -1702,12 +1684,71 @@ async function showPacks(cat) {
      </div>`;
   }).join('');
   document.getElementById('shopCats').style.display = 'none';
+  document.getElementById('shopSubCats').style.display = 'none';
   showWithAnim(document.getElementById('shopPacks'));
+}
+
+let curGroup = '';
+
+function showGroup(group) {
+  curGroup = group;
+  const list = document.getElementById('subCatsList');
+  if (group === 'pubg') {
+    list.innerHTML = `
+      <div class="section-title" style="margin-top:4px">PUBG Mobile</div>
+      <div class="category-grid" style="margin-bottom:10px">
+        <div class="category-card subcat-card" onclick="showPacks('uc')">
+          <div class="subcat-icon"><img src="/uc_icon.png" style="width:64px;height:64px;object-fit:contain;filter:drop-shadow(0 0 10px #ffd16699)" draggable="false"></div>
+          <div class="subcat-label">UC</div>
+        </div>
+        <div class="category-card subcat-card" onclick="showPacks('prime')">
+          <div class="subcat-icon"><img src="/prime_crown.png" style="width:64px;height:64px;object-fit:contain;filter:drop-shadow(0 0 10px #ffd16699)" draggable="false"></div>
+          <div class="subcat-label">Prime</div>
+        </div>
+        <div class="category-card subcat-card" style="grid-column:1/-1;position:relative" onclick="showPacks('primeplus')">
+          <div class="subcat-icon"><img src="/prime_crown.png" style="width:64px;height:64px;object-fit:contain;filter:drop-shadow(0 0 14px #ffd166cc) drop-shadow(0 0 4px #fff8)" draggable="false"></div>
+          <div class="subcat-label">Prime Plus</div>
+        </div>
+        <div class="category-card subcat-card" style="grid-column:1/-1;background:linear-gradient(135deg,#1a1000,#251a00);border-color:rgba(255,209,102,.2)" onclick="showPacks('rise')">
+          <div class="subcat-icon"><img src="/crate_icon.png" style="width:72px;height:72px;object-fit:contain;filter:drop-shadow(0 0 10px rgba(255,150,0,.55))"></div>
+          <div class="subcat-label" style="color:#ffd166">Набори Підйом</div>
+        </div>
+      </div>`;
+  } else {
+    list.innerHTML = `
+      <div class="section-title" style="margin-top:4px">Telegram</div>
+      <div class="category-grid" style="margin-bottom:10px">
+        <div class="category-card subcat-card" style="background:linear-gradient(135deg,#120d22,#1a1030);border-color:rgba(180,130,255,.2)" onclick="showTgShop('stars')">
+          <div class="subcat-icon" style="font-size:58px;filter:drop-shadow(0 0 14px rgba(255,210,80,.7))">⭐</div>
+          <div class="subcat-label" style="color:#e8c840">Зірки Telegram</div>
+        </div>
+        <div class="category-card subcat-card" style="background:linear-gradient(135deg,#0a1020,#111830);border-color:rgba(90,150,255,.2)" onclick="showTgShop('premium')">
+          <div class="subcat-icon" style="font-size:58px;filter:drop-shadow(0 0 14px rgba(90,150,255,.7))">💎</div>
+          <div class="subcat-label" style="color:#7ab4ff">Telegram Premium</div>
+        </div>
+        <div class="category-card subcat-card" style="grid-column:1/-1;background:linear-gradient(135deg,#1a0a2e,#2d1050);border-color:rgba(255,45,120,.25)" onclick="showGifts()">
+          <div class="subcat-icon" style="font-size:58px;filter:drop-shadow(0 0 14px rgba(255,45,120,.7))">🧸</div>
+          <div class="subcat-label" style="color:#ff6ba8">Старі подарки Telegram</div>
+        </div>
+      </div>`;
+  }
+  document.getElementById('shopCats').style.display = 'none';
+  showWithAnim(document.getElementById('shopSubCats'));
+}
+
+function backToGroups() {
+  document.getElementById('shopSubCats').style.display = 'none';
+  curGroup = '';
+  showWithAnim(document.getElementById('shopCats'));
 }
 
 function backToCats() {
   document.getElementById('shopPacks').style.display = 'none';
-  showWithAnim(document.getElementById('shopCats'));
+  if (curGroup) {
+    showWithAnim(document.getElementById('shopSubCats'));
+  } else {
+    showWithAnim(document.getElementById('shopCats'));
+  }
 }
 
 async function selectPack(p) {
@@ -1726,6 +1767,7 @@ async function selectPack(p) {
   }
   document.getElementById('shopPacks').style.display = 'none';
   document.getElementById('shopCats').style.display = 'none';
+  document.getElementById('shopSubCats').style.display = 'none';
   const cartBtn = document.getElementById('addToCartBtn');
   if (cartBtn) cartBtn.style.display = curCat === 'uc' ? '' : 'none';
   showWithAnim(document.getElementById('shopId'));
@@ -1913,6 +1955,7 @@ async function showTgShop(cat) {
   curTgCat = cat;
   curTgPack = null;
   document.getElementById('shopCats').style.display = 'none';
+  document.getElementById('shopSubCats').style.display = 'none';
   document.getElementById('tgStarsSection').style.display = cat === 'stars' ? '' : 'none';
   document.getElementById('tgPremiumSection').style.display = cat === 'premium' ? '' : 'none';
   document.getElementById('starsPriceCalc').style.display = 'none';
@@ -1990,13 +2033,17 @@ function goToTgPay() {
 
 function backTgToCats() {
   document.getElementById('shopTg').style.display = 'none';
-  showWithAnim(document.getElementById('shopCats'));
+  if (curGroup) {
+    showWithAnim(document.getElementById('shopSubCats'));
+  } else {
+    showWithAnim(document.getElementById('shopCats'));
+  }
 }
 
 /* ── GIFTS ── */
 let curGiftName = '', curGiftImg = '';
 function showGifts() {
-  ['shopCats','shopPacks','shopId','shopMix','shopPay','shopDone','shopTg','shopTgPay','shopGiftPay'].forEach(id => {
+  ['shopCats','shopSubCats','shopPacks','shopId','shopMix','shopPay','shopDone','shopTg','shopTgPay','shopGiftPay'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = 'none';
   });
   curGiftName = ''; curGiftImg = '';
@@ -2007,7 +2054,11 @@ function showGifts() {
 }
 function backGiftsToCats() {
   document.getElementById('shopGifts').style.display = 'none';
-  showWithAnim(document.getElementById('shopCats'));
+  if (curGroup) {
+    showWithAnim(document.getElementById('shopSubCats'));
+  } else {
+    showWithAnim(document.getElementById('shopCats'));
+  }
 }
 function selectGift(name, imgFile) {
   curGiftName = name; curGiftImg = '/' + imgFile;
