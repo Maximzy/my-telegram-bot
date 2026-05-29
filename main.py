@@ -520,7 +520,7 @@ def _ai_ticket_auto_reply(ticket_id, category, user_chat_id, delay=50):
         time.sleep(delay)
         if is_admin_online():
             return
-        if not OPENAI_API_KEY:
+        if not GEMINI_API_KEY:
             return
         try:
             ticket = db_query_one("SELECT status FROM tickets WHERE id=?", (ticket_id,))
@@ -537,7 +537,7 @@ def _ai_ticket_auto_reply(ticket_id, category, user_chat_id, delay=50):
                 f"Якщо питання складне — скажи що менеджер відповість найближчим часом."
             )
             messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
-            response = _openai_api_call(messages, max_tokens=400)
+            response = _gemini_api_call(messages, max_tokens=400)
             if not response or response.startswith("❌"):
                 return
             ai_note = response + "\n\n_(🤖 Автовідповідь AI — менеджер підтвердить найближчим часом)_"
@@ -1614,7 +1614,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
             for h in (history[-8:] if len(history) > 8 else history):
                 oai_msgs.append({"role": "assistant" if h.get("role") == "assistant" else "user", "content": str(h.get("text", ""))[:600]})
             oai_msgs.append({"role": "user", "content": message})
-            response = _openai_api_call(oai_msgs, max_tokens=700)
+            response = _gemini_api_call(oai_msgs, max_tokens=700)
             _json_response(self, {"ok": True, "response": response}); return
 
         if path == "/api/user/ai-chat":
@@ -1627,14 +1627,14 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 history = []
             if not message:
                 _json_response(self, {"ok": False, "error": "Немає повідомлення"}); return
-            if not OPENAI_API_KEY:
+            if not GEMINI_API_KEY:
                 _json_response(self, {"ok": False, "error": "AI тимчасово недоступний"}); return
             oai_messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}]
             for h in (history[-6:] if len(history) > 6 else history):
                 role = "assistant" if h.get("role") == "assistant" else "user"
                 oai_messages.append({"role": role, "content": str(h.get("text", ""))[:400]})
             oai_messages.append({"role": "user", "content": message})
-            response = _openai_api_call(oai_messages, max_tokens=400)
+            response = _gemini_api_call(oai_messages, max_tokens=400)
             if user_id:
                 topic = _detect_ai_topic(message)
                 db_exec("INSERT INTO ai_logs (user_id, message, topic, created_at) VALUES (?,?,?,?)",
@@ -2884,15 +2884,15 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, src
 
 # --- ГОЛОВНИЙ ОБРОБНИК ПОВІДОМЛЕНЬ ---
 # ── GEMINI AI ─────────────────────────────────────────────────────────────────
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 _ai_cooldown: dict = {}
 AI_COOLDOWN_SEC = 5
 AI_SYSTEM_PROMPT = """Ти — AI-помічник магазину UC Shop (PUBG Mobile). Відповідай ЛИШЕ українською мовою.
 
 Інформація про магазин:
 — UC (ігрова валюта PUBG Mobile):
-  30 UC — 19 грн, 60 UC — 40 грн, 120 UC — 78 грн, 180 UC — 113 грн,
-  325 UC — 195 грн, 660 UC — 389 грн, та більші пакети до 32400 UC
+  30 UC — 19 грн, 60 UC — 40 грн, 120 UC — 78 грн, 180 UC — 111 грн,
+  325 UC — 195 грн, 660 UC — 389 грн, та більші пакети до 81000 UC
 — Prime підписки: 1 міс — 45 грн, 3 міс — 130 грн, 6 міс — 250 грн, 12 міс — 500 грн
 — Prime Plus: 1 міс — 410 грн, 3 міс — 1200 грн, 6 міс — 2400 грн, 12 міс — 4730 грн
 — Набори Підйом: спеціальні акційні набори (купуються лише 1 раз)
@@ -2915,7 +2915,7 @@ AI_SYSTEM_PROMPT = """Ти — AI-помічник магазину UC Shop (PUB
 ADMIN_ADVISOR_PROMPT = """Ти — AI-консультант для власника Telegram-бота магазину UC Shop (PUBG Mobile).
 
 Бот вже має:
-- Магазин UC (від 30 до 32400 UC), Prime та Prime Plus підписки, Набори Підйом
+- Магазин UC (від 30 до 81000 UC), Prime та Prime Plus підписки, Набори Підйом
 - Старі подарки Telegram (Пасхальний, 1 Квітня та інші — по 50 грн)
 - Міні-додаток (Web App) з повним інтерфейсом
 - Систему тікетів з чатом та рейтингом 1-5 зірок
@@ -2923,40 +2923,45 @@ ADMIN_ADVISOR_PROMPT = """Ти — AI-консультант для власни
 - Колесо фортуни, промокоди, реферальну систему
 - Досягнення, ТОП донатерів, відгуки, розсилки
 - Статистику, контроль цін, бан юзерів, кошик, профілі
-- AI-помічник для юзерів на базі ChatGPT
+- AI-помічник для юзерів на базі Google Gemini
 
 Твоя роль: допомагати власнику покращувати бота — пропонуй нові фічі, маркетингові ідеї, акції, UX покращення що підвищать продажі та залученість.
 Правила: відповідай ЛИШЕ українською, будь конкретним і практичним, якщо пропонуєш фічу — поясни користь і як реалізувати.
 """
 
-def _openai_api_call(messages: list, max_tokens: int = 400) -> str:
-    if not OPENAI_API_KEY:
+def _gemini_api_call(messages: list, max_tokens: int = 400) -> str:
+    if not GEMINI_API_KEY:
         return "❌ AI-помічник тимчасово недоступний."
-    url = "https://api.openai.com/v1/chat/completions"
+    system_text = ""
+    user_parts = []
+    for m in messages:
+        if m["role"] == "system":
+            system_text = m["content"]
+        elif m["role"] == "user":
+            user_parts.append(m["content"])
+        elif m["role"] == "assistant":
+            pass
+    combined_user = (system_text + "\n\n" if system_text else "") + "\n".join(user_parts)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
     payload = json.dumps({
-        "model": "gpt-4o-mini",
-        "messages": messages,
-        "temperature": 0.7,
-        "max_tokens": max_tokens
+        "contents": [{"parts": [{"text": combined_user}]}],
+        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.7}
     }).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers={
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENAI_API_KEY}"
-    }, method="POST")
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=25) as resp:
             result = json.loads(resp.read().decode("utf-8"))
-            return result["choices"][0]["message"]["content"].strip()
+            return result["candidates"][0]["content"]["parts"][0]["text"].strip()
     except urllib.error.HTTPError as e:
         body = ""
-        try: body = e.read().decode()[:200]
+        try: body = e.read().decode()[:300]
         except: pass
-        logging.warning(f"OpenAI HTTP {e.code}: {body}")
+        logging.warning(f"Gemini HTTP {e.code}: {body}")
         if e.code == 429:
             return "⏳ AI зараз перевантажений — надто багато запитів. Спробуй через хвилину."
         return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
     except Exception as e:
-        logging.warning(f"OpenAI API error: {e}")
+        logging.warning(f"Gemini API error: {e}")
         return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
 
 def _detect_ai_topic(text: str) -> str:
@@ -2971,18 +2976,18 @@ def _detect_ai_topic(text: str) -> str:
         return 'Підтримка'
     return 'Інше'
 
-def _openai_sync_call(user_message: str) -> str:
+def _gemini_sync_call(user_message: str) -> str:
     messages = [
         {"role": "system", "content": AI_SYSTEM_PROMPT},
         {"role": "user", "content": user_message}
     ]
-    return _openai_api_call(messages)
+    return _gemini_api_call(messages)
 
 async def openai_reply(user_message: str) -> str:
     try:
-        return await asyncio.to_thread(_openai_sync_call, user_message)
+        return await asyncio.to_thread(_gemini_sync_call, user_message)
     except Exception as e:
-        logging.warning(f"openai_reply error: {e}")
+        logging.warning(f"gemini_reply error: {e}")
         return "❌ Помилка AI. Зверніться до підтримки @Manager_Nezuko"
 
 async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3016,7 +3021,7 @@ async def aichat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     question = " ".join(context.args)
     await context.bot.send_chat_action(update.effective_chat.id, "typing")
     msgs = [{"role": "system", "content": ADMIN_ADVISOR_PROMPT}, {"role": "user", "content": question}]
-    response = await asyncio.to_thread(_openai_api_call, msgs, 700)
+    response = await asyncio.to_thread(_gemini_api_call, msgs, 700)
     await update.message.reply_text(f"🤖 {response}")
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -3513,8 +3518,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[uid] = None
         return
 
-    # ── AI-помічник (ChatGPT) — відповідає на всі нерозпізнані повідомлення ─────
-    if OPENAI_API_KEY and not is_admin(uid):
+    # ── AI-помічник (Gemini) — відповідає на всі нерозпізнані повідомлення ─────
+    if GEMINI_API_KEY and not is_admin(uid):
         now = time.time()
         last = _ai_cooldown.get(uid, 0)
         if now - last < AI_COOLDOWN_SEC:
