@@ -333,6 +333,10 @@ ADMIN_OTP_TTL = 300  # 5 minutes
 _admin_last_activity: dict = {}
 ADMIN_SESSION_TTL = 1800  # 30 min inactivity = auto logout
 
+# Init-data-based admin sessions: token -> (user_id, expires_at)
+_admin_sessions: dict = {}
+ADMIN_INITDATA_SESSION_TTL = 8 * 3600  # 8 hours
+
 # Fake payment abuse tracker: uid -> [timestamps]
 _fake_pay_attempts: dict = collections.defaultdict(list)
 FAKE_PAY_MAX = 3
@@ -1856,11 +1860,44 @@ class PolicyHandler(BaseHTTPRequestHandler):
             _json_response(self, {"ok": True, "message": "Заявку надіслано! Адмін підтвердить і крутне колесо."}); return
 
         if path == "/api/admin/auth":
+            init_data = str(data.get("init_data", ""))
+            if init_data:
+                try:
+                    parsed = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
+                    received_hash = parsed.pop("hash", "")
+                    data_check = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+                    secret = _hmac_mod.new(b"WebAppData", TOKEN.encode(), _hashlib_mod.sha256).digest()
+                    computed = _hmac_mod.new(secret, data_check.encode(), _hashlib_mod.sha256).hexdigest()
+                    if not _hmac_mod.compare_digest(computed, received_hash):
+                        _json_response(self, {"ok": False, "error": "invalid hash"}); return
+                    user_str = parsed.get("user", "")
+                    user_obj = json.loads(user_str) if user_str else {}
+                    user_id = int(user_obj.get("id", 0))
+                    if not user_id or not is_admin(user_id):
+                        _json_response(self, {"ok": False, "error": "not admin"}); return
+                    token = secrets.token_hex(24)
+                    _admin_sessions[token] = (user_id, time.time() + ADMIN_INITDATA_SESSION_TTL)
+                    _json_response(self, {"ok": True, "token": token}); return
+                except Exception as e:
+                    _json_response(self, {"ok": False, "error": str(e)}); return
             pwd = str(data.get("password", ""))
             _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
             if _ok_adm:
                 _json_response(self, {"ok": True}); return
             _json_response(self, {"ok": False, "error": _err_adm}); return
+
+        if path == "/api/admin/verify-session":
+            token = str(data.get("token", ""))
+            if not token:
+                _json_response(self, {"ok": False}); return
+            session = _admin_sessions.get(token)
+            if session:
+                s_uid, s_exp = session
+                if time.time() < s_exp:
+                    _json_response(self, {"ok": True, "user_id": s_uid}); return
+                else:
+                    del _admin_sessions[token]
+            _json_response(self, {"ok": False}); return
 
         if path == "/api/admin/action":
             pwd = str(data.get("password", ""))
@@ -2200,9 +2237,18 @@ def is_admin(uid):
     return bool(db_query_one("SELECT id FROM admins WHERE id=?", (uid,)))
 
 def is_trusted_admin(user_id, password):
-    """Return True ONLY if password matches ADMIN_PASSWORD.
-    user_id alone is never sufficient — prevents ID-spoofing auth bypass."""
-    return _hmac_mod.compare_digest(str(password), ADMIN_PASSWORD)
+    """Return True if password matches ADMIN_PASSWORD OR is a valid init-data session token."""
+    if _hmac_mod.compare_digest(str(password), ADMIN_PASSWORD):
+        return True
+    # Check init-data session token
+    session = _admin_sessions.get(str(password))
+    if session:
+        s_uid, s_exp = session
+        if time.time() < s_exp:
+            return True
+        else:
+            del _admin_sessions[str(password)]
+    return False
 
 def is_trusted_admin_post(ip: str, password: str) -> tuple:
     """For POST admin endpoints: password check WITH brute-force protection.
