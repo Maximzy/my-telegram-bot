@@ -145,7 +145,7 @@ logging.info(f"База даних: {DB_PATH}")
 # --- ТОВАРИ ---
 PACKS = {
     "30 UC - 19 грн": 19, "60 UC - 40 грн": 40, "120 UC - 78 грн": 78,
-    "180 UC - 113 грн": 111, "325 UC - 195 грн": 195, "660 UC - 389 грн": 389,
+    "180 UC - 111 грн": 111, "325 UC - 195 грн": 195, "660 UC - 389 грн": 389,
     "1800 UC - 960 грн": 960, "3800 UC - 1909 грн": 1909, "8100 UC - 3840 грн": 3840,
     "16200 UC - 7599 грн": 7599, "24300 UC - 11399 грн": 11399, "32400 UC - 15399 грн": 15399,
     "40500 UC - 18999 грн": 18999, "81000 UC - 37900 грн": 37900
@@ -2234,6 +2234,19 @@ def get_pack_price(pack):
     m = re.search(r"(\d+)\s*грн", pack)
     return int(m.group(1)) if m else 0
 
+def dynamic_label(pack_key: str) -> str:
+    current_price = get_pack_price(pack_key)
+    updated = re.sub(r'-\s*\d+\s*грн$', f'- {current_price} грн', pack_key)
+    return updated
+
+def label_to_pack_key(label: str):
+    if label in ALL_PACKS:
+        return label
+    for key in ALL_PACKS:
+        if dynamic_label(key) == label:
+            return key
+    return None
+
 def status_text(s):
     return {"pending": "очікує виконання", "done": "виконано", "canceled": "відхилено"}.get(s, s)
 
@@ -3307,13 +3320,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg); return
 
     if text == "💸 Купити UC":
-        await update.message.reply_text("Оберіть пакет:", reply_markup=ReplyKeyboardMarkup([[p] for p in PACKS.keys()], resize_keyboard=True)); return
+        await update.message.reply_text("Оберіть пакет:", reply_markup=ReplyKeyboardMarkup([[dynamic_label(p)] for p in PACKS.keys()], resize_keyboard=True)); return
 
     if text == "👑 Prime":
-        await update.message.reply_text("Оберіть Prime:", reply_markup=ReplyKeyboardMarkup([[p] for p in PRIME_PACKS.keys()], resize_keyboard=True)); return
+        await update.message.reply_text("Оберіть Prime:", reply_markup=ReplyKeyboardMarkup([[dynamic_label(p)] for p in PRIME_PACKS.keys()], resize_keyboard=True)); return
 
     if text == "👑 Prime Plus":
-        await update.message.reply_text("Оберіть Prime Plus:", reply_markup=ReplyKeyboardMarkup([[p] for p in PRIME_PLUS_PACKS.keys()], resize_keyboard=True)); return
+        await update.message.reply_text("Оберіть Prime Plus:", reply_markup=ReplyKeyboardMarkup([[dynamic_label(p)] for p in PRIME_PLUS_PACKS.keys()], resize_keyboard=True)); return
 
     if text == "⭐️ Набори Підйом":
         await update.message.reply_text(
@@ -3322,7 +3335,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Перед покупкою перевірте чи він у вас куплений.\n"
             "Після — пишіть нам чи можна його купити 💸\n\n"
             "Оберіть набір:",
-            reply_markup=ReplyKeyboardMarkup([[p] for p in RISE_PACKS.keys()], resize_keyboard=True),
+            reply_markup=ReplyKeyboardMarkup([[dynamic_label(p)] for p in RISE_PACKS.keys()], resize_keyboard=True),
             parse_mode="Markdown"
         ); return
 
@@ -3366,9 +3379,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Вибір пакету ───────────────────────────────────────────────────────────
 
-    if text in ALL_PACKS:
-        price = get_pack_price(text)
-        user_states[uid] = {"pack": text, "step": "ID", "price": price}
+    _matched_pack = label_to_pack_key(text)
+    if _matched_pack:
+        price = get_pack_price(_matched_pack)
+        user_states[uid] = {"pack": _matched_pack, "step": "ID", "price": price}
         await update.message.reply_text(f"🎮 Введіть ваш ігровий ID:", reply_markup=ReplyKeyboardRemove()); return
 
     # ── Тікет: повідомлення від юзера ──────────────────────────────────────────
