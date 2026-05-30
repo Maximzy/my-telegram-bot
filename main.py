@@ -2967,9 +2967,32 @@ ADMIN_ADVISOR_PROMPT = """Ти — AI-консультант для власни
 Правила: відповідай ЛИШЕ українською, будь конкретним і практичним, якщо пропонуєш фічу — поясни користь і як реалізувати.
 """
 
+_gemini_global_lock = threading.Lock()
+_gemini_call_times: list = []   # sliding window of call timestamps
+GEMINI_RPM_LIMIT = 12           # stay safely under the 15 RPM free-tier cap
+
+def _gemini_global_allowed() -> bool:
+    """Return True and record the call if under the global RPM limit."""
+    now = time.time()
+    with _gemini_global_lock:
+        _gemini_call_times[:] = [t for t in _gemini_call_times if now - t < 60]
+        if len(_gemini_call_times) >= GEMINI_RPM_LIMIT:
+            return False
+        _gemini_call_times.append(now)
+        return True
+
+def _gemini_do_request(url: str, payload: bytes) -> str:
+    """Execute one Gemini HTTP request and return the text."""
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        result = json.loads(resp.read().decode("utf-8"))
+        return result["candidates"][0]["content"]["parts"][0]["text"].strip()
+
 def _gemini_api_call(messages: list, max_tokens: int = 400) -> str:
     if not GEMINI_API_KEY:
         return "❌ AI-помічник тимчасово недоступний."
+    if not _gemini_global_allowed():
+        return "⏳ AI зараз зайнятий — спробуй через 10–20 секунд."
     system_text = ""
     user_parts = []
     for m in messages:
@@ -2977,30 +3000,33 @@ def _gemini_api_call(messages: list, max_tokens: int = 400) -> str:
             system_text = m["content"]
         elif m["role"] == "user":
             user_parts.append(m["content"])
-        elif m["role"] == "assistant":
-            pass
     combined_user = (system_text + "\n\n" if system_text else "") + "\n".join(user_parts)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
     payload = json.dumps({
         "contents": [{"parts": [{"text": combined_user}]}],
         "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.7}
     }).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=25) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-            return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except urllib.error.HTTPError as e:
-        body = ""
-        try: body = e.read().decode()[:300]
-        except: pass
-        logging.warning(f"Gemini HTTP {e.code}: {body}")
-        if e.code == 429:
-            return "⏳ AI зараз перевантажений — надто багато запитів. Спробуй через хвилину."
-        return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
-    except Exception as e:
-        logging.warning(f"Gemini API error: {e}")
-        return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
+    for attempt in range(2):
+        try:
+            return _gemini_do_request(url, payload)
+        except urllib.error.HTTPError as e:
+            body = ""
+            try: body = e.read().decode()[:400]
+            except: pass
+            logging.warning(f"Gemini HTTP {e.code} (attempt {attempt+1}): {body}")
+            if e.code == 429:
+                if attempt == 0:
+                    time.sleep(8)   # wait and retry once
+                    continue
+                return "⏳ AI зараз зайнятий — спробуй через 20–30 секунд."
+            return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
+        except Exception as e:
+            logging.warning(f"Gemini API error (attempt {attempt+1}): {e}")
+            if attempt == 0:
+                time.sleep(3)
+                continue
+            return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
+    return "❌ AI-помічник зараз недоступний."
 
 def _detect_ai_topic(text: str) -> str:
     t = text.lower()
