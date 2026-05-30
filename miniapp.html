@@ -142,6 +142,12 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 .wheel-item-name{font-size:9px;font-weight:700;text-align:center;padding:0 4px;line-height:1.3}
 .wheel-center-line{position:absolute;top:0;bottom:0;left:calc(50% - 42px);width:84px;border-left:1px solid rgba(255,45,120,.2);border-right:1px solid rgba(255,45,120,.2);pointer-events:none;z-index:5}
 .spin-btn{width:100%;padding:14px;font-size:14px;font-weight:800;background:linear-gradient(135deg,var(--acc),#d4006a);color:#fff;border-radius:14px;border:none;cursor:pointer;margin-top:8px;box-shadow:0 4px 18px rgba(255,45,120,.4);letter-spacing:.2px}
+.calc-chip{background:var(--card2);border:1px solid var(--border);border-radius:20px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;color:var(--muted);transition:background .15s,color .15s,border-color .15s;user-select:none}
+.calc-chip:active{background:var(--acc);color:#fff;border-color:var(--acc)}
+.calc-row{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;background:var(--card2);border-radius:12px;margin-bottom:7px;border:1px solid var(--border);transition:opacity .25s,transform .25s}
+.calc-row-name{font-size:13px;font-weight:700;color:var(--text)}
+.calc-row-uc{font-size:11px;color:var(--muted);margin-top:2px}
+.calc-total-box{background:linear-gradient(135deg,rgba(255,45,120,.13),rgba(255,45,120,.04));border:1.5px solid rgba(255,45,120,.35);border-radius:16px;padding:18px 16px;margin-top:10px;text-align:center}
 .spin-btn:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
 .cooldown-text{text-align:center;font-size:12px;color:var(--muted);margin-top:6px;min-height:18px}
 .prizes-legend{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}
@@ -758,6 +764,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <div class="sub-tab" data-svc="points"><img src="/points_coin.png" style="width:15px;height:15px;object-fit:contain;vertical-align:middle;margin-right:3px"> Бали</div>
       <div class="sub-tab" data-svc="support">🆘 Підтримка</div>
       <div class="sub-tab" data-svc="ai">🤖 AI</div>
+      <div class="sub-tab" data-svc="calc">🧮 Калькулятор</div>
       <div class="sub-tab" data-svc="policy">📄 Політика</div>
       <div class="sub-tab" data-svc="help">ℹ️ Допомога</div>
     </div>
@@ -934,6 +941,28 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
           <button class="btn btn-sm" onclick="sendUserAiMsg()" style="height:38px;padding:0 14px">→</button>
         </div>
       </div>
+    </div>
+
+    <!-- Calculator -->
+    <div class="svc" id="svc-calc" style="display:none">
+      <div class="card" style="text-align:center;padding:20px 16px 16px">
+        <div style="font-size:40px;margin-bottom:8px">🧮</div>
+        <div style="font-size:17px;font-weight:800;margin-bottom:4px">UC Калькулятор</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6">Введіть бюджет — я знайду<br>найвигіднішу комбінацію паків</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="number" id="calcBudget" placeholder="Ваш бюджет (грн)" min="1" max="500000" inputmode="numeric" style="flex:1" onkeydown="if(event.key==='Enter')runCalc()">
+        <button class="btn" style="width:auto;padding:12px 20px;flex-shrink:0;border-radius:14px" onclick="runCalc()">→</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:11px">
+        <span class="calc-chip" onclick="setCalcBudget(100)">100 грн</span>
+        <span class="calc-chip" onclick="setCalcBudget(200)">200 грн</span>
+        <span class="calc-chip" onclick="setCalcBudget(500)">500 грн</span>
+        <span class="calc-chip" onclick="setCalcBudget(1000)">1 000 грн</span>
+        <span class="calc-chip" onclick="setCalcBudget(2000)">2 000 грн</span>
+        <span class="calc-chip" onclick="setCalcBudget(5000)">5 000 грн</span>
+      </div>
+      <div id="calcResult" style="margin-top:16px"></div>
     </div>
 
     <div class="svc" id="svc-policy" style="display:none">
@@ -2488,6 +2517,68 @@ async function loadReviews() {
       <div style="font-size:11px;font-weight:700;color:var(--acc);margin-bottom:4px">${esc(rv.user)}</div>
       <div style="font-size:13px;line-height:1.5">${esc(rv.text)}</div>
     </div>`).join('');
+}
+
+function setCalcBudget(v) {
+  document.getElementById('calcBudget').value = v;
+  runCalc();
+}
+
+async function runCalc() {
+  const budget = parseInt(document.getElementById('calcBudget').value);
+  const resEl = document.getElementById('calcResult');
+  if (!budget || budget < 1) { showNotif('Введіть суму в гривнях', 'error'); return; }
+  if (budget > 500000) { showNotif('Максимум 500 000 грн', 'error'); return; }
+  resEl.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  try {
+    const r = await api('/api/prices');
+    if (!r.ok) { resEl.innerHTML = '<div class="empty">Помилка завантаження цін</div>'; return; }
+    // Build UC packs list (only packs with UC amount in name, no Prime/Rise/Gift)
+    const ucPacks = [];
+    for (const [name, price] of Object.entries(r.prices)) {
+      const m = name.match(/^(\d+)\s*UC/);
+      if (m && price > 0) ucPacks.push({ name, uc: parseInt(m[1]), price });
+    }
+    if (!ucPacks.length) { resEl.innerHTML = '<div class="empty">Немає доступних паків</div>'; return; }
+    // Sort by UC/price ratio descending (best value first)
+    ucPacks.sort((a, b) => (b.uc / b.price) - (a.uc / a.price));
+    // Greedy algorithm: maximize UC within budget
+    let remaining = budget;
+    const result = [];
+    for (const pack of ucPacks) {
+      if (pack.price <= remaining) {
+        const count = Math.floor(remaining / pack.price);
+        if (count > 0) {
+          result.push({ label: pack.name.replace(/\s*-\s*\d+\s*грн$/, ''), count, uc: pack.uc * count, spent: pack.price * count });
+          remaining -= pack.price * count;
+        }
+      }
+    }
+    if (!result.length) {
+      const minPrice = Math.min(...ucPacks.map(p => p.price));
+      resEl.innerHTML = `<div class="empty">❌ Бюджет замалий.<br>Мінімальний пак — ${minPrice} грн</div>`; return;
+    }
+    const totalUC = result.reduce((s, i) => s + i.uc, 0);
+    const totalSpent = budget - remaining;
+    const ratio = (totalUC / totalSpent).toFixed(2);
+    let html = '<div class="section-title">📦 Найкраща комбінація</div>';
+    result.forEach(item => {
+      const lbl = item.count > 1 ? `${item.label} × ${item.count}` : item.label;
+      html += `<div class="calc-row" style="opacity:0;transform:translateY(12px)">
+        <div><div class="calc-row-name">${lbl}</div><div class="calc-row-uc">${item.uc.toLocaleString()} UC</div></div>
+        <div style="text-align:right;flex-shrink:0"><div style="font-size:15px;font-weight:800;color:var(--acc)">${item.spent} грн</div></div>
+      </div>`;
+    });
+    html += `<div class="calc-total-box">
+      <div style="font-size:28px;font-weight:900;color:var(--acc);letter-spacing:-.5px">${totalUC.toLocaleString()} UC</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:5px">за ${totalSpent} грн · ${ratio} UC/грн</div>
+      ${remaining > 0 ? `<div style="font-size:11px;color:var(--muted);margin-top:4px">залишок: ${remaining} грн</div>` : ''}
+    </div>`;
+    resEl.innerHTML = html;
+    resEl.querySelectorAll('.calc-row').forEach((el, i) => {
+      setTimeout(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; }, i * 70 + 30);
+    });
+  } catch(e) { resEl.innerHTML = '<div class="empty">Помилка розрахунку</div>'; }
 }
 
 async function sendReview() {
