@@ -94,10 +94,19 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 .category-icon{font-size:36px;margin-bottom:8px;display:block}
 .category-label{font-size:13px;font-weight:800;color:var(--text)}
 .group-card{position:relative;border-radius:20px;overflow:hidden;height:180px;cursor:pointer;margin-bottom:14px;transition:transform .18s,box-shadow .18s}
-.group-card:active{transform:scale(.97);box-shadow:0 0 28px rgba(255,45,120,.35)}
+.group-card:active{transform:scale(.97)!important}
 .group-card-inner{position:absolute;bottom:0;left:0;right:0;padding:16px 18px;background:linear-gradient(0,rgba(0,0,0,.88) 0%,rgba(0,0,0,.35) 60%,transparent 100%)}
 .group-card-title{font-size:22px;font-weight:900;color:#fff;margin-bottom:4px;text-shadow:0 2px 8px rgba(0,0,0,.5)}
 .group-card-sub{font-size:12px;color:rgba(255,255,255,.72);font-weight:600}
+/* ── BANNER ANIMATIONS ── */
+@keyframes kenBurns{0%{transform:scale(1) translate(0,0)}33%{transform:scale(1.09) translate(-1%,.5%)}66%{transform:scale(1.06) translate(1%,-0.5%)}100%{transform:scale(1) translate(0,0)}}
+@keyframes shimmerSweep{0%{left:-80%}100%{left:160%}}
+@keyframes glowPink{0%,100%{box-shadow:0 0 0 1px rgba(59,130,246,.4),0 4px 24px rgba(255,45,120,.0)}50%{box-shadow:0 0 0 1px rgba(255,45,120,.7),0 4px 32px rgba(255,45,120,.45),0 0 60px rgba(255,45,120,.15)}}
+@keyframes glowBlue{0%,100%{box-shadow:0 0 0 1px rgba(59,130,246,.4),0 4px 24px rgba(90,150,255,.0)}50%{box-shadow:0 0 0 1px rgba(90,150,255,.8),0 4px 32px rgba(90,150,255,.45),0 0 60px rgba(90,150,255,.15)}}
+.banner-img{animation:kenBurns 12s ease-in-out infinite;will-change:transform}
+.banner-shimmer{position:absolute;top:0;bottom:0;width:45%;background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.10) 50%,transparent 100%);animation:shimmerSweep 4s ease-in-out infinite;pointer-events:none;z-index:2}
+.glow-pink-card{animation:glowPink 3s ease-in-out infinite}
+.glow-blue-card{animation:glowBlue 3s ease-in-out infinite}
 .subcat-card{padding:28px 12px!important}
 .subcat-card .category-icon,.subcat-icon{font-size:56px;margin-bottom:10px;display:block}
 .subcat-card .category-label,.subcat-label{font-size:15px;font-weight:800;color:var(--text)}
@@ -459,16 +468,18 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
     <div id="shopCats">
       <div class="section-title">Оберіть категорію</div>
       <!-- PUBG group card -->
-      <div class="group-card" onclick="showGroup('pubg')" style="background:#071220;border:1px solid rgba(59,130,246,.4)">
-        <img src="/nezuko_pubg_banner.png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.75" draggable="false">
+      <div class="group-card glow-pink-card" onclick="showGroup('pubg')" style="background:#071220">
+        <img src="/nezuko_pubg_banner.png" class="banner-img" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.75" draggable="false">
+        <div class="banner-shimmer"></div>
         <div class="group-card-inner">
           <div class="group-card-title">🔫 PUBG Mobile</div>
           <div class="group-card-sub">UC · Prime · Prime Plus · Набори Підйом</div>
         </div>
       </div>
       <!-- Telegram group card -->
-      <div class="group-card" onclick="showGroup('tg')" style="background:linear-gradient(135deg,#07132a,#0d1f4a);border:1px solid rgba(90,150,255,.4)">
-        <img src="/nezuko_tg_gifts_banner.png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.75" draggable="false">
+      <div class="group-card glow-blue-card" onclick="showGroup('tg')" style="background:linear-gradient(135deg,#07132a,#0d1f4a)">
+        <img src="/nezuko_tg_gifts_banner.png" class="banner-img" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.75;animation-delay:2s" draggable="false">
+        <div class="banner-shimmer" style="animation-delay:2s"></div>
         <div class="group-card-inner" style="background:linear-gradient(0,rgba(0,15,50,.92) 0%,rgba(0,10,40,.3) 65%,transparent 100%)">
           <div class="group-card-title" style="color:#7ab4ff">✈️ Telegram</div>
           <div class="group-card-sub">Зірки · Premium · Старі подарки</div>
