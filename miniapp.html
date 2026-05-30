@@ -1785,14 +1785,14 @@ function goToPayment() {
   if (!gnick) { toast('Введіть ваш нік в PUBG Mobile', 'error'); return; }
   if (curCat === 'uc') {
     mixExtra = []; mixCounts = {};
-    document.getElementById('mixBase').textContent = `📦 Базовий: ${curPack}  —  ${prices[curPack] || 0} грн`;
+    document.getElementById('mixBase').textContent = `📦 Базовий: ${stripPackPrice(curPack)}  —  ${prices[curPack] || 0} грн`;
     const ucPacks = Object.keys(prices).filter(k => CAT_FILTER.uc(k));
     _mixUcPacks.length = 0;
     ucPacks.forEach(p => _mixUcPacks.push(p));
     document.getElementById('mixOptions').innerHTML = ucPacks.map((p, i) => `
       <div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;margin-bottom:6px;background:var(--card);border:1px solid var(--border)">
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p)}</div>
+          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(stripPackPrice(p))}</div>
           <div style="font-size:12px;color:var(--acc);font-weight:700">${prices[p]} грн</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
