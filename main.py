@@ -3001,7 +3001,7 @@ def _gemini_api_call(messages: list, max_tokens: int = 400) -> str:
         elif m["role"] == "user":
             user_parts.append(m["content"])
     combined_user = (system_text + "\n\n" if system_text else "") + "\n".join(user_parts)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     payload = json.dumps({
         "contents": [{"parts": [{"text": combined_user}]}],
         "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.7}
@@ -3018,8 +3018,13 @@ def _gemini_api_call(messages: list, max_tokens: int = 400) -> str:
                 if attempt == 0:
                     time.sleep(8)   # wait and retry once
                     continue
-                return "⏳ AI зараз зайнятий — спробуй через 20–30 секунд."
-            return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
+                return "⏳ AI тимчасово перевантажений (429). Спробуй через хвилину."
+            if e.code == 403:
+                return "❌ AI: невірний API ключ (403). Перевір GEMINI_API_KEY."
+            if e.code == 400:
+                logging.warning(f"Gemini 400 body: {body}")
+                return "❌ AI-помічник зараз недоступний (400)."
+            return f"❌ AI недоступний (HTTP {e.code})."
         except Exception as e:
             logging.warning(f"Gemini API error (attempt {attempt+1}): {e}")
             if attempt == 0:
