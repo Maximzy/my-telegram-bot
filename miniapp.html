@@ -76,9 +76,21 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 
 /* ── TABS ───────────────────────────────── */
 @keyframes tabFadeUp{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:translateY(0)}}
-.tab{display:none}.tab.active{display:block;animation:tabFadeUp .24s ease forwards}
+@keyframes slideFromRight{from{opacity:0;transform:translateX(32px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideFromLeft{from{opacity:0;transform:translateX(-32px)}to{opacity:1;transform:translateX(0)}}
+@keyframes svcBlurIn{from{opacity:0;transform:translateY(8px);filter:blur(5px)}to{opacity:1;transform:translateY(0);filter:blur(0)}}
+@keyframes navBounce{0%{transform:scale(1)}25%{transform:scale(.72)}60%{transform:scale(1.22)}82%{transform:scale(.94)}100%{transform:scale(1)}}
+@keyframes rippleAnim{to{transform:scale(4.5);opacity:0}}
+@keyframes staggerUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+.tab{display:none}.tab.active{display:block;animation:tabFadeUp .26s cubic-bezier(.25,.46,.45,.94) forwards}
+.tab.active.tab-from-right{animation:slideFromRight .28s cubic-bezier(.25,.46,.45,.94) forwards}
+.tab.active.tab-from-left{animation:slideFromLeft .28s cubic-bezier(.25,.46,.45,.94) forwards}
 .page{padding:0 14px}
-.anim-in{animation:tabFadeUp .22s ease forwards!important}
+.anim-in{animation:svcBlurIn .23s cubic-bezier(.25,.46,.45,.94) forwards!important}
+.nav-bounce{animation:navBounce .4s cubic-bezier(.34,1.56,.64,1)!important}
+.ripple-wrap{position:relative;overflow:hidden}
+.ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.2);transform:scale(0);animation:rippleAnim .55s linear;pointer-events:none;z-index:10}
+.stagger-item{opacity:0;transform:translateY(18px);transition:opacity .3s ease,transform .3s ease}
 
 /* ── SUB-TABS ───────────────────────────── */
 .sub-tabs{display:flex;gap:6px;overflow-x:auto;padding:10px 0 4px;scrollbar-width:none;-ms-overflow-style:none}
@@ -1589,20 +1601,62 @@ function showWithAnim(el) {
 
 // ─── BOTTOM NAV ──────────────────────────────────────────────────────────────
 let lazyLoaded = {};
+const _TAB_ORDER = ['shop','orders','services','profile','admin'];
+let _curTabIdx = 0;
+
+function _ripple(e) {
+  const el = e.currentTarget;
+  const rect = el.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height) * 2;
+  const cx = (e.clientX ?? rect.left + rect.width / 2) - rect.left - size / 2;
+  const cy = (e.clientY ?? rect.top + rect.height / 2) - rect.top - size / 2;
+  const r = document.createElement('span');
+  r.className = 'ripple';
+  r.style.cssText = `width:${size}px;height:${size}px;left:${cx}px;top:${cy}px`;
+  el.appendChild(r);
+  setTimeout(() => r.remove(), 620);
+}
+function _initRipple(selector) {
+  document.querySelectorAll(selector).forEach(el => {
+    if (el.dataset.ripple) return;
+    el.dataset.ripple = '1';
+    el.classList.add('ripple-wrap');
+    el.addEventListener('click', _ripple);
+  });
+}
+function staggerShow(items, delay = 55) {
+  items.forEach((el, i) => {
+    el.classList.add('stagger-item');
+    setTimeout(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; }, i * delay + 30);
+  });
+}
+setTimeout(() => _initRipple('.btn,.btn-ghost,.btn-purple,.spin-btn,.nav-item,.pack-item,.category-card,.ach-card,.calc-chip'), 500);
+
 document.querySelectorAll('.nav-item').forEach(el => {
   el.addEventListener('click', () => {
     const tab = el.dataset.tab;
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    const newIdx = _TAB_ORDER.indexOf(tab);
+    const goRight = newIdx > _curTabIdx;
+
+    // Directional slide on new tab
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active','tab-from-right','tab-from-left'));
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    document.getElementById('tab-' + tab).classList.add('active');
+    const newTab = document.getElementById('tab-' + tab);
+    newTab.classList.add('active', goRight ? 'tab-from-right' : 'tab-from-left');
     el.classList.add('active');
+
+    // Spring bounce on nav icon
+    const icon = el.querySelector('.nav-icon');
+    if (icon) { icon.classList.remove('nav-bounce'); void icon.offsetWidth; icon.classList.add('nav-bounce'); setTimeout(() => icon.classList.remove('nav-bounce'), 450); }
+
+    _curTabIdx = newIdx >= 0 ? newIdx : _curTabIdx;
+
     if (tab === 'orders' && !lazyLoaded.orders) { lazyLoaded.orders = true; loadOrders(); }
     else if (tab === 'orders') loadOrders();
     if (tab === 'services' && !lazyLoaded.svcBonus) { lazyLoaded.svcBonus = true; loadBonuses(); }
     if (tab === 'profile') loadProfile();
-    if (tab === 'admin') {
-      if (adminPass) { showAdminPanel(); loadAOrders(); }
-    }
+    if (tab === 'admin') { if (adminPass) { showAdminPanel(); loadAOrders(); } }
+    setTimeout(() => _initRipple('.btn,.btn-ghost,.btn-purple,.spin-btn,.pack-item,.category-card,.ach-card,.calc-chip'), 350);
   });
 });
 
@@ -1665,7 +1719,8 @@ function stripPackPrice(name) {
 
 function renderPopular() {
   const keys = Object.keys(prices).slice(0, 4);
-  document.getElementById('popularList').innerHTML = keys.map(p => {
+  const el = document.getElementById('popularList');
+  el.innerHTML = keys.map(p => {
     const base = prices[p];
     const pct = getPackDiscount(p, userBonuses);
     const priceHtml = pct > 0
@@ -1676,6 +1731,8 @@ function renderPopular() {
        ${priceHtml}
      </div>`;
   }).join('');
+  staggerShow([...el.querySelectorAll('.pack-item')]);
+  _initRipple('.pack-item');
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -1706,7 +1763,8 @@ async function showPacks(cat) {
       .replace(/👑\s*/g, crownImg)
       .replace(/💎\s*/g, ucImg);
   }
-  document.getElementById('packList').innerHTML = riseNote + packs.map(p => {
+  const packListEl = document.getElementById('packList');
+  packListEl.innerHTML = riseNote + packs.map(p => {
     const base = prices[p];
     const pct = getPackDiscount(p, userBonuses);
     const priceHtml = pct > 0
@@ -1717,6 +1775,8 @@ async function showPacks(cat) {
        ${priceHtml}
      </div>`;
   }).join('');
+  staggerShow([...packListEl.querySelectorAll('.pack-item')]);
+  _initRipple('.pack-item');
   document.getElementById('shopCats').style.display = 'none';
   document.getElementById('shopSubCats').style.display = 'none';
   showWithAnim(document.getElementById('shopPacks'));
@@ -2271,6 +2331,7 @@ async function loadOrders() {
       <div class="order-pack">${esc(o.pack)}</div>
       <div class="order-meta">ID: ${esc(o.player_id)}${o.player_nick ? ` · 🪪 ${esc(o.player_nick)}` : ''} · ${esc(o.created_at)} · ${esc(o.amount)} грн</div>
     </div>`).join('');
+  staggerShow([...el.querySelectorAll('.order-card')], 45);
 }
 
 // ─── BONUS ───────────────────────────────────────────────────────────────────
@@ -2280,11 +2341,14 @@ async function loadBonuses() {
   const r = await api('/api/bonuses?user_id=' + uid);
   const bonuses = r.bonuses || [];
   if (!bonuses.length) el.innerHTML = '<div class="empty">Активних бонусів немає</div>';
-  else el.innerHTML = bonuses.map(b => `
+  else {
+    el.innerHTML = bonuses.map(b => `
     <div class="card" style="margin-bottom:8px;padding:12px 14px">
       <div style="font-size:13px;font-weight:600">${esc(b.name)}</div>
       <div style="font-size:11px;color:var(--muted)">×${b.count}</div>
     </div>`).join('');
+    staggerShow([...el.querySelectorAll('.card')], 50);
+  }
   // Free UC buttons
   let freeHtml = '';
   for (const b of bonuses) {
