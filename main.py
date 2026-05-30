@@ -268,6 +268,7 @@ MAIN_KB = [
     ["🏆 Топ донатерів", "🏅 Досягнення"],
     ["🎁 Промокод", "👥 Реферал"],
     ["⭐ Бали за зірки"],
+    ["🧮 UC Калькулятор"],
     ["📋 Мої замовлення", "📄 Політика"],
     ["💖 Підтримати бота", "🆘 Підтримка"],
     ["⚙️ Адмін"]
@@ -2285,6 +2286,48 @@ def label_to_pack_key(label: str):
             return key
     return None
 
+def calc_best_uc(budget: int) -> tuple:
+    """Greedy: maximize UC within budget using only UC packs (PACKS), real DB prices."""
+    uc_packs = []
+    for pack_key in PACKS:
+        price = get_pack_price(pack_key)
+        m = re.search(r'^(\d+)\s*UC', pack_key)
+        if m and price > 0:
+            uc_packs.append((pack_key, int(m.group(1)), price))
+    # Sort by UC per hryvnia descending (best value first)
+    uc_packs.sort(key=lambda x: x[1] / x[2], reverse=True)
+    remaining = budget
+    result = []
+    for pack_key, uc_amount, price in uc_packs:
+        if price <= remaining:
+            count = remaining // price
+            if count > 0:
+                result.append((pack_key, count, uc_amount * count, price * count))
+                remaining -= price * count
+    return result, remaining
+
+def format_calc_result(budget: int) -> str:
+    combos, leftover = calc_best_uc(budget)
+    if not combos:
+        min_price = min(get_pack_price(p) for p in PACKS)
+        return f"❌ Бюджет {budget} грн замалий. Мінімальний пак — {min_price} грн."
+    total_uc = sum(c[2] for c in combos)
+    total_spent = budget - leftover
+    ratio = round(total_uc / total_spent, 2) if total_spent else 0
+    lines = [f"🧮 *UC Калькулятор*\n💰 Бюджет: {budget} грн\n\n📦 Найкраща комбінація:"]
+    for pack_key, count, uc_total, price_total in combos:
+        label = re.sub(r'\s*-\s*\d+\s*грн$', '', pack_key)
+        price_each = get_pack_price(pack_key)
+        if count == 1:
+            lines.append(f"  • {label} — {price_total} грн")
+        else:
+            lines.append(f"  • {label} × {count} — {price_total} грн")
+    lines.append(f"\n✅ Всього: *{total_uc} UC* за {total_spent} грн")
+    if leftover > 0:
+        lines.append(f"💵 Залишок: {leftover} грн")
+    lines.append(f"⚡ Ефективність: {ratio} UC/грн")
+    return "\n".join(lines)
+
 def status_text(s):
     return {"pending": "очікує виконання", "done": "виконано", "canceled": "відхилено"}.get(s, s)
 
@@ -2549,6 +2592,23 @@ async def mypromos_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"✅ Реферальна знижка 1% × {len(ref_discounts)}\n"
     msg += f"\n🪙 Бали: {pts}"
     await update.message.reply_text(msg)
+
+async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    args = context.args
+    if args:
+        raw = args[0].replace(" ", "").replace(",", "").replace("грн", "")
+        if raw.isdigit():
+            budget = int(raw)
+            if budget < 1 or budget > 500000:
+                await update.message.reply_text("❌ Введіть суму від 1 до 500 000 грн."); return
+            await update.message.reply_text(format_calc_result(budget), parse_mode="Markdown"); return
+    user_states[uid] = "WAIT_CALC_BUDGET"
+    await update.message.reply_text(
+        "🧮 *UC Калькулятор*\n\nВведіть вашу суму в гривнях, і я покажу яка комбінація паків дасть максимум UC.\n\n💬 Наприклад: `500`",
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardRemove()
+    )
 
 async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -3442,6 +3502,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "📄 Політика":
         await policy_command(update, context); return
 
+    if text == "🧮 UC Калькулятор":
+        await calc_command(update, context); return
+
+    if state == "WAIT_CALC_BUDGET":
+        raw = text.replace(" ", "").replace(",", "").replace("грн", "").replace("₴", "")
+        if not raw.isdigit():
+            await update.message.reply_text("❌ Введіть число, наприклад: `500`", parse_mode="Markdown"); return
+        budget = int(raw)
+        if budget < 1 or budget > 500000:
+            await update.message.reply_text("❌ Введіть суму від 1 до 500 000 грн."); return
+        user_states[uid] = None
+        await update.message.reply_text(
+            format_calc_result(budget),
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)
+        ); return
+
     if text in ("🎁 60 UC Free", "🎁 30 UC Free"):
         bt = "free_uc_60" if "60" in text else "free_uc_30"
         uc = 60 if "60" in text else 30
@@ -3991,6 +4068,7 @@ def main():
     app.add_handler(CommandHandler("history", history_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("mypromos", mypromos_command))
+    app.add_handler(CommandHandler("calc", calc_command))
     app.add_handler(CommandHandler("admin", admin_panel))
     app.add_handler(CommandHandler("orders", orders_command))
     app.add_handler(CommandHandler("stats", stats_command))
