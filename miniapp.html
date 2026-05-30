@@ -70,23 +70,23 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 .nav-item{flex:1;display:flex;flex-direction:column;align-items:center;padding:9px 2px 7px;cursor:pointer;color:var(--muted);font-size:10px;font-weight:600;gap:3px;transition:color .2s;position:relative}
 .nav-item.active{color:var(--acc)}
 .nav-item.active::after{content:'';position:absolute;bottom:3px;width:4px;height:4px;border-radius:50%;background:var(--acc);box-shadow:0 0 6px var(--acc)}
-.nav-icon{font-size:20px;line-height:1;transition:transform .15s ease}
-.nav-item:active .nav-icon{transform:scale(.82)}
+.nav-icon{font-size:20px;line-height:1;transition:transform .15s ease;will-change:transform}
+.nav-item:active .nav-icon{transform:scale(.85)}
 .nav-badge{position:absolute;top:4px;right:calc(50% - 16px);min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#e53935;color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center;display:none;box-shadow:0 1px 4px rgba(0,0,0,.4)}
 
 /* ── TABS ───────────────────────────────── */
 @keyframes tabFadeUp{from{opacity:0;transform:translateY(13px)}to{opacity:1;transform:translateY(0)}}
 @keyframes slideFromRight{from{opacity:0;transform:translateX(32px)}to{opacity:1;transform:translateX(0)}}
 @keyframes slideFromLeft{from{opacity:0;transform:translateX(-32px)}to{opacity:1;transform:translateX(0)}}
-@keyframes svcBlurIn{from{opacity:0;transform:translateY(8px);filter:blur(5px)}to{opacity:1;transform:translateY(0);filter:blur(0)}}
-@keyframes navBounce{0%{transform:scale(1)}25%{transform:scale(.72)}60%{transform:scale(1.22)}82%{transform:scale(.94)}100%{transform:scale(1)}}
+@keyframes svcBlurIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+@keyframes navBounce{0%{transform:scale(1)}35%{transform:scale(.82)}65%{transform:scale(1.12)}85%{transform:scale(.96)}100%{transform:scale(1)}}
 @keyframes rippleAnim{to{transform:scale(4.5);opacity:0}}
 @keyframes staggerUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
-.tab{display:none}.tab.active{display:block;animation:tabFadeUp .26s cubic-bezier(.25,.46,.45,.94) forwards}
+.tab{display:none}.tab.active{display:block;animation:tabFadeUp .26s cubic-bezier(.25,.46,.45,.94) forwards;will-change:transform,opacity}
 .tab.active.tab-from-right{animation:slideFromRight .28s cubic-bezier(.25,.46,.45,.94) forwards}
 .tab.active.tab-from-left{animation:slideFromLeft .28s cubic-bezier(.25,.46,.45,.94) forwards}
 .page{padding:0 14px}
-.anim-in{animation:svcBlurIn .23s cubic-bezier(.25,.46,.45,.94) forwards!important}
+.anim-in{animation:svcBlurIn .2s cubic-bezier(.25,.46,.45,.94) forwards!important;will-change:transform,opacity}
 .nav-bounce{animation:navBounce .4s cubic-bezier(.34,1.56,.64,1)!important}
 .ripple-wrap{position:relative;overflow:hidden}
 .ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.2);transform:scale(0);animation:rippleAnim .55s linear;pointer-events:none;z-index:10}
