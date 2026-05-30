@@ -3001,7 +3001,7 @@ def _gemini_api_call(messages: list, max_tokens: int = 400) -> str:
         elif m["role"] == "user":
             user_parts.append(m["content"])
     combined_user = (system_text + "\n\n" if system_text else "") + "\n".join(user_parts)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={GEMINI_API_KEY}"
     payload = json.dumps({
         "contents": [{"parts": [{"text": combined_user}]}],
         "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.7}
