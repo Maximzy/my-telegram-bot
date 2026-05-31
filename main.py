@@ -1618,6 +1618,8 @@ class PolicyHandler(BaseHTTPRequestHandler):
             user_id = int(data.get("user_id", 0))
             if user_id and not _rl_allow(f"ai:{user_id}", 15, 60):
                 _json_response(self, {"ok": False, "error": "Забагато запитів до AI. Зачекайте хвилину."}, 429); return
+            if user_id and not _gemini_user_allowed(user_id):
+                _json_response(self, {"ok": False, "error": f"⏳ Почекай {GEMINI_USER_COOLDOWN} сек між AI-запитами."}, 429); return
             message = str(data.get("message", "")).strip()[:500]
             history = data.get("history", [])
             if not isinstance(history, list):
@@ -2984,7 +2986,7 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, src
 # ── GEMINI AI ─────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 _ai_cooldown: dict = {}
-AI_COOLDOWN_SEC = 5
+AI_COOLDOWN_SEC = 45
 AI_SYSTEM_PROMPT = """Ти — AI-помічник магазину UC Shop (PUBG Mobile). Відповідай ЛИШЕ українською мовою.
 
 Інформація про магазин:
@@ -3030,16 +3032,68 @@ ADMIN_ADVISOR_PROMPT = """Ти — AI-консультант для власни
 _gemini_global_lock = threading.Lock()
 _gemini_call_times: list = []   # sliding window of call timestamps
 GEMINI_RPM_LIMIT = 12           # stay safely under the 15 RPM free-tier cap
+GEMINI_RPD_LIMIT = 1400         # daily cap (free tier = 1500; keep 100 buffer)
+
+# Daily counter — resets at UTC midnight
+_gemini_day_count   = 0
+_gemini_day_date    = ""        # "YYYY-MM-DD" in UTC
+
+# Per-user cooldown: uid -> last call timestamp
+_gemini_user_ts: dict = {}
+GEMINI_USER_COOLDOWN = 45       # seconds between AI calls per user
+
+def _utc_date() -> str:
+    import datetime
+    return datetime.datetime.utcnow().strftime("%Y-%m-%d")
+
+def _gemini_quota_reset_str() -> str:
+    """Return a human-readable string for when the daily quota resets (UTC midnight)."""
+    import datetime
+    now_utc = datetime.datetime.utcnow()
+    next_midnight = (now_utc + datetime.timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0)
+    delta = next_midnight - now_utc
+    h, rem = divmod(int(delta.total_seconds()), 3600)
+    m = rem // 60
+    # Ukraine is UTC+3
+    reset_kyiv = (next_midnight + datetime.timedelta(hours=3)).strftime("%H:%M")
+    if h > 0:
+        return f"через {h} год {m} хв (о {reset_kyiv} за Києвом)"
+    return f"через {m} хв (о {reset_kyiv} за Києвом)"
 
 def _gemini_global_allowed() -> bool:
-    """Return True and record the call if under the global RPM limit."""
+    """Return True and record the call if under RPM + RPD limits."""
+    global _gemini_day_count, _gemini_day_date
     now = time.time()
+    today = _utc_date()
     with _gemini_global_lock:
+        # Reset daily counter on new UTC day
+        if today != _gemini_day_date:
+            _gemini_day_date = today
+            _gemini_day_count = 0
+        # Daily cap
+        if _gemini_day_count >= GEMINI_RPD_LIMIT:
+            return False
+        # RPM cap
         _gemini_call_times[:] = [t for t in _gemini_call_times if now - t < 60]
         if len(_gemini_call_times) >= GEMINI_RPM_LIMIT:
             return False
         _gemini_call_times.append(now)
+        _gemini_day_count += 1
         return True
+
+def _gemini_user_allowed(uid: int) -> bool:
+    """Per-user cooldown to prevent one user from burning the quota."""
+    now = time.time()
+    last = _gemini_user_ts.get(uid, 0)
+    if now - last < GEMINI_USER_COOLDOWN:
+        return False
+    _gemini_user_ts[uid] = now
+    return True
+
+def _gemini_remaining() -> tuple:
+    """Return (day_count, day_limit) for stats."""
+    return (_gemini_day_count, GEMINI_RPD_LIMIT)
 
 def _gemini_do_request(url: str, payload: bytes) -> str:
     """Execute one Gemini HTTP request and return the text."""
@@ -3052,6 +3106,11 @@ def _gemini_api_call(messages: list, max_tokens: int = 400) -> str:
     if not GEMINI_API_KEY:
         return "❌ AI-помічник тимчасово недоступний."
     if not _gemini_global_allowed():
+        # Could be RPM or RPD — check which
+        used, limit = _gemini_remaining()
+        if used >= limit:
+            reset = _gemini_quota_reset_str()
+            return f"⏳ AI вичерпав денний ліміт запитів. Оновлюється {reset}."
         return "⏳ AI зараз зайнятий — спробуй через 10–20 секунд."
     system_text = ""
     user_parts = []
@@ -3071,16 +3130,21 @@ def _gemini_api_call(messages: list, max_tokens: int = 400) -> str:
             return _gemini_do_request(url, payload)
         except urllib.error.HTTPError as e:
             body = ""
-            try: body = e.read().decode()[:400]
+            try: body = e.read().decode()[:500]
             except: pass
             logging.warning(f"Gemini HTTP {e.code} (attempt {attempt+1}): {body}")
             if e.code == 429:
+                # Determine if it's daily quota or RPM from the body
+                is_daily = "quota" in body.lower() or "day" in body.lower() or "RESOURCE_EXHAUSTED" in body
+                if is_daily:
+                    reset = _gemini_quota_reset_str()
+                    return f"⏳ AI вичерпав денний ліміт. Оновлюється {reset}."
                 if attempt == 0:
-                    time.sleep(8)   # wait and retry once
+                    time.sleep(8)
                     continue
-                return "⏳ AI тимчасово перевантажений (429). Спробуй через хвилину."
+                return "⏳ AI тимчасово перевантажений. Спробуй через хвилину."
             if e.code == 403:
-                return "❌ AI: невірний API ключ (403). Перевір GEMINI_API_KEY."
+                return "❌ AI: невірний API ключ (403)."
             if e.code == 400:
                 logging.warning(f"Gemini 400 body: {body}")
                 return "❌ AI-помічник зараз недоступний (400)."
@@ -3120,11 +3184,17 @@ async def openai_reply(user_message: str) -> str:
         return "❌ Помилка AI. Зверніться до підтримки @Manager_Nezuko"
 
 async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
     if not context.args:
         await update.message.reply_text(
             "🤖 Я — AI-помічник магазину UC Shop!\n\n"
             "Запитай мене про PUBG Mobile, ціни UC, Prime, або як зробити замовлення.\n\n"
             "Наприклад: /ai Скільки коштує 325 UC?"
+        )
+        return
+    if not is_admin(uid) and not _gemini_user_allowed(uid):
+        await update.message.reply_text(
+            f"⏳ Почекай {GEMINI_USER_COOLDOWN} секунд між запитами до AI."
         )
         return
     question = " ".join(context.args)
