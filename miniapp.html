@@ -635,42 +635,42 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       </div>
       <div class="section-title">Оберіть подарунок</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
-        <div class="gift-item-card" onclick="selectGift('🐣 Пасхальний','gift_easter.png')">
+        <div class="gift-item-card" onclick="selectGift('🐣 Пасхальний','gift_easter.png',this)">
           <img src="/gift_easter.png" class="gift-item-img" draggable="false">
           <div class="gift-item-name">🐣 Пасхальний</div>
           <div class="gift-item-price">₴50</div>
         </div>
-        <div class="gift-item-card" onclick="selectGift('🎉 1 Квітня','gift_april.png')">
+        <div class="gift-item-card" onclick="selectGift('🎉 1 Квітня','gift_april.png',this)">
           <img src="/gift_april.png" class="gift-item-img" draggable="false">
           <div class="gift-item-name">🎉 1 Квітня</div>
           <div class="gift-item-price">₴50</div>
         </div>
-        <div class="gift-item-card" onclick="selectGift('🍀 Патрика','gift_patrick.png')">
+        <div class="gift-item-card" onclick="selectGift('🍀 Патрика','gift_patrick.png',this)">
           <img src="/gift_patrick.png" class="gift-item-img" draggable="false">
           <div class="gift-item-name">🍀 Патрика</div>
           <div class="gift-item-price">₴50</div>
         </div>
-        <div class="gift-item-card" onclick="selectGift('🌸 8 Березня','gift_march8.png')">
+        <div class="gift-item-card" onclick="selectGift('🌸 8 Березня','gift_march8.png',this)">
           <img src="/gift_march8.png" class="gift-item-img" draggable="false">
           <div class="gift-item-name">🌸 8 Березня</div>
           <div class="gift-item-price">₴50</div>
         </div>
-        <div class="gift-item-card" onclick="selectGift('❤️ Валентина','gift_valentine.png')">
+        <div class="gift-item-card" onclick="selectGift('❤️ Валентина','gift_valentine.png',this)">
           <img src="/gift_valentine.png" class="gift-item-img" draggable="false">
           <div class="gift-item-name">❤️ Валентина</div>
           <div class="gift-item-price">₴50</div>
         </div>
-        <div class="gift-item-card" onclick="selectGift('💝 Серце Валентина','gift_loveu.png')">
+        <div class="gift-item-card" onclick="selectGift('💝 Серце Валентина','gift_loveu.png',this)">
           <img src="/gift_loveu.png" class="gift-item-img" draggable="false">
           <div class="gift-item-name">💝 Серце</div>
           <div class="gift-item-price">₴50</div>
         </div>
-        <div class="gift-item-card" onclick="selectGift('🧸 Новорічний','gift_xmas_bear.png')">
+        <div class="gift-item-card" onclick="selectGift('🧸 Новорічний','gift_xmas_bear.png',this)">
           <img src="/gift_xmas_bear.png" class="gift-item-img" draggable="false">
           <div class="gift-item-name">🧸 Новорічний</div>
           <div class="gift-item-price">₴50</div>
         </div>
-        <div class="gift-item-card" onclick="selectGift('🎄 Ялинка Новорічна','gift_xmas_tree.png')">
+        <div class="gift-item-card" onclick="selectGift('🎄 Ялинка Новорічна','gift_xmas_tree.png',this)">
           <img src="/gift_xmas_tree.png" class="gift-item-img" draggable="false">
           <div class="gift-item-name">🎄 Ялинка</div>
           <div class="gift-item-price">₴50</div>
@@ -712,7 +712,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div style="font-size:17px;font-weight:700;letter-spacing:2px;color:var(--acc);cursor:pointer;margin-bottom:6px" onclick="copyGiftCard()">4874 0700 2036 7247</div>
         <div style="font-size:11px;color:var(--muted);cursor:pointer" onclick="copyGiftCard()">Натисніть щоб скопіювати</div>
       </div>
-      <button class="btn" onclick="submitGiftOrder()">✅ Я оплатив</button>
+      <button class="btn" onclick="submitGiftOrder(this)">✅ Я оплатив</button>
     </div>
 
     <!-- TG Stars / Premium – Step 2 (Payment) -->
@@ -2154,10 +2154,10 @@ function backGiftsToCats() {
     showWithAnim(document.getElementById('shopCats'));
   }
 }
-function selectGift(name, imgFile) {
+function selectGift(name, imgFile, el) {
   curGiftName = name; curGiftImg = '/' + imgFile;
   document.querySelectorAll('.gift-item-card').forEach(c => c.classList.remove('selected'));
-  event.currentTarget.classList.add('selected');
+  if (el) el.classList.add('selected'); else if (event && event.currentTarget) event.currentTarget.classList.add('selected');
   document.getElementById('giftSelName').textContent = name;
   document.getElementById('giftSelImg').src = curGiftImg;
   document.getElementById('giftSelected').style.display = 'block';
@@ -2181,14 +2181,14 @@ function copyGiftCard() {
     .then(() => toast('Картку скопійовано!', 'success'))
     .catch(() => {});
 }
-async function submitGiftOrder() {
+async function submitGiftOrder(btn) {
   const tag = document.getElementById('giftPayTag').textContent.trim();
   if (!tag || !curGiftName) { toast('Помилка даних', 'error'); return; }
-  const btn = event.currentTarget;
+  if (!btn) btn = document.querySelector('#shopGiftPay .btn');
   btn.disabled = true; btn.textContent = 'Відправляємо...';
   try {
     const r = await api('/api/submit-tg-order', 'POST', {
-      user_id: userId, pack: curGiftName, tg_tag: tag, amount: 50, category: 'gift'
+      user_id: uid, username: uname, pack: curGiftName, tg_tag: tag, amount: 50, category: 'gift'
     });
     if (r.ok) {
       document.getElementById('shopGiftPay').style.display = 'none';
