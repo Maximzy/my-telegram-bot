@@ -2192,8 +2192,9 @@ async function submitGiftOrder(btn) {
     });
     if (r.ok) {
       document.getElementById('shopGiftPay').style.display = 'none';
-      toast('✅ Замовлення прийнято! Адмін відправить подарунок найближчим часом.', 'success');
-      setTimeout(() => { showWithAnim(document.getElementById('shopCats')); }, 2200);
+      document.getElementById('doneId').textContent = r.order_id || '';
+      showWithAnim(document.getElementById('shopDone'));
+      sakura(); launchConfetti();
     } else { toast(r.error || 'Помилка', 'error'); btn.disabled = false; btn.textContent = '✅ Я оплатив'; }
   } catch { toast('Помилка мережі', 'error'); btn.disabled = false; btn.textContent = '✅ Я оплатив'; }
 }
