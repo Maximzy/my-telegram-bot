@@ -230,13 +230,13 @@ ACHIEVEMENTS = {
 }
 
 POINTS_SHOP = [
-    {"id":"uc30",       "name":"🎁 30 UC безкоштовно",      "cost":1500, "bonus_type":"free_uc_30"},
-    {"id":"uc60",       "name":"🎁 60 UC безкоштовно",      "cost":3000, "bonus_type":"free_uc_60"},
-    {"id":"disc_s1",    "name":"Знижка 1% (малі паки)",     "cost":500,  "bonus_type":"discount_small_1"},
-    {"id":"disc_s2",    "name":"Знижка 2% (малі паки)",     "cost":1000, "bonus_type":"discount_small_2"},
-    {"id":"disc_m1",    "name":"Знижка 1% (середні паки)",  "cost":750,  "bonus_type":"discount_medium_1"},
-    {"id":"disc_m2",    "name":"Знижка 2% (середні паки)",  "cost":1500, "bonus_type":"discount_medium_2"},
-    {"id":"extra_spin", "name":"Повторний прокрут рулетки", "cost":300,  "bonus_type":"extra_spin"},
+    {"id":"uc30",       "name":"🎁 30 UC безкоштовно",      "cost":400,  "bonus_type":"free_uc_30"},
+    {"id":"uc60",       "name":"🎁 60 UC безкоштовно",      "cost":800,  "bonus_type":"free_uc_60"},
+    {"id":"disc_s1",    "name":"Знижка 1% (малі паки)",     "cost":150,  "bonus_type":"discount_small_1"},
+    {"id":"disc_s2",    "name":"Знижка 2% (малі паки)",     "cost":300,  "bonus_type":"discount_small_2"},
+    {"id":"disc_m1",    "name":"Знижка 1% (середні паки)",  "cost":220,  "bonus_type":"discount_medium_1"},
+    {"id":"disc_m2",    "name":"Знижка 2% (середні паки)",  "cost":440,  "bonus_type":"discount_medium_2"},
+    {"id":"extra_spin", "name":"Повторний прокрут рулетки", "cost":100,  "bonus_type":"extra_spin"},
 ]
 
 # --- ПАКЕТИ ЗІРОК (Telegram Stars → бали) ---
@@ -1827,8 +1827,10 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 db_exec("UPDATE orders SET status='done', completed_at=? WHERE id=?", (created_at_now(), order_id))
                 ref = db_query_one("SELECT referrer_id FROM referrals WHERE referred_id=?", (chat_id,))
                 if ref:
-                    db_exec("INSERT INTO ref_discounts (user_id, created_at) VALUES (?,?)", (ref[0], created_at_now()))
-                    _send_tg_message(ref[0], "🎉 Ваш реферал зробив покупку! Ви отримали знижку 1%.")
+                    done_cnt = db_query_one("SELECT COUNT(*) FROM orders WHERE chat_id=? AND status='done'", (chat_id,))
+                    if done_cnt and done_cnt[0] <= 1:
+                        db_exec("INSERT INTO ref_discounts (user_id, created_at) VALUES (?,?)", (ref[0], created_at_now()))
+                        _send_tg_message(ref[0], "🎉 Ваш реферал зробив першу покупку! Ви отримали знижку 1%.")
                 if "Мікс UC" in pack:
                     _send_tg_message(chat_id, f"✅ Мікс UC нараховано! 🎉\n💎 {pack}\nУсі UC вже у грі. Дякуємо за покупку! 🌸")
                 else:
@@ -3592,9 +3594,11 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_admin_action(q.from_user.id, "ORDER_DONE", f"order={order_id} pack={pack} user={chat_id}")
         ref = db_query_one("SELECT referrer_id FROM referrals WHERE referred_id=?", (chat_id,))
         if ref:
-            db_exec("INSERT INTO ref_discounts (user_id, created_at) VALUES (?,?)", (ref[0], created_at_now()))
-            try: await context.bot.send_message(ref[0], "🎉 Ваш реферал зробив покупку! Ви отримали знижку 1%.")
-            except: pass
+            done_cnt = db_query_one("SELECT COUNT(*) FROM orders WHERE chat_id=? AND status='done'", (chat_id,))
+            if done_cnt and done_cnt[0] <= 1:
+                db_exec("INSERT INTO ref_discounts (user_id, created_at) VALUES (?,?)", (ref[0], created_at_now()))
+                try: await context.bot.send_message(ref[0], "🎉 Ваш реферал зробив першу покупку! Ви отримали знижку 1%.")
+                except: pass
         if "Мікс UC" in pack:
             done_msg = f"✅ Мікс UC нараховано! 🎉\n💎 {pack}\nУсі UC вже у грі. Дякуємо! 🌸"
         else:

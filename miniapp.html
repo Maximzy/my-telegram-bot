@@ -2501,7 +2501,7 @@ async function submitPaidSpin() {
 
 function showPrizeReveal(prize) {
   const colors = { common: '#888', rare: '#52d68a', epic: '#60a5fa', legendary: '#ffd166' };
-  document.getElementById('prizeIcon').textContent = prizeEmoji(prize);
+  document.getElementById('prizeIcon').innerHTML = prizeEmoji(prize);
   document.getElementById('prizeName').textContent = prize.name;
   document.getElementById('prizeName').style.color = colors[prize.rarity] || 'var(--acc)';
   const desc = prize.type === 'nothing' ? 'Не пощастило 😅 Спробуй знову!'
