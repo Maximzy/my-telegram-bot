@@ -35,6 +35,39 @@ def set_setting(key: str, value: str):
     db_exec("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?,?,?)",
             (key, value, created_at_now()))
 
+def get_active_sale():
+    val = get_setting("active_sale")
+    if not val:
+        return None
+    try:
+        import json as _json
+        sale = _json.loads(val)
+        expires = (sale.get("expires") or "").strip()
+        if expires and created_at_now()[:16] > expires:
+            return None
+        return sale
+    except:
+        return None
+
+def get_pack_category(pack):
+    if pack in PACKS: return "uc"
+    if pack in PRIME_PACKS: return "prime"
+    if pack in PRIME_PLUS_PACKS: return "prime_plus"
+    if pack in RISE_PACKS: return "rise"
+    return "other"
+
+def get_effective_price(pack):
+    base = get_pack_price(pack)
+    sale = get_active_sale()
+    if not sale:
+        return base
+    cats = sale.get("categories", [])
+    if "all" in cats or get_pack_category(pack) in cats:
+        pct = int(sale.get("pct", 0))
+        if pct > 0:
+            return max(1, int(base * (100 - pct) / 100))
+    return base
+
 def get_stars_rate() -> float:
     v = get_setting("stars_rate")
     try:
@@ -122,6 +155,10 @@ def run_migrations(connection):
     c.execute("CREATE TABLE IF NOT EXISTS price_overrides (pack_name TEXT PRIMARY KEY, price INTEGER, updated_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS points_price_overrides (item_id TEXT PRIMARY KEY, cost INTEGER, updated_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS custom_points_items (id TEXT PRIMARY KEY, name TEXT, cost INTEGER, bonus_type TEXT, created_at TEXT)")
+    c.execute("PRAGMA table_info(orders)")
+    _ord_cols = [r[1] for r in c.fetchall()]
+    if "notified_admin" not in _ord_cols:
+        c.execute("ALTER TABLE orders ADD COLUMN notified_admin INTEGER DEFAULT 0")
     c.execute("CREATE TABLE IF NOT EXISTS banned_users (user_id INTEGER PRIMARY KEY, reason TEXT, banned_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS cart (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, pack TEXT, added_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, chat_id INTEGER, username TEXT, category TEXT, message TEXT, status TEXT DEFAULT 'open', admin_reply TEXT, created_at TEXT, replied_at TEXT)")
@@ -230,6 +267,20 @@ ACHIEVEMENTS = {
     "danger":       {"emoji":"☢️","name":"Небезпечний донатер", "desc":"Твій баланс лякає оточуючих 😄",                    "hint":"Витратити 10000 грн у боті.",                 "manual":0},
     "partner":      {"emoji":"🌐","name":"Партнер",              "desc":"Ти дуже допоміг власнику магазина.",                 "hint":"Призначається адміном.",                      "manual":1},
 }
+
+SPEND_BADGES = [
+    (50000, "👑", "Легенда"),
+    (15000, "💎", "Алмаз"),
+    (5000,  "🥇", "Золото"),
+    (2000,  "🥈", "Срібло"),
+    (500,   "🥉", "Бронза"),
+]
+
+def get_spend_badge(total_spent):
+    for threshold, emoji, name in SPEND_BADGES:
+        if total_spent >= threshold:
+            return {"emoji": emoji, "name": name, "threshold": threshold}
+    return None
 
 POINTS_SHOP = [
     {"id":"uc30",       "name":"🎁 30 UC безкоштовно",      "cost":400,  "bonus_type":"free_uc_30"},
@@ -584,6 +635,9 @@ def push_notification(user_id, ntype, message):
         logging.warning(f"push_notification error: {e}")
 
 def _notify_admin_order(order_id, pack, player_id, amount, user_id, username, mix_packs_list=None, player_nick=None):
+    row = db_query_one("SELECT notified_admin FROM orders WHERE id=?", (order_id,))
+    if row and row[0]:
+        return
     try:
         user_label_str = f"@{username}" if username else str(user_id)
         rise_marker = "⭐️ НАБІР ПІДЙОМ\n" if "Набір Підйом" in pack else ""
@@ -607,6 +661,7 @@ def _notify_admin_order(order_id, pack, player_id, amount, user_id, username, mi
         params = urllib.parse.urlencode({"chat_id": MY_ID, "text": text, "reply_markup": ok_btn}).encode()
         req = urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=params)
         urllib.request.urlopen(req, timeout=5)
+        db_exec("UPDATE orders SET notified_admin=1 WHERE id=?", (order_id,))
     except Exception as e:
         logging.warning(f"Не вдалося повідомити адміна: {e}")
 
@@ -718,7 +773,10 @@ def check_achievements(user_id):
     if done_count >= 5: grant_achievement(user_id, "regular")
     if done_count >= 15: grant_achievement(user_id, "vip")
 
-    total_spent = sum(get_pack_price(r[0]) for r in done_orders)
+    def _safe_int(v):
+        try: return int(float(v or 0))
+        except: return 0
+    total_spent = sum(_safe_int(r[2]) for r in done_orders)
     if total_spent >= 1000: grant_achievement(user_id, "whale")
     if total_spent >= 10000: grant_achievement(user_id, "danger")
 
@@ -984,19 +1042,24 @@ class PolicyHandler(BaseHTTPRequestHandler):
             profile = db_query_one("SELECT first_seen, last_seen, consecutive_days FROM user_profile WHERE user_id=?", (user_id,))
             done_orders = db_query("SELECT pack, amount FROM orders WHERE chat_id=? AND status='done'", (user_id,))
             total_orders = len(done_orders)
-            total_spent = sum(get_pack_price(r[0]) for r in done_orders)
+            def _si(v):
+                try: return int(float(v or 0))
+                except: return 0
+            total_spent = sum(_si(r[1]) for r in done_orders)
             total_uc = 0
             for pack, _ in done_orders:
                 m = re.search(r"(\d+)\s*UC", pack)
                 if m: total_uc += int(m.group(1))
             points = get_points(user_id)
             ach_count = db_query_one("SELECT COUNT(*) FROM user_achievements WHERE user_id=?", (user_id,))[0]
+            badge = get_spend_badge(total_spent)
             _json_response(self, {
                 "ok": True, "user_id": user_id,
                 "first_seen": (profile[0] if profile else "")[:10],
                 "consecutive_days": (profile[2] if profile else 0),
                 "total_orders": total_orders, "total_spent": total_spent,
-                "total_uc": total_uc, "points": points, "achievements": ach_count
+                "total_uc": total_uc, "points": points, "achievements": ach_count,
+                "badge": badge
             }); return
 
         if path == "/api/points":
@@ -1035,11 +1098,22 @@ class PolicyHandler(BaseHTTPRequestHandler):
             }); return
 
         if path == "/api/prices":
+            sale = get_active_sale()
             result = {}
             for pack, base_price in ALL_PACKS.items():
                 override = db_query_one("SELECT price FROM price_overrides WHERE pack_name=?", (pack,))
-                result[pack] = override[0] if override else base_price
-            _json_response(self, {"ok": True, "prices": result}); return
+                price = override[0] if override else base_price
+                if sale:
+                    cats = sale.get("categories", [])
+                    if "all" in cats or get_pack_category(pack) in cats:
+                        pct = int(sale.get("pct", 0))
+                        if pct > 0:
+                            price = max(1, int(price * (100 - pct) // 100))
+                result[pack] = price
+            _json_response(self, {"ok": True, "prices": result, "sale": sale}); return
+
+        if path == "/api/active-sale":
+            _json_response(self, {"ok": True, "sale": get_active_sale()}); return
 
         if path == "/api/tg-config":
             _json_response(self, {
@@ -1402,8 +1476,8 @@ class PolicyHandler(BaseHTTPRequestHandler):
                     if mp not in ALL_PACKS:
                         _json_response(self, {"ok": False, "error": f"Пак не знайдено: {mp}"}); return
                 disc_pct, disc_src, disc_id = get_user_discount(user_id, mix_packs[0])
-                first_price = apply_discount(get_pack_price(mix_packs[0]), disc_pct) if disc_pct else get_pack_price(mix_packs[0])
-                extras_sum = sum(get_pack_price(mp) for mp in mix_packs[1:])
+                first_price = apply_discount(get_effective_price(mix_packs[0]), disc_pct) if disc_pct else get_effective_price(mix_packs[0])
+                extras_sum = sum(get_effective_price(mp) for mp in mix_packs[1:])
                 true_sum = first_price + extras_sum
                 if true_sum != base_amount:
                     _json_response(self, {"ok": False, "error": f"Невірна сума. Очікується {true_sum} грн"}); return
@@ -1418,7 +1492,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 if pack not in ALL_PACKS:
                     _json_response(self, {"ok": False, "error": "Пак не знайдено"}); return
                 disc_pct, disc_src, disc_id = get_user_discount(user_id, pack)
-                price = get_pack_price(pack)
+                price = get_effective_price(pack)
                 final_price = apply_discount(price, disc_pct) if disc_pct else price
                 if disc_pct and disc_src == "promo":
                     db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (disc_id,))
@@ -2135,6 +2209,77 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 _json_response(self, {"ok": False, "error": "Невірні дані"}); return
             db_exec("DELETE FROM user_achievements WHERE user_id=? AND achievement_id=?", (target_id, ach_id))
             _json_response(self, {"ok": True, "message": f"Досягнення {ach_id} відкликано"}); return
+
+        if path == "/api/public-profile":
+            target_id = int(params.get("user_id", 0))
+            if not target_id:
+                _json_response(self, {"ok": False, "error": "user_id required"}); return
+            done_orders = db_query("SELECT pack, amount FROM orders WHERE chat_id=? AND status='done'", (target_id,))
+            def _si2(v):
+                try: return int(float(v or 0))
+                except: return 0
+            total_spent = sum(_si2(r[1]) for r in done_orders)
+            badge = get_spend_badge(total_spent)
+            earned_rows = db_query("SELECT achievement_id FROM user_achievements WHERE user_id=?", (target_id,))
+            achs = []
+            for row_a in earned_rows:
+                aid = row_a[0]
+                if aid in ACHIEVEMENTS:
+                    a = ACHIEVEMENTS[aid]
+                    achs.append({"id": aid, "emoji": a["emoji"], "name": a["name"]})
+            urow = db_query_one("SELECT user FROM orders WHERE chat_id=? AND user IS NOT NULL AND user!='' LIMIT 1", (target_id,))
+            username = urow[0] if urow else None
+            _json_response(self, {
+                "ok": True, "user_id": target_id,
+                "username": username,
+                "total_orders": len(done_orders),
+                "total_spent": total_spent,
+                "badge": badge,
+                "achievements": achs,
+                "ach_count": len(achs),
+            }); return
+
+        if path == "/api/admin/create-sale":
+            pwd = str(data.get("password", ""))
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            name = (data.get("name") or "").strip()
+            pct = int(data.get("pct", 0))
+            categories = data.get("categories", [])
+            expires = (data.get("expires") or "").strip()
+            if not name:
+                _json_response(self, {"ok": False, "error": "Введіть назву акції"}); return
+            if pct < 1 or pct > 90:
+                _json_response(self, {"ok": False, "error": "Відсоток: 1–90"}); return
+            if not categories:
+                _json_response(self, {"ok": False, "error": "Оберіть хоча б одну категорію"}); return
+            sale = {"name": name, "pct": pct, "categories": categories}
+            if expires:
+                sale["expires"] = expires
+            set_setting("active_sale", json.dumps(sale, ensure_ascii=False))
+            _json_response(self, {"ok": True, "message": f"✅ Акція «{name}» -{pct}% активована!"}); return
+
+        if path == "/api/admin/cancel-sale":
+            pwd = str(data.get("password", ""))
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            db_exec("DELETE FROM settings WHERE key='active_sale'")
+            _json_response(self, {"ok": True, "message": "Акцію скасовано"}); return
+
+        if path == "/api/admin/user-by-username":
+            pwd = str(data.get("password", ""))
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            username_q = (data.get("username") or "").strip().lstrip("@")
+            if not username_q:
+                _json_response(self, {"ok": False, "error": "Введіть нікнейм"}); return
+            row = db_query_one("SELECT DISTINCT chat_id FROM orders WHERE user=? AND chat_id IS NOT NULL LIMIT 1", (username_q,))
+            if not row:
+                _json_response(self, {"ok": False, "error": f"Користувача @{username_q} не знайдено в базі"}); return
+            _json_response(self, {"ok": True, "user_id": row[0], "username": username_q}); return
 
         if path == "/api/admin/broadcast":
             pwd = str(data.get("password", ""))
@@ -3734,11 +3879,14 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(MY_ID, f"🕵️ Підозрілий PUBG ID!\n🎮 ID: {player_id}\n👤 {user_label(q.from_user.username, pay_uid)}\nЦей ID вже використовувався з інших акаунтів!")
             except: pass
-        try:
-            btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Готово", callback_data=f"ok_{order_id}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{order_id}")]])
-            rise_marker = "⭐️ НАБІР ПІДЙОМ\n" if "Набір Підйом" in pack else ""
-            await context.bot.send_message(MY_ID, f"💰 ОПЛАТА!\n{rise_marker}🆔 {order_id}\n👤 {user_label(q.from_user.username, pay_uid)}\n🎁 {pack}\n🎮 ID: {player_id}\n💵 {amount} грн", reply_markup=btns)
-        except: pass
+        notif_row = db_query_one("SELECT notified_admin FROM orders WHERE id=?", (order_id,))
+        if not (notif_row and notif_row[0]):
+            try:
+                btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Готово", callback_data=f"ok_{order_id}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{order_id}")]])
+                rise_marker = "⭐️ НАБІР ПІДЙОМ\n" if "Набір Підйом" in pack else ""
+                await context.bot.send_message(MY_ID, f"💰 ОПЛАТА (Telegram)!\n{rise_marker}🆔 {order_id}\n👤 {user_label(q.from_user.username, pay_uid)}\n🎁 {pack}\n🎮 ID: {player_id}\n💵 {amount} грн", reply_markup=btns)
+                db_exec("UPDATE orders SET notified_admin=1 WHERE id=?", (order_id,))
+            except: pass
         await q.edit_message_text(f"✅ Дякуємо! Замовлення прийнято.\n🆔 {order_id}\nАдмін підтвердить незабаром.")
         return
 

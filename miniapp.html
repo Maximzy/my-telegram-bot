@@ -484,6 +484,10 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
   <div class="page" style="padding-top:12px">
     <!-- Step 1 – Group selection -->
     <div id="shopCats">
+      <div id="saleBanner" style="display:none;background:linear-gradient(135deg,#7c3aed,#db2777);border-radius:12px;padding:10px 14px;margin-bottom:10px;text-align:center">
+        <div style="font-size:14px;font-weight:800;color:#fff" id="saleBannerText">🎉 Акція!</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.85)" id="saleBannerSub"></div>
+      </div>
       <div class="section-title">Оберіть категорію</div>
       <!-- PUBG group card -->
       <div class="group-card glow-pink-card" onclick="showGroup('pubg')" style="background:#071220">
@@ -1011,6 +1015,11 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       </div>
     </div>
 
+    <div id="pBadgeRow" style="display:none;justify-content:center;margin:4px 0 8px">
+      <span id="pBadge" style="font-size:22px"></span>
+      <span id="pBadgeName" style="font-size:12px;font-weight:700;color:var(--acc);margin-left:5px;align-self:center"></span>
+    </div>
+
     <div class="stats-grid">
       <div class="stat-box"><div class="stat-val" id="pSpent">0</div><div class="stat-lbl">💰 грн витрачено</div></div>
       <div class="stat-box"><div class="stat-val" id="pOrds">0</div><div class="stat-lbl">📦 замовлень</div></div>
@@ -1018,7 +1027,10 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <div class="stat-box"><div class="stat-val" style="font-size:13px" id="pSince">—</div><div class="stat-lbl">📅 в магазині з</div></div>
     </div>
 
-    <div class="section-title">🏅 Досягнення</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0 2px">
+      <div class="section-title" style="margin:0">🏅 Досягнення</div>
+      <button class="btn-ghost btn btn-sm" onclick="openPublicProfileSearch()" style="font-size:11px">🔍 Профіль гравця</button>
+    </div>
     <div id="achGrid" class="ach-grid"></div>
   </div>
 </div>
@@ -1061,6 +1073,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div class="sub-tab" data-atab="acart">🛒 Кошики</div>
         <div class="sub-tab" data-atab="atickets">🎫 Тікети</div>
         <div class="sub-tab" data-atab="apolicy">📄 Політика</div>
+        <div class="sub-tab" data-atab="asales">🎉 Акції</div>
       </div>
 
       <!-- Orders -->
@@ -1227,6 +1240,10 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <div class="atab" id="atab-aachiev" style="display:none">
         <div class="section-title">Видати / відкликати досягнення</div>
         <div class="promo-form">
+          <div style="display:flex;gap:6px">
+            <input type="text" id="achUsername" placeholder="@нікнейм або порожньо" style="flex:1">
+            <button class="btn btn-sm btn-ghost" onclick="doLookupByUsername()">🔍</button>
+          </div>
           <input type="number" id="achUID" placeholder="User ID гравця">
           <select id="achSel">
             <option value="">— Оберіть досягнення —</option>
@@ -1362,8 +1379,46 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <button class="btn" style="margin-top:8px;width:100%" onclick="saveAPolicy()">💾 Зберегти</button>
       </div>
 
+      <!-- Sales / Promotions -->
+      <div class="atab" id="atab-asales" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="section-title" style="margin:0">🎉 Активна акція</div>
+          <button class="btn-ghost btn btn-sm" onclick="loadASales()">↻</button>
+        </div>
+        <div id="aSaleStatus" style="margin:10px 0"></div>
+        <div class="divider"></div>
+        <div class="section-title">➕ Нова акція</div>
+        <div class="promo-form">
+          <input type="text" id="saleNameInput" placeholder="Назва (напр: Літній розпродаж)">
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="number" id="salePctInput" placeholder="% знижки (1–90)" min="1" max="90" style="flex:1">
+            <span style="font-size:12px;color:var(--muted);white-space:nowrap">% знижка</span>
+          </div>
+          <div class="section-title" style="font-size:11px;margin:4px 0 2px">Категорії:</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" value="uc" class="salecat"> UC</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" value="prime" class="salecat"> Prime</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" value="prime_plus" class="salecat"> Prime Plus</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" value="rise" class="salecat"> Набори Підйом</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" value="all" class="salecat"> Все</label>
+          </div>
+          <input type="datetime-local" id="saleExpiresInput" style="background:var(--card2);border:1.5px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:12px;width:100%;box-sizing:border-box">
+          <div style="font-size:10px;color:var(--muted)">Якщо не вказати — акція без терміну</div>
+          <button class="btn" onclick="doCreateSale()">🎉 Запустити акцію</button>
+          <button class="btn-danger btn" onclick="doCancelSale()">🗑 Скасувати активну акцію</button>
+        </div>
+      </div>
+
     </div>
     </div>
+  </div>
+</div>
+
+<!-- Public Profile Modal -->
+<div id="publicProfileModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+  <div style="background:var(--card);border-radius:18px;padding:20px 16px;width:90%;max-width:380px;max-height:85vh;overflow-y:auto;position:relative">
+    <button onclick="closePublicProfile()" style="position:absolute;top:10px;right:12px;background:none;border:none;font-size:18px;color:var(--muted);cursor:pointer">✕</button>
+    <div id="pubProfileContent"><div class="empty"><div class="spinner"></div></div></div>
   </div>
 </div>
 
@@ -1677,6 +1732,7 @@ document.querySelectorAll('#aTabs .sub-tab').forEach(el => {
     else if (tab === 'awheel') loadPendingWheels();
     else if (tab === 'atickets') loadATickets();
     else if (tab === 'apolicy') loadAPolicy();
+    else if (tab === 'asales') loadASales();
   });
 });
 
@@ -1684,6 +1740,13 @@ document.querySelectorAll('#aTabs .sub-tab').forEach(el => {
 api('/api/prices').then(r => {
   if (r.ok) {
     prices = r.prices;
+    if (r.sale) {
+      const cats = (r.sale.categories || []).join(', ');
+      const exp = r.sale.expires ? ` · до ${r.sale.expires}` : '';
+      document.getElementById('saleBannerText').textContent = `🎉 ${r.sale.name} — -${r.sale.pct}%`;
+      document.getElementById('saleBannerSub').textContent = `Категорії: ${cats}${exp}`;
+      document.getElementById('saleBanner').style.display = 'block';
+    }
     if (uid) loadUserBonuses().then(renderPopular);
     else renderPopular();
   }
@@ -2677,6 +2740,13 @@ async function loadProfile() {
       document.getElementById('pOrds').textContent = r.total_orders || 0;
       document.getElementById('pUC').textContent = r.total_uc || 0;
       document.getElementById('pSince').textContent = r.first_seen || '—';
+      if (r.badge && r.badge.emoji) {
+        document.getElementById('pBadge').textContent = r.badge.emoji;
+        document.getElementById('pBadgeName').textContent = r.badge.name;
+        document.getElementById('pBadgeRow').style.display = 'flex';
+      } else {
+        document.getElementById('pBadgeRow').style.display = 'none';
+      }
     }
     loadAchievements();
   } catch (e) {}
@@ -3579,6 +3649,98 @@ async function submitRating() {
   if (r.ok) { toast('⭐ Дякуємо за оцінку!', 'success'); loadTickets(); closeTicketChat(); }
   else toast(r.error || 'Помилка', 'error');
   ratingForTicketId = null;
+}
+
+// ─── SALES ADMIN ────────────────────────────────────────────────────────────
+async function loadASales() {
+  const el = document.getElementById('aSaleStatus');
+  if (!el) return;
+  el.innerHTML = '<div class="empty"><div class="spinner" style="width:18px;height:18px"></div></div>';
+  const r = await api('/api/active-sale');
+  if (!r.ok) { el.innerHTML = '<div class="empty">Помилка</div>'; return; }
+  if (!r.sale) {
+    el.innerHTML = '<div class="empty" style="color:var(--muted)">Активних акцій немає</div>';
+  } else {
+    const s = r.sale;
+    const cats = (s.categories || []).join(', ');
+    const exp = s.expires ? `до ${s.expires}` : 'без терміну';
+    el.innerHTML = `<div class="card" style="padding:12px;border:1.5px solid var(--acc)">
+      <div style="font-weight:700;font-size:14px">🎉 ${esc(s.name)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">-${s.pct}% · ${esc(cats)} · ${esc(exp)}</div>
+    </div>`;
+  }
+}
+
+async function doCreateSale() {
+  const name = document.getElementById('saleNameInput').value.trim();
+  const pct = parseInt(document.getElementById('salePctInput').value) || 0;
+  const cats = [...document.querySelectorAll('.salecat:checked')].map(c => c.value);
+  const expires = document.getElementById('saleExpiresInput').value || '';
+  if (!name) { toast('Введіть назву акції', 'error'); return; }
+  if (pct < 1 || pct > 90) { toast('Відсоток: 1–90', 'error'); return; }
+  if (!cats.length) { toast('Оберіть хоча б одну категорію', 'error'); return; }
+  const r = await api('/api/admin/create-sale', 'POST', { password: adminPass, name, pct, categories: cats, expires });
+  if (r.ok) { toast(r.message, 'success'); loadASales(); } else toast(r.error || 'Помилка', 'error');
+}
+
+async function doCancelSale() {
+  if (!confirm('Скасувати активну акцію?')) return;
+  const r = await api('/api/admin/cancel-sale', 'POST', { password: adminPass });
+  if (r.ok) { toast(r.message, 'success'); loadASales(); } else toast(r.error || 'Помилка', 'error');
+}
+
+// ─── USERNAME LOOKUP FOR ACHIEVEMENTS ────────────────────────────────────────
+async function doLookupByUsername() {
+  const val = document.getElementById('achUsername').value.trim().replace(/^@/, '');
+  if (!val) { toast('Введіть нікнейм', 'error'); return; }
+  const r = await api('/api/admin/user-by-username', 'POST', { password: adminPass, username: val });
+  if (r.ok) {
+    document.getElementById('achUID').value = r.user_id;
+    toast(`Знайдено: @${r.username} → ID ${r.user_id}`, 'success');
+  } else toast(r.error || 'Не знайдено', 'error');
+}
+
+// ─── PUBLIC PROFILE ──────────────────────────────────────────────────────────
+function openPublicProfileSearch() {
+  const id = prompt('Введіть Telegram ID гравця:');
+  if (!id || isNaN(id)) return;
+  openPublicProfile(parseInt(id));
+}
+
+async function openPublicProfile(targetId) {
+  const modal = document.getElementById('publicProfileModal');
+  const content = document.getElementById('pubProfileContent');
+  modal.style.display = 'flex';
+  content.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api('/api/public-profile?user_id=' + targetId);
+  if (!r.ok) {
+    content.innerHTML = `<div class="empty">${esc(r.error || 'Помилка')}</div>`;
+    return;
+  }
+  const badge = r.badge && r.badge.emoji
+    ? `<span style="font-size:22px">${r.badge.emoji}</span><span style="font-size:12px;font-weight:700;color:var(--acc);margin-left:5px">${esc(r.badge.name)}</span>`
+    : '';
+  const achHtml = (r.achievements || []).map(a =>
+    `<div class="ach-card" style="padding:8px 10px;min-width:unset"><span style="font-size:18px">${a.emoji}</span><span style="font-size:10px">${esc(a.name)}</span></div>`
+  ).join('') || '<div class="empty" style="font-size:12px">Немає досягнень</div>';
+  const uname = r.username ? `@${esc(r.username)}` : `ID ${r.user_id}`;
+  content.innerHTML = `
+    <div style="text-align:center;margin-bottom:10px">
+      <div style="font-size:32px">👤</div>
+      <div style="font-weight:700;font-size:16px">${uname}</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-top:4px">${badge}</div>
+    </div>
+    <div class="stats-grid" style="grid-template-columns:repeat(2,1fr)">
+      <div class="stat-box"><div class="stat-val">${r.total_orders || 0}</div><div class="stat-lbl">📦 замовлень</div></div>
+      <div class="stat-box"><div class="stat-val">${r.total_spent || 0}</div><div class="stat-lbl">💰 грн</div></div>
+    </div>
+    <div class="section-title" style="margin-top:10px">🏅 Досягнення (${r.ach_count || 0})</div>
+    <div class="ach-grid" style="gap:6px">${achHtml}</div>
+  `;
+}
+
+function closePublicProfile() {
+  document.getElementById('publicProfileModal').style.display = 'none';
 }
 
 async function skipRating() {
