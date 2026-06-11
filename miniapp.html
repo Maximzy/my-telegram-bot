@@ -1151,17 +1151,35 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <!-- Points Shop Prices -->
       <div class="atab" id="atab-apointsprices" style="display:none">
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <div class="section-title" style="margin:0">Ціни магазину балів</div>
+          <div class="section-title" style="margin:0">Магазин балів</div>
           <button class="btn-ghost btn btn-sm" onclick="loadAPointsPrices()">↻</button>
         </div>
-        <div id="aPointsPricesList" style="margin-top:8px;max-height:280px;overflow-y:auto"></div>
+        <div id="aPointsPricesList" style="margin-top:8px;max-height:300px;overflow-y:auto"></div>
         <div class="divider"></div>
-        <div class="section-title">Змінити ціну товару</div>
+        <div class="section-title">Змінити ціну стандартного товару</div>
         <div class="promo-form">
-          <select id="pointsPriceItemSel"><option value="">— Оберіть товар —</option></select>
+          <select id="pointsPriceItemSel"><option value="">— Оберіть стандартний товар —</option></select>
           <input type="number" id="pointsPriceNewVal" placeholder="Нова ціна (балів)" min="1">
           <button class="btn" onclick="doUpdatePointsPrice()">💾 Оновити ціну</button>
           <button class="btn-ghost btn" onclick="doResetPointsPrice()">↺ Скинути до базової</button>
+        </div>
+        <div class="divider"></div>
+        <div class="section-title">➕ Додати власний приз</div>
+        <div class="promo-form">
+          <input type="text" id="customPrizeName" placeholder="Назва призу (напр: 120 UC безкоштовно)" maxlength="60">
+          <input type="number" id="customPrizeCost" placeholder="Ціна в балах" min="1">
+          <select id="customPrizeType">
+            <option value="">— Тип призу (що він дає) —</option>
+            <option value="free_uc_30">🎁 30 UC безкоштовно</option>
+            <option value="free_uc_60">🎁 60 UC безкоштовно</option>
+            <option value="free_uc_120">🎁 120 UC безкоштовно</option>
+            <option value="discount_small_1">🏷 -1% знижка (малі паки)</option>
+            <option value="discount_small_2">🏷 -2% знижка (малі паки)</option>
+            <option value="discount_medium_1">🏷 -1% знижка (середні паки)</option>
+            <option value="discount_medium_2">🏷 -2% знижка (середні паки)</option>
+            <option value="extra_spin">🎡 Додатковий прокрут колеса</option>
+          </select>
+          <button class="btn" onclick="doAddCustomPrize()">➕ Додати приз</button>
         </div>
       </div>
 
@@ -2961,20 +2979,60 @@ async function loadAPointsPrices() {
   const r = await api(`/api/admin/points-shop-prices`, 'POST', { password: adminPass });
   if (!r.ok) { el.innerHTML = '<div class="empty">' + esc(r.error) + '</div>'; return; }
   const sel = document.getElementById('pointsPriceItemSel');
-  sel.innerHTML = '<option value="">— Оберіть товар —</option>';
+  sel.innerHTML = '<option value="">— Оберіть стандартний товар —</option>';
+  const bonusTypeLabel = {
+    free_uc_30: '🎁 30 UC', free_uc_60: '🎁 60 UC', free_uc_120: '🎁 120 UC',
+    discount_small_1: '🏷 -1% малі', discount_small_2: '🏷 -2% малі',
+    discount_medium_1: '🏷 -1% середні', discount_medium_2: '🏷 -2% середні',
+    extra_spin: '🎡 Прокрут'
+  };
   el.innerHTML = Object.entries(r.items).map(([id, data]) => {
-    const opt = document.createElement('option');
-    opt.value = id; opt.textContent = data.name;
-    sel.appendChild(opt);
-    const changed = data.current !== data.base;
-    return `<div class="card" style="margin-bottom:6px;padding:9px 13px">
-      <div style="font-size:11px;font-weight:600">${esc(data.name)}</div>
+    if (!data.is_custom) {
+      const opt = document.createElement('option');
+      opt.value = id; opt.textContent = data.name;
+      sel.appendChild(opt);
+    }
+    const changed = !data.is_custom && data.current !== data.base;
+    const badge = data.is_custom
+      ? `<span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 5px;border-radius:4px;margin-left:5px">CUSTOM</span>`
+      : '';
+    const deleteBtn = data.is_custom
+      ? `<button onclick="doDeleteCustomPrize('${id}', this)" style="background:none;border:none;color:#e55;font-size:14px;cursor:pointer;padding:2px 6px;float:right" title="Видалити">🗑</button>`
+      : '';
+    return `<div class="card" style="margin-bottom:6px;padding:9px 13px;position:relative">
+      ${deleteBtn}
+      <div style="font-size:11px;font-weight:600">${esc(data.name)}${badge}</div>
       <div style="font-size:13px;margin-top:2px">
         <span style="color:var(--pts);font-weight:700">${data.current} балів</span>
         ${changed ? `<span style="font-size:10px;color:var(--muted);margin-left:6px">база: ${data.base} балів</span>` : ''}
       </div>
     </div>`;
   }).join('');
+}
+
+async function doAddCustomPrize() {
+  const name = document.getElementById('customPrizeName').value.trim();
+  const cost = parseInt(document.getElementById('customPrizeCost').value) || 0;
+  const bonus_type = document.getElementById('customPrizeType').value;
+  if (!name) { toast('Введіть назву призу', 'error'); return; }
+  if (cost < 1) { toast('Ціна має бути > 0', 'error'); return; }
+  if (!bonus_type) { toast('Оберіть тип призу', 'error'); return; }
+  const r = await api('/api/admin/add_points_item', 'POST', { password: adminPass, name, cost, bonus_type });
+  if (r.ok) {
+    toast(r.message, 'success');
+    document.getElementById('customPrizeName').value = '';
+    document.getElementById('customPrizeCost').value = '';
+    document.getElementById('customPrizeType').value = '';
+    loadAPointsPrices();
+  } else toast(r.error || 'Помилка', 'error');
+}
+
+async function doDeleteCustomPrize(item_id, btn) {
+  if (!confirm('Видалити цей приз?')) return;
+  btn.disabled = true;
+  const r = await api('/api/admin/delete_points_item', 'POST', { password: adminPass, item_id });
+  if (r.ok) { toast(r.message, 'success'); loadAPointsPrices(); }
+  else { toast(r.error || 'Помилка', 'error'); btn.disabled = false; }
 }
 
 async function doUpdatePointsPrice() {
