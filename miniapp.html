@@ -516,6 +516,9 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
     <!-- Step 2 – Pack list -->
     <div id="shopPacks" style="display:none">
       <div class="back-btn" onclick="backToCats()">← Назад</div>
+      <div id="ucPriceBanner" style="display:none;margin-bottom:12px;border-radius:16px;overflow:hidden">
+        <img src="/price_uc_banner.jpg" style="width:100%;display:block;border-radius:16px;object-fit:cover" draggable="false" loading="lazy">
+      </div>
       <div class="section-title" id="packTitle">UC Паки</div>
       <div id="packList"></div>
     </div>
@@ -775,7 +778,6 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <div class="sub-tab" data-svc="reviews">🌟 Відгуки</div>
       <div class="sub-tab" data-svc="points"><img src="/points_coin.png" style="width:15px;height:15px;object-fit:contain;vertical-align:middle;margin-right:3px"> Бали</div>
       <div class="sub-tab" data-svc="support">🆘 Підтримка</div>
-      <div class="sub-tab" data-svc="ai">🤖 AI</div>
       <div class="sub-tab" data-svc="calc">🧮 Калькулятор</div>
       <div class="sub-tab" data-svc="policy">📄 Політика</div>
       <div class="sub-tab" data-svc="help">ℹ️ Допомога</div>
@@ -940,20 +942,6 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
     </div>
 
     <!-- Policy -->
-    <!-- AI Chat -->
-    <div class="svc" id="svc-ai" style="display:none">
-      <div class="card" style="display:flex;flex-direction:column;gap:10px">
-        <div style="font-size:15px;font-weight:800">🤖 AI-помічник</div>
-        <div style="font-size:11px;color:var(--muted);line-height:1.6">Задай будь-яке питання про UC, Prime, замовлення або наш магазин.</div>
-        <div id="aiChatMessages" style="display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;padding-right:2px"></div>
-        <div style="display:flex;gap:8px;align-items:flex-end">
-          <textarea id="aiChatInput" placeholder="Напишіть питання..." rows="2"
-            style="flex:1;resize:none;font-size:13px;border-radius:12px;padding:8px 12px;border:1px solid var(--border);background:var(--card);color:var(--text)"
-            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendUserAiMsg();}"></textarea>
-          <button class="btn btn-sm" onclick="sendUserAiMsg()" style="height:38px;padding:0 14px">→</button>
-        </div>
-      </div>
-    </div>
 
     <!-- Calculator -->
     <div class="svc" id="svc-calc" style="display:none">
@@ -978,29 +966,8 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
     </div>
 
     <div class="svc" id="svc-policy" style="display:none">
-      <div class="card">
-        <div style="font-size:16px;font-weight:800;margin-bottom:4px">📄 ПОЛІТИКА МАГАЗИНУ UC</div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.6">Наш магазин надає послуги з поповнення UC для гравців PUBG Mobile. Оформлюючи замовлення, клієнт погоджується з правилами роботи магазину.</div>
-        <div style="font-size:12px;line-height:1.9">
-          <b style="color:var(--acc)">1. Оформлення замовлення</b><br>
-          <span style="color:var(--muted)">Клієнт самостійно обирає потрібний пакет UC та вказує свій ігровий ID. Перед оплатою необхідно уважно перевірити правильність введених даних.</span><br><br>
-          <b style="color:var(--acc)">2. Оплата</b><br>
-          <span style="color:var(--muted)">Замовлення передається в обробку тільки після підтвердження оплати. Якщо оплата не була здійснена або не підтверджена, замовлення не виконується.</span><br><br>
-          <b style="color:var(--acc)">3. Виконання замовлення</b><br>
-          <span style="color:var(--muted)">Після оплати UC нараховуються на вказаний клієнтом ігровий ID. Час виконання може залежати від навантаження та доступності сервісу.</span><br><br>
-          <b style="color:var(--acc)">4. Відповідальність клієнта</b><br>
-          <span style="color:var(--muted)">Магазин не несе відповідальності за помилки у введеному ігровому ID. Якщо клієнт вказав неправильний ID, повернення коштів або повторне нарахування не гарантується.</span><br><br>
-          <b style="color:var(--acc)">5. Повернення коштів</b><br>
-          <span style="color:var(--muted)">Повернення коштів можливе лише у випадку, якщо замовлення ще не було виконано. Після успішного нарахування UC повернення коштів не здійснюється.</span><br><br>
-          <b style="color:var(--acc)">6. Підтримка</b><br>
-          <span style="color:var(--muted)">Якщо виникли питання або проблеми із замовленням, клієнт може звернутися до підтримки магазину. Ми намагаємося допомогти кожному клієнту якнайшвидше.</span><br>
-          <span style="color:var(--text);font-weight:600">Підтримка: @Manager_Nezuko</span><br><br>
-          <b style="color:var(--acc)">7. Зміна правил</b><br>
-          <span style="color:var(--muted)">Магазин залишає за собою право змінювати ці правила. Актуальна політика діє на момент оформлення замовлення.</span><br><br>
-          <b style="color:var(--acc)">8. Флуд у особисті повідомлення</b><br>
-          <span style="color:var(--muted)">Якщо клієнт після оформлення замовлення починає надсилати повідомлення на кшталт «Де мої UC?» — магазин має право відмовити в обслуговуванні. Писати нагадування допустимо лише якщо з моменту замовлення пройшло більше 10 хвилин.</span>
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:14px;font-style:italic">Оформлюючи замовлення, клієнт підтверджує, що ознайомився з цією політикою та погоджується з її умовами.</div>
+      <div class="card" id="policyContent">
+        <div class="empty"><div class="spinner"></div></div>
       </div>
     </div>
 
@@ -1093,7 +1060,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div class="sub-tab" data-atab="awheel">🎰 Колесо</div>
         <div class="sub-tab" data-atab="acart">🛒 Кошики</div>
         <div class="sub-tab" data-atab="atickets">🎫 Тікети</div>
-        <div class="sub-tab" data-atab="aai">🤖 AI Радник</div>
+        <div class="sub-tab" data-atab="apolicy">📄 Політика</div>
       </div>
 
       <!-- Orders -->
@@ -1336,24 +1303,6 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       </div>
 
       <!-- Tickets -->
-      <!-- AI Advisor Tab -->
-      <div class="atab" id="atab-aai" style="display:none">
-        <div id="aiAdvisorStats" style="margin-bottom:10px"></div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
-          <button class="btn btn-sm" style="font-size:11px" onclick="sendAdminAIChip('Що варто додати до бота щоб підвищити продажі?')">💡 Що додати?</button>
-          <button class="btn btn-sm" style="font-size:11px" onclick="sendAdminAIChip('Проаналізуй мій магазин і дай конкретні поради по збільшенню виручки')">📈 Аналіз</button>
-          <button class="btn btn-sm" style="font-size:11px" onclick="sendAdminAIChip('Які акції або знижки можна провести щоб залучити нових покупців?')">🔥 Акції</button>
-          <button class="btn btn-sm" style="font-size:11px" onclick="sendAdminAIChip('Які нові функції бота підвищать залученість та утримання юзерів?')">🚀 Фічі</button>
-          <button class="btn btn-sm" style="font-size:11px" onclick="sendAdminAIChip('Як я можу покращити систему підтримки та комунікацію з покупцями?')">💬 Підтримка</button>
-        </div>
-        <div id="adminAIChatMessages" style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:12px;padding:10px;background:var(--card2);margin-bottom:10px"></div>
-        <div style="display:flex;gap:8px">
-          <textarea id="adminAIInput" placeholder="Запитай AI-радника про бота..." style="flex:1;min-height:50px;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;padding:8px;color:var(--text);font-size:13px;resize:none;box-sizing:border-box;outline:none;font-family:inherit"></textarea>
-          <button class="btn btn-sm" style="align-self:flex-end;white-space:nowrap" onclick="sendAdminAIMsg()">📨</button>
-        </div>
-        <button class="btn-ghost btn" style="width:100%;font-size:11px;margin-top:7px;color:var(--muted)" onclick="clearAdminAIChat()">🗑 Очистити чат</button>
-      </div>
-
       <div class="atab" id="atab-atickets" style="display:none">
         <!-- List view -->
         <div id="aTicketsListView">
@@ -1387,6 +1336,15 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         </div>
       </div>
 
+      <!-- Policy editor -->
+      <div class="atab" id="atab-apolicy" style="display:none">
+        <div class="section-title">📄 Редагувати політику</div>
+        <div id="aPolicyCurrentWrap" class="card" style="margin-bottom:10px;padding:10px 12px;font-size:12px;color:var(--muted);white-space:pre-wrap;line-height:1.6;max-height:200px;overflow-y:auto"><div class="spinner" style="width:18px;height:18px"></div></div>
+        <textarea id="aPolicyInput" placeholder="Текст політики (Markdown)..." style="width:100%;min-height:180px;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-size:12px;resize:vertical;box-sizing:border-box;outline:none;font-family:inherit"></textarea>
+        <button class="btn" style="margin-top:8px;width:100%" onclick="saveAPolicy()">💾 Зберегти</button>
+      </div>
+
+    </div>
     </div>
   </div>
 </div>
@@ -1677,7 +1635,7 @@ document.querySelectorAll('#svcTabs .sub-tab').forEach(el => {
       else if (svc === 'referral') loadReferral();
       else if (svc === 'bonus') loadBonuses();
       else if (svc === 'support') loadTickets();
-      else if (svc === 'ai') initAiChat();
+      else if (svc === 'policy') loadPolicy();
     }
   });
 });
@@ -1700,7 +1658,7 @@ document.querySelectorAll('#aTabs .sub-tab').forEach(el => {
     else if (tab === 'areviews') loadAReviews();
     else if (tab === 'awheel') loadPendingWheels();
     else if (tab === 'atickets') loadATickets();
-    else if (tab === 'aai') loadAdminAI();
+    else if (tab === 'apolicy') loadAPolicy();
   });
 });
 
@@ -1777,6 +1735,7 @@ async function showPacks(cat) {
   }).join('');
   staggerShow([...packListEl.querySelectorAll('.pack-item')]);
   _initRipple('.pack-item');
+  document.getElementById('ucPriceBanner').style.display = cat === 'uc' ? 'block' : 'none';
   document.getElementById('shopCats').style.display = 'none';
   document.getElementById('shopSubCats').style.display = 'none';
   showWithAnim(document.getElementById('shopPacks'));
@@ -2815,120 +2774,47 @@ async function loadAStats() {
       <div class="stat-box"><div class="stat-val" style="color:var(--warn)">${r.pending}</div><div class="stat-lbl">⏳ Очікують</div></div>
       <div class="stat-box"><div class="stat-val" style="color:var(--pts)">${r.users}</div><div class="stat-lbl">👥 Користувачів</div></div>
       <div class="stat-box"><div class="stat-val" style="color:var(--acc)">${r.open_tickets ?? 0}</div><div class="stat-lbl">🎫 Відкриті тікети</div></div>
-      <div class="stat-box"><div class="stat-val" style="color:var(--acc)">${r.ai_today ?? 0} <span style="font-size:14px;color:var(--muted)">/ 1500</span></div><div class="stat-lbl">🤖 AI запитів сьогодні</div></div>
       <div class="stat-box" style="grid-column:1/-1"><div class="stat-val" style="font-size:26px">${r.total_sum} грн</div><div class="stat-lbl">💰 Загальні продажі</div></div>
       <div class="stat-box" style="grid-column:1/-1"><div class="stat-val" style="font-size:26px;color:var(--success)">${r.today_sum} грн</div><div class="stat-lbl">📅 Сьогодні</div></div>
     </div>`;
 }
 
-// ── ADMIN AI ADVISOR ──────────────────────────────────────────────────────────
-// ── USER AI CHAT ──────────────────────────────────────────────────────────────
-let userAiHistory = [];
-let userAiInitialized = false;
-
-function initAiChat() {
-  if (userAiInitialized) return;
-  userAiInitialized = true;
-  const el = document.getElementById('aiChatMessages');
-  el.innerHTML = `<div style="align-self:flex-start;background:var(--card2,var(--card));border:1px solid var(--border);border-radius:14px;padding:10px 14px;font-size:13px;max-width:85%;line-height:1.5">
-    👋 Привіт! Я AI-помічник магазину UC. Запитай мене про пакети, оплату або замовлення — я допоможу!
-  </div>`;
-}
-
-async function sendUserAiMsg() {
-  const input = document.getElementById('aiChatInput');
-  const msg = input.value.trim();
-  if (!msg) return;
-  input.value = '';
-  const el = document.getElementById('aiChatMessages');
-
-  const userBubble = document.createElement('div');
-  userBubble.style.cssText = 'align-self:flex-end;background:var(--acc);color:#fff;border-radius:14px;padding:10px 14px;font-size:13px;max-width:85%;line-height:1.5;word-break:break-word';
-  userBubble.textContent = msg;
-  el.appendChild(userBubble);
-  el.scrollTop = el.scrollHeight;
-
-  const aiBubble = document.createElement('div');
-  aiBubble.style.cssText = 'align-self:flex-start;background:var(--card2,var(--card));border:1px solid var(--border);border-radius:14px;padding:10px 14px;font-size:13px;max-width:85%;line-height:1.5';
-  aiBubble.innerHTML = '<div class="spinner" style="width:18px;height:18px;border-width:2px"></div>';
-  el.appendChild(aiBubble);
-  el.scrollTop = el.scrollHeight;
-
-  userAiHistory.push({role: 'user', text: msg});
-  const r = await api('/api/user/ai-chat', 'POST', {user_id: uid, message: msg, history: userAiHistory.slice(-6)});
-  const reply = r.ok ? (r.response || '…') : (r.error || 'Помилка');
-  aiBubble.innerHTML = esc(reply).replace(/\n/g, '<br>');
-  if (r.ok) userAiHistory.push({role: 'assistant', text: reply});
-  el.scrollTop = el.scrollHeight;
-}
-
-let adminAIHistory = [];
-
-async function loadAdminAI() {
-  const statsEl = document.getElementById('aiAdvisorStats');
-  const r = await api(`/api/admin/ai_stats?password=${adminPass}`);
+async function loadPolicy() {
+  const el = document.getElementById('policyContent');
+  if (!el) return;
+  const r = await api('/api/policy');
   if (r.ok) {
-    const topicsHtml = r.topics.length ? r.topics.map(t =>
-      `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)">
-        <span style="color:var(--text)">${t.topic}</span>
-        <span style="color:var(--acc);font-weight:800">${t.count}</span>
-      </div>`).join('') : '<div style="font-size:12px;color:var(--muted)">Ще немає запитів</div>';
-    statsEl.innerHTML = `
-      <div class="card" style="margin-bottom:8px;padding:12px">
-        <div style="font-size:12px;font-weight:700;color:var(--acc);margin-bottom:8px">📊 AI Статистика</div>
-        <div style="display:flex;gap:8px;margin-bottom:10px">
-          <div class="stat-box" style="flex:1;padding:8px"><div class="stat-val" style="font-size:20px">${r.total}</div><div class="stat-lbl" style="font-size:10px">Всього</div></div>
-          <div class="stat-box" style="flex:1;padding:8px"><div class="stat-val" style="font-size:20px;color:var(--acc)">${r.today}</div><div class="stat-lbl" style="font-size:10px">Сьогодні</div></div>
-        </div>
-        <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Теми запитів</div>
-        ${topicsHtml}
-      </div>`;
-  }
-  if (!adminAIHistory.length) {
-    adminAIHistory = [{role:'assistant', text:'👋 Привіт! Я твій AI-радник.\n\nМожу запропонувати нові фічі для бота, ідеї акцій, поради по збільшенню продажів або відповісти на будь-яке питання по управлінню магазином.\n\nЩо тебе цікавить?'}];
-    renderAdminAIMessages();
+    const text = r.policy || '';
+    const html = text
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')
+      .replace(/\*(.*?)\*/g,'<i>$1</i>')
+      .replace(/_(.*?)_/g,'<i>$1</i>')
+      .replace(/\n/g,'<br>');
+    el.innerHTML = `<div style="font-size:13px;line-height:1.9">${html}</div>`;
+  } else {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px">Не вдалось завантажити політику.</div>';
   }
 }
 
-function renderAdminAIMessages() {
-  const el = document.getElementById('adminAIChatMessages');
-  el.innerHTML = adminAIHistory.map(m => {
-    const isBot = m.role === 'assistant';
-    return `<div style="display:flex;flex-direction:column;align-items:${isBot?'flex-start':'flex-end'};margin-bottom:10px">
-      <div style="max-width:90%;background:${isBot?'var(--card)':'var(--acc)'};color:${isBot?'var(--text)':'#fff'};border-radius:${isBot?'12px 12px 12px 3px':'12px 12px 3px 12px'};padding:9px 13px;font-size:12px;line-height:1.6;word-break:break-word">${m.text.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')}</div>
-    </div>`;
-  }).join('');
-  el.scrollTop = el.scrollHeight;
+async function loadAPolicy() {
+  const r = await api('/api/policy');
+  if (r.ok) {
+    document.getElementById('aPolicyCurrentWrap').textContent = r.policy || '';
+    document.getElementById('aPolicyInput').value = r.policy || '';
+  }
 }
 
-async function sendAdminAIMsg() {
-  const input = document.getElementById('adminAIInput');
-  const msg = (input.value || '').trim();
-  if (!msg) return;
-  input.value = '';
-  adminAIHistory.push({role:'user', text: msg});
-  renderAdminAIMessages();
-  const el = document.getElementById('adminAIChatMessages');
-  const loader = document.createElement('div');
-  loader.style.cssText = 'display:flex;align-items:flex-start;margin-bottom:10px';
-  loader.innerHTML = '<div style="background:var(--card);border-radius:12px 12px 12px 3px;padding:9px 14px"><div class="spinner" style="width:14px;height:14px;margin:2px"></div></div>';
-  el.appendChild(loader);
-  el.scrollTop = el.scrollHeight;
-  const r = await api('/api/admin/ai_chat', 'POST', { password: adminPass, message: msg, history: adminAIHistory.slice(-8) });
-  loader.remove();
-  adminAIHistory.push({role:'assistant', text: r.ok ? r.response : '❌ Помилка. Спробуй ще раз.'});
-  renderAdminAIMessages();
-}
-
-function sendAdminAIChip(text) {
-  document.getElementById('adminAIInput').value = text;
-  sendAdminAIMsg();
-}
-
-function clearAdminAIChat() {
-  adminAIHistory = [];
-  document.getElementById('adminAIChatMessages').innerHTML = '';
-  loadAdminAI();
+async function saveAPolicy() {
+  const text = (document.getElementById('aPolicyInput').value || '').trim();
+  if (!text) { toast('Текст порожній', 'error'); return; }
+  const r = await api('/api/admin/set_policy', 'POST', { password: adminPass, policy: text });
+  if (r.ok) {
+    toast('Політику оновлено ✅', 'success');
+    document.getElementById('aPolicyCurrentWrap').textContent = text;
+  } else {
+    toast(r.error || 'Помилка', 'error');
+  }
 }
 
 async function loadAdmins() {

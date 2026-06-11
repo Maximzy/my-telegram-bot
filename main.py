@@ -19,7 +19,7 @@ ADMIN_PASSWORD = _env_admin_pwd
 PAYMENT_CARD = os.environ.get("PAYMENT_CARD", "4874070020367247")
 MY_ID = int(os.environ.get("OWNER_ID", "1440236609"))
 SHOP_TAG = os.environ.get("SHOP_TAG", "@NezukoUCShop")
-STARS_RATE_DEFAULT = float(os.environ.get("STARS_RATE", "0.73"))
+STARS_RATE_DEFAULT = float(os.environ.get("STARS_RATE", "0.81"))
 STARS_RATE = STARS_RATE_DEFAULT
 PREMIUM_PACKS_BASE = [
     {"id": "prem_3m",  "label": "Telegram Premium 3 міс",  "price": 530},
@@ -511,48 +511,6 @@ threading.Thread(target=_rl_cleanup_worker, daemon=True).start()
 def is_admin_online():
     return (time.time() - admin_last_seen) < 120
 
-def _ai_ticket_auto_reply(ticket_id, category, user_chat_id, delay=50):
-    """Wait `delay` seconds, then reply with AI if admin is still offline and ticket unanswered."""
-    def _run():
-        time.sleep(delay)
-        if is_admin_online():
-            return
-        if not GEMINI_API_KEY:
-            return
-        try:
-            ticket = db_query_one("SELECT status FROM tickets WHERE id=?", (ticket_id,))
-            if not ticket or ticket[0] in ("closed", "answered"):
-                return
-            msgs = db_query("SELECT sender, message FROM ticket_messages WHERE ticket_id=? ORDER BY id", (ticket_id,))
-            history_text = "\n".join([f"{'Користувач' if m[0]=='user' else 'Підтримка'}: {m[1]}" for m in msgs])
-            prompt = (
-                f"Ти — AI-помічник підтримки магазину UC Shop (PUBG Mobile). "
-                f"Відповідай ЛИШЕ українською мовою. Будь ввічливим і корисним. "
-                f"Категорія тікету: {category}.\n"
-                f"Листування:\n{history_text}\n\n"
-                f"Дай коротку корисну відповідь від імені підтримки. "
-                f"Якщо питання складне — скажи що менеджер відповість найближчим часом."
-            )
-            messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
-            response = _gemini_api_call(messages, max_tokens=400)
-            if not response or response.startswith("❌"):
-                return
-            ai_note = response + "\n\n_(🤖 Автовідповідь AI — менеджер підтвердить найближчим часом)_"
-            db_exec("INSERT INTO ticket_messages (ticket_id, sender, message, created_at) VALUES (?,?,?,?)",
-                    (ticket_id, "ai", ai_note, created_at_now()))
-            db_exec("UPDATE tickets SET status='answered', admin_reply=?, replied_at=? WHERE id=?",
-                    (ai_note, created_at_now(), ticket_id))
-            push_notification(user_chat_id, "ticket_reply", f"🤖 AI відповів на тікет #{ticket_id}: {response[:80]}")
-            try:
-                msg_txt = f"🤖 AI-відповідь по тікету #{ticket_id} [{category}]:\n\n{response}\n\n_(Менеджер підтвердить найближчим часом)_"
-                p = urllib.parse.urlencode({"chat_id": user_chat_id, "text": msg_txt}).encode()
-                urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=p), timeout=5)
-            except Exception as e:
-                logging.warning(f"ai ticket notify error: {e}")
-        except Exception as e:
-            logging.warning(f"_ai_ticket_auto_reply error: {e}")
-    threading.Thread(target=_run, daemon=True).start()
-
 POLICY_HTML = ""
 
 MINIAPP_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "miniapp.html")
@@ -852,7 +810,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if _ip_is_blocked(ip):
             self.send_response(403); self.end_headers(); return
-        _STATIC_IMG_SET = {"/favicon.ico","/nezuko.png","/nezuko_bg.png","/uc_icon.png","/prime_crown.png","/points_coin.png","/nezuko_love.png","/crate_icon.png","/nezuko_pubg_banner.png","/nezuko_tg_gifts_banner.png","/gift_easter.png","/gift_april.png","/gift_patrick.png","/gift_march8.png","/gift_valentine.png","/gift_loveu.png","/gift_xmas_bear.png","/gift_xmas_tree.png"}
+        _STATIC_IMG_SET = {"/favicon.ico","/nezuko.png","/nezuko_bg.png","/uc_icon.png","/prime_crown.png","/points_coin.png","/nezuko_love.png","/crate_icon.png","/nezuko_pubg_banner.png","/nezuko_tg_gifts_banner.png","/gift_easter.png","/gift_april.png","/gift_patrick.png","/gift_march8.png","/gift_valentine.png","/gift_loveu.png","/gift_xmas_bear.png","/gift_xmas_tree.png","/price_uc_banner.jpg"}
         if path not in _STATIC_IMG_SET:
             if not _rl_allow(f"ip-get:{ip}", 200, 60):
                 self.send_response(429); self.end_headers(); return
@@ -866,6 +824,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
             "nezuko_pubg_banner.png","nezuko_tg_gifts_banner.png",
             "gift_easter.png","gift_april.png","gift_patrick.png","gift_march8.png",
             "gift_valentine.png","gift_loveu.png","gift_xmas_bear.png","gift_xmas_tree.png",
+            "price_uc_banner.jpg",
         }
         if path in ("/nezuko.png", "/nezuko_bg.png", "/uc_icon.png", "/prime_crown.png", "/points_coin.png", "/nezuko_love.png", "/crate_icon.png") or path.lstrip("/") in _STATIC_IMAGES:
             fname = path.lstrip("/")
@@ -873,8 +832,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
             if os.path.exists(img_path):
                 with open(img_path, "rb") as f:
                     data = f.read()
+                mime = "image/jpeg" if fname.lower().endswith((".jpg", ".jpeg")) else "image/png"
                 self.send_response(200)
-                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Type", mime)
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header("Cache-Control", "public, max-age=86400")
                 self.end_headers()
@@ -892,6 +852,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
         if path == "/app":
             _html_response(self, _load_miniapp_html()); return
 
+        if path == "/api/policy":
+            _json_response(self, {"ok": True, "policy": get_policy_text()}); return
+
         if path == "/api/admin/heartbeat":
             if _ip_is_blocked(ip):
                 _json_response(self, {"ok": False}, 403); return
@@ -899,6 +862,17 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 _json_response(self, {"ok": False}, 429); return
             global admin_last_seen
             admin_last_seen = time.time()
+            _json_response(self, {"ok": True}); return
+
+        if path == "/api/admin/set_policy":
+            pwd = data.get("password", "")
+            ok_adm, err_adm = is_trusted_admin_post(ip, pwd)
+            if not ok_adm:
+                _json_response(self, {"ok": False, "error": err_adm}, 403); return
+            new_policy = (data.get("policy") or "").strip()
+            if not new_policy:
+                _json_response(self, {"ok": False, "error": "Порожній текст"}); return
+            set_setting("policy_text", new_policy)
             _json_response(self, {"ok": True}); return
 
         if path == "/api/orders":
@@ -1087,11 +1061,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
             total_sum = get_done_sum()
             today_sum = get_done_sum(today_only=True)
             open_tickets = db_query_one("SELECT COUNT(*) FROM tickets WHERE status IN ('open','answered','waiting')")[0]
-            ai_today = db_query_one("SELECT COUNT(*) FROM ai_logs WHERE created_at LIKE ?", (created_at_now()[:10] + '%',))[0] or 0
-            ai_total = db_query_one("SELECT COUNT(*) FROM ai_logs")[0] or 0
             _json_response(self, {"ok": True, "done": done, "canceled": canceled, "pending": pending,
                                   "total_sum": total_sum, "today_sum": today_sum, "users": total_users,
-                                  "open_tickets": open_tickets, "ai_today": ai_today, "ai_total": ai_total}); return
+                                  "open_tickets": open_tickets}); return
 
         if path == "/api/admin/action-log":
             pwd = params.get("password", "")
@@ -1112,16 +1084,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
                           "amount": r[3], "method": r[4], "status": r[5], "created_at": (r[6] or "")[:16]} for r in rows]
             _json_response(self, {"ok": True, "donations": donations}); return
 
-        if path == "/api/admin/ai_stats":
-            pwd = params.get("password", "")
-            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
-            if not _ok_adm:
-                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
-            total = db_query_one("SELECT COUNT(*) FROM ai_logs")[0] or 0
-            today = db_query_one("SELECT COUNT(*) FROM ai_logs WHERE created_at LIKE ?", (created_at_now()[:10] + '%',))[0] or 0
-            topics = db_query("SELECT topic, COUNT(*) as cnt FROM ai_logs GROUP BY topic ORDER BY cnt DESC LIMIT 6")
-            topic_list = [{"topic": r[0], "count": r[1]} for r in topics]
-            _json_response(self, {"ok": True, "total": total, "today": today, "topics": topic_list}); return
 
         if path == "/api/admin/admins":
             pwd = params.get("password", "")
@@ -1528,7 +1490,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
             db_exec("INSERT INTO ticket_messages (ticket_id, sender, message, created_at) VALUES (?,?,?,?)",
                     (tid, "user", message, created_at_now()))
             _notify_admin_ticket(tid, user_id, username, category, message)
-            _ai_ticket_auto_reply(tid, category, user_id)
             _json_response(self, {"ok": True, "ticket_id": tid}); return
 
         if path == "/api/ticket/reply":
@@ -1598,48 +1559,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 logging.warning(f"ticket admin msg send error: {e}")
             _json_response(self, {"ok": True}); return
 
-        if path == "/api/admin/ai_chat":
-            pwd = str(data.get("password", ""))
-            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
-            if not _ok_adm:
-                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
-            message = str(data.get("message", "")).strip()
-            history = data.get("history", [])
-            if not message:
-                _json_response(self, {"ok": False, "error": "Немає повідомлення"}); return
-            oai_msgs = [{"role": "system", "content": ADMIN_ADVISOR_PROMPT}]
-            for h in (history[-8:] if len(history) > 8 else history):
-                oai_msgs.append({"role": "assistant" if h.get("role") == "assistant" else "user", "content": str(h.get("text", ""))[:600]})
-            oai_msgs.append({"role": "user", "content": message})
-            response = _gemini_api_call(oai_msgs, max_tokens=700)
-            _json_response(self, {"ok": True, "response": response}); return
-
-        if path == "/api/user/ai-chat":
-            user_id = int(data.get("user_id", 0))
-            if user_id and not _rl_allow(f"ai:{user_id}", 15, 60):
-                _json_response(self, {"ok": False, "error": "Забагато запитів до AI. Зачекайте хвилину."}, 429); return
-            if user_id and not _gemini_user_allowed(user_id):
-                _json_response(self, {"ok": False, "error": f"⏳ Почекай {GEMINI_USER_COOLDOWN} сек між AI-запитами."}, 429); return
-            message = str(data.get("message", "")).strip()[:500]
-            history = data.get("history", [])
-            if not isinstance(history, list):
-                history = []
-            if not message:
-                _json_response(self, {"ok": False, "error": "Немає повідомлення"}); return
-            if not GEMINI_API_KEY:
-                _json_response(self, {"ok": False, "error": "AI тимчасово недоступний"}); return
-            oai_messages = [{"role": "system", "content": AI_SYSTEM_PROMPT}]
-            for h in (history[-6:] if len(history) > 6 else history):
-                role = "assistant" if h.get("role") == "assistant" else "user"
-                oai_messages.append({"role": role, "content": str(h.get("text", ""))[:400]})
-            oai_messages.append({"role": "user", "content": message})
-            response = _gemini_api_call(oai_messages, max_tokens=400)
-            if user_id:
-                topic = _detect_ai_topic(message)
-                db_exec("INSERT INTO ai_logs (user_id, message, topic, created_at) VALUES (?,?,?,?)",
-                        (user_id, message[:200], topic, created_at_now()))
-            _json_response(self, {"ok": True, "response": response}); return
-
         if path == "/api/ticket/close":
             user_id = int(data.get("user_id", 0))
             ticket_id = int(data.get("ticket_id", 0))
@@ -1683,7 +1602,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 urllib.request.urlopen(urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=p), timeout=5)
             except Exception as e:
                 logging.warning(f"ticket user msg notify error: {e}")
-            _ai_ticket_auto_reply(ticket_id, ticket[1], user_id)
             _json_response(self, {"ok": True}); return
 
         if path == "/api/promo":
@@ -2500,40 +2418,45 @@ async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=btns, parse_mode="Markdown"
     )
 
+DEFAULT_POLICY_TEXT = (
+    "📄 *ПОЛІТИКА МАГАЗИНУ UC*\n\n"
+    "Наш магазин надає послуги з поповнення UC для гравців PUBG Mobile. "
+    "Оформлюючи замовлення, клієнт погоджується з правилами роботи магазину.\n\n"
+    "*1. Оформлення замовлення*\n"
+    "Клієнт самостійно обирає потрібний пакет UC та вказує свій ігровий ID. "
+    "Перед оплатою необхідно уважно перевірити правильність введених даних.\n\n"
+    "*2. Оплата*\n"
+    "Замовлення передається в обробку тільки після підтвердження оплати. "
+    "Якщо оплата не була здійснена або не підтверджена, замовлення не виконується.\n\n"
+    "*3. Виконання замовлення*\n"
+    "Після оплати UC нараховуються на вказаний клієнтом ігровий ID. "
+    "Час виконання може залежати від навантаження та доступності сервісу.\n\n"
+    "*4. Відповідальність клієнта*\n"
+    "Магазин не несе відповідальності за помилки у введеному ігровому ID. "
+    "Якщо клієнт вказав неправильний ID, повернення коштів або повторне нарахування не гарантується.\n\n"
+    "*5. Повернення коштів*\n"
+    "Повернення коштів можливе лише у випадку, якщо замовлення ще не було виконано. "
+    "Після успішного нарахування UC повернення коштів не здійснюється.\n\n"
+    "*6. Підтримка*\n"
+    "Якщо виникли питання або проблеми із замовленням, клієнт може звернутися до підтримки. "
+    "Ми намагаємося допомогти кожному клієнту якнайшвидше.\n"
+    "Підтримка: @Manager\\_Nezuko\n\n"
+    "*7. Зміна правил*\n"
+    "Магазин залишає за собою право змінювати ці правила. "
+    "Актуальна політика діє на момент оформлення замовлення.\n\n"
+    "*8. Флуд у особисті повідомлення*\n"
+    "Якщо клієнт після оформлення замовлення починає надсилати повідомлення на кшталт «Де мої UC?» — "
+    "магазин має право відмовити в обслуговуванні. Писати нагадування допустимо лише якщо з моменту "
+    "замовлення пройшло більше 10 хвилин.\n\n"
+    "_Оформлюючи замовлення, клієнт підтверджує, що ознайомився з цією політикою та погоджується з її умовами._"
+)
+
+def get_policy_text() -> str:
+    saved = get_setting("policy_text")
+    return saved if saved else DEFAULT_POLICY_TEXT
+
 async def policy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    policy_text = (
-        "📄 *ПОЛІТИКА МАГАЗИНУ UC*\n\n"
-        "Наш магазин надає послуги з поповнення UC для гравців PUBG Mobile. "
-        "Оформлюючи замовлення, клієнт погоджується з правилами роботи магазину.\n\n"
-        "*1. Оформлення замовлення*\n"
-        "Клієнт самостійно обирає потрібний пакет UC та вказує свій ігровий ID. "
-        "Перед оплатою необхідно уважно перевірити правильність введених даних.\n\n"
-        "*2. Оплата*\n"
-        "Замовлення передається в обробку тільки після підтвердження оплати. "
-        "Якщо оплата не була здійснена або не підтверджена, замовлення не виконується.\n\n"
-        "*3. Виконання замовлення*\n"
-        "Після оплати UC нараховуються на вказаний клієнтом ігровий ID. "
-        "Час виконання може залежати від навантаження та доступності сервісу.\n\n"
-        "*4. Відповідальність клієнта*\n"
-        "Магазин не несе відповідальності за помилки у введеному ігровому ID. "
-        "Якщо клієнт вказав неправильний ID, повернення коштів або повторне нарахування не гарантується.\n\n"
-        "*5. Повернення коштів*\n"
-        "Повернення коштів можливе лише у випадку, якщо замовлення ще не було виконано. "
-        "Після успішного нарахування UC повернення коштів не здійснюється.\n\n"
-        "*6. Підтримка*\n"
-        "Якщо виникли питання або проблеми із замовленням, клієнт може звернутися до підтримки. "
-        "Ми намагаємося допомогти кожному клієнту якнайшвидше.\n"
-        "Підтримка: @Manager\\_Nezuko\n\n"
-        "*7. Зміна правил*\n"
-        "Магазин залишає за собою право змінювати ці правила. "
-        "Актуальна політика діє на момент оформлення замовлення.\n\n"
-        "*8. Флуд у особисті повідомлення*\n"
-        "Якщо клієнт після оформлення замовлення починає надсилати повідомлення на кшталт «Де мої UC?» — "
-        "магазин має право відмовити в обслуговуванні. Писати нагадування допустимо лише якщо з моменту "
-        "замовлення пройшло більше 10 хвилин.\n\n"
-        "_Оформлюючи замовлення, клієнт підтверджує, що ознайомився з цією політикою та погоджується з її умовами._"
-    )
-    await update.message.reply_text(policy_text, parse_mode="Markdown")
+    await update.message.reply_text(get_policy_text(), parse_mode="Markdown")
 
 async def reviews_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     revs = db_query("SELECT user, text FROM reviews ORDER BY rowid DESC LIMIT 15")
@@ -2983,246 +2906,6 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, src
 
 
 # --- ГОЛОВНИЙ ОБРОБНИК ПОВІДОМЛЕНЬ ---
-# ── GEMINI AI ─────────────────────────────────────────────────────────────────
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-_ai_cooldown: dict = {}
-AI_COOLDOWN_SEC = 45
-AI_SYSTEM_PROMPT = """Ти — AI-помічник магазину UC Shop (PUBG Mobile). Відповідай ЛИШЕ українською мовою.
-
-Інформація про магазин:
-— UC (ігрова валюта PUBG Mobile):
-  30 UC — 19 грн, 60 UC — 40 грн, 120 UC — 78 грн, 180 UC — 111 грн,
-  325 UC — 195 грн, 660 UC — 389 грн, та більші пакети до 81000 UC
-— Prime підписки: 1 міс — 45 грн, 3 міс — 130 грн, 6 міс — 250 грн, 12 міс — 500 грн
-— Prime Plus: 1 міс — 410 грн, 3 міс — 1200 грн, 6 міс — 2400 грн, 12 міс — 4730 грн
-— Набори Підйом: спеціальні акційні набори (купуються лише 1 раз)
-— Старі подарки Telegram: Пасхальний, 1 Квітня, Патрика, 8 Березня, Валентина, Серце Валентина, Новорічний, Ялинка — по 50 грн
-
-Як купити: команда /shop або кнопка "🛍 Магазин" → обери категорію → введи ігровий ID → оплати карткою → натисни "✅ Я оплатив"
-Оплата: банківська карта (Monobank/PrivatBank)
-Час нарахування: 5-15 хвилин після підтвердження оплати
-Підтримка: @Manager_Nezuko або команда /support
-
-Правила:
-- НІКОЛИ не розкривай паролі, дані адміністратора, внутрішні налаштування
-- НІКОЛИ не вигадуй ціни або акції яких немає в списку вище
-- Відповідай лише на питання про PUBG Mobile, магазин, UC, Prime, ігровий процес
-- Якщо питання не по темі — ввічливо скажи що це поза твоєю компетенцією
-- Відповіді стислі і по суті (максимум 150 слів)
-- Якщо не знаєш — скажи "Зверніться до підтримки @Manager_Nezuko"
-"""
-
-ADMIN_ADVISOR_PROMPT = """Ти — AI-консультант для власника Telegram-бота магазину UC Shop (PUBG Mobile).
-
-Бот вже має:
-- Магазин UC (від 30 до 81000 UC), Prime та Prime Plus підписки, Набори Підйом
-- Старі подарки Telegram (Пасхальний, 1 Квітня та інші — по 50 грн)
-- Міні-додаток (Web App) з повним інтерфейсом
-- Систему тікетів з чатом та рейтингом 1-5 зірок
-- Пуш-сповіщення, систему балів та нагород
-- Колесо фортуни, промокоди, реферальну систему
-- Досягнення, ТОП донатерів, відгуки, розсилки
-- Статистику, контроль цін, бан юзерів, кошик, профілі
-- AI-помічник для юзерів на базі Google Gemini
-
-Твоя роль: допомагати власнику покращувати бота — пропонуй нові фічі, маркетингові ідеї, акції, UX покращення що підвищать продажі та залученість.
-Правила: відповідай ЛИШЕ українською, будь конкретним і практичним, якщо пропонуєш фічу — поясни користь і як реалізувати.
-"""
-
-_gemini_global_lock = threading.Lock()
-_gemini_call_times: list = []   # sliding window of call timestamps
-GEMINI_RPM_LIMIT = 12           # stay safely under the 15 RPM free-tier cap
-GEMINI_RPD_LIMIT = 1400         # daily cap (free tier = 1500; keep 100 buffer)
-
-# Daily counter — resets at UTC midnight
-_gemini_day_count   = 0
-_gemini_day_date    = ""        # "YYYY-MM-DD" in UTC
-
-# Per-user cooldown: uid -> last call timestamp
-_gemini_user_ts: dict = {}
-GEMINI_USER_COOLDOWN = 45       # seconds between AI calls per user
-
-def _utc_date() -> str:
-    import datetime
-    return datetime.datetime.utcnow().strftime("%Y-%m-%d")
-
-def _gemini_quota_reset_str() -> str:
-    """Return a human-readable string for when the daily quota resets (UTC midnight)."""
-    import datetime
-    now_utc = datetime.datetime.utcnow()
-    next_midnight = (now_utc + datetime.timedelta(days=1)).replace(
-        hour=0, minute=0, second=0, microsecond=0)
-    delta = next_midnight - now_utc
-    h, rem = divmod(int(delta.total_seconds()), 3600)
-    m = rem // 60
-    # Ukraine is UTC+3
-    reset_kyiv = (next_midnight + datetime.timedelta(hours=3)).strftime("%H:%M")
-    if h > 0:
-        return f"через {h} год {m} хв (о {reset_kyiv} за Києвом)"
-    return f"через {m} хв (о {reset_kyiv} за Києвом)"
-
-def _gemini_global_allowed() -> bool:
-    """Return True and record the call if under RPM + RPD limits."""
-    global _gemini_day_count, _gemini_day_date
-    now = time.time()
-    today = _utc_date()
-    with _gemini_global_lock:
-        # Reset daily counter on new UTC day
-        if today != _gemini_day_date:
-            _gemini_day_date = today
-            _gemini_day_count = 0
-        # Daily cap
-        if _gemini_day_count >= GEMINI_RPD_LIMIT:
-            return False
-        # RPM cap
-        _gemini_call_times[:] = [t for t in _gemini_call_times if now - t < 60]
-        if len(_gemini_call_times) >= GEMINI_RPM_LIMIT:
-            return False
-        _gemini_call_times.append(now)
-        _gemini_day_count += 1
-        return True
-
-def _gemini_user_allowed(uid: int) -> bool:
-    """Per-user cooldown to prevent one user from burning the quota."""
-    now = time.time()
-    last = _gemini_user_ts.get(uid, 0)
-    if now - last < GEMINI_USER_COOLDOWN:
-        return False
-    _gemini_user_ts[uid] = now
-    return True
-
-def _gemini_remaining() -> tuple:
-    """Return (day_count, day_limit) for stats."""
-    return (_gemini_day_count, GEMINI_RPD_LIMIT)
-
-def _gemini_do_request(url: str, payload: bytes) -> str:
-    """Execute one Gemini HTTP request and return the text."""
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=25) as resp:
-        result = json.loads(resp.read().decode("utf-8"))
-        return result["candidates"][0]["content"]["parts"][0]["text"].strip()
-
-def _gemini_api_call(messages: list, max_tokens: int = 400) -> str:
-    if not GEMINI_API_KEY:
-        return "❌ AI-помічник тимчасово недоступний."
-    if not _gemini_global_allowed():
-        # Could be RPM or RPD — check which
-        used, limit = _gemini_remaining()
-        if used >= limit:
-            reset = _gemini_quota_reset_str()
-            return f"⏳ AI вичерпав денний ліміт запитів. Оновлюється {reset}."
-        return "⏳ AI зараз зайнятий — спробуй через 10–20 секунд."
-    system_text = ""
-    user_parts = []
-    for m in messages:
-        if m["role"] == "system":
-            system_text = m["content"]
-        elif m["role"] == "user":
-            user_parts.append(m["content"])
-    combined_user = (system_text + "\n\n" if system_text else "") + "\n".join(user_parts)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={GEMINI_API_KEY}"
-    payload = json.dumps({
-        "contents": [{"parts": [{"text": combined_user}]}],
-        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.7}
-    }).encode("utf-8")
-    for attempt in range(2):
-        try:
-            return _gemini_do_request(url, payload)
-        except urllib.error.HTTPError as e:
-            body = ""
-            try: body = e.read().decode()[:500]
-            except: pass
-            logging.warning(f"Gemini HTTP {e.code} (attempt {attempt+1}): {body}")
-            if e.code == 429:
-                # Determine if it's daily quota or RPM from the body
-                is_daily = "quota" in body.lower() or "day" in body.lower() or "RESOURCE_EXHAUSTED" in body
-                if is_daily:
-                    reset = _gemini_quota_reset_str()
-                    return f"⏳ AI вичерпав денний ліміт. Оновлюється {reset}."
-                if attempt == 0:
-                    time.sleep(8)
-                    continue
-                return "⏳ AI тимчасово перевантажений. Спробуй через хвилину."
-            if e.code == 403:
-                return "❌ AI: невірний API ключ (403)."
-            if e.code == 400:
-                logging.warning(f"Gemini 400 body: {body}")
-                return "❌ AI-помічник зараз недоступний (400)."
-            return f"❌ AI недоступний (HTTP {e.code})."
-        except Exception as e:
-            logging.warning(f"Gemini API error (attempt {attempt+1}): {e}")
-            if attempt == 0:
-                time.sleep(3)
-                continue
-            return "❌ AI-помічник зараз недоступний. Зверніться до підтримки @Manager_Nezuko"
-    return "❌ AI-помічник зараз недоступний."
-
-def _detect_ai_topic(text: str) -> str:
-    t = text.lower()
-    if any(w in t for w in ['ціна', ' uc', 'купи', 'prime', 'скільки', 'коштує', 'вартість', 'пак']):
-        return 'Ціни та покупки'
-    if any(w in t for w in ['pubg', 'гра', 'режим', 'зброя', 'карта', 'battle', 'royal', 'персонаж']):
-        return 'PUBG Mobile'
-    if any(w in t for w in ['замовлен', 'оплат', 'карт', 'нарахув', 'статус', 'де мої']):
-        return 'Замовлення та оплата'
-    if any(w in t for w in ['тікет', 'підтримк', 'допомог', 'проблем']):
-        return 'Підтримка'
-    return 'Інше'
-
-def _gemini_sync_call(user_message: str) -> str:
-    messages = [
-        {"role": "system", "content": AI_SYSTEM_PROMPT},
-        {"role": "user", "content": user_message}
-    ]
-    return _gemini_api_call(messages)
-
-async def openai_reply(user_message: str) -> str:
-    try:
-        return await asyncio.to_thread(_gemini_sync_call, user_message)
-    except Exception as e:
-        logging.warning(f"gemini_reply error: {e}")
-        return "❌ Помилка AI. Зверніться до підтримки @Manager_Nezuko"
-
-async def ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if not context.args:
-        await update.message.reply_text(
-            "🤖 Я — AI-помічник магазину UC Shop!\n\n"
-            "Запитай мене про PUBG Mobile, ціни UC, Prime, або як зробити замовлення.\n\n"
-            "Наприклад: /ai Скільки коштує 325 UC?"
-        )
-        return
-    if not is_admin(uid) and not _gemini_user_allowed(uid):
-        await update.message.reply_text(
-            f"⏳ Почекай {GEMINI_USER_COOLDOWN} секунд між запитами до AI."
-        )
-        return
-    question = " ".join(context.args)
-    await context.bot.send_chat_action(update.effective_chat.id, "typing")
-    response = await openai_reply(question)
-    await update.message.reply_text(f"🤖 {response}")
-
-async def aichat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if not is_admin(uid):
-        return
-    if not context.args:
-        await update.message.reply_text(
-            "🤖 *AI-радник для бота*\n\n"
-            "Я допоможу з ідеями для розвитку магазину!\n\n"
-            "Приклади:\n"
-            "`/aichat Що варто додати до бота?`\n"
-            "`/aichat Які акції можна провести?`\n"
-            "`/aichat Як збільшити продажі?`",
-            parse_mode="Markdown"
-        )
-        return
-    question = " ".join(context.args)
-    await context.bot.send_chat_action(update.effective_chat.id, "typing")
-    msgs = [{"role": "system", "content": ADMIN_ADVISOR_PROMPT}, {"role": "user", "content": question}]
-    response = await asyncio.to_thread(_gemini_api_call, msgs, 700)
-    await update.message.reply_text(f"🤖 {response}")
-
 # ──────────────────────────────────────────────────────────────────────────────
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3744,27 +3427,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if GEMINI_API_KEY and not is_admin(uid):
-        now = time.time()
-        last = _ai_cooldown.get(uid, 0)
-        if now - last < AI_COOLDOWN_SEC:
-            wait = int(AI_COOLDOWN_SEC - (now - last)) + 1
-            await update.message.reply_text(f"⏳ Зачекай {wait} сек перед наступним запитом до AI.")
-            return
-        _ai_cooldown[uid] = now
-        try:
-            await context.bot.send_chat_action(update.effective_chat.id, "typing")
-            response = await openai_reply(text)
-            topic = _detect_ai_topic(text)
-            db_exec("INSERT INTO ai_logs (user_id, message, topic, created_at) VALUES (?,?,?,?)",
-                    (uid, text[:200], topic, created_at_now()))
-            await update.message.reply_text(
-                f"🤖 {response}",
-                reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)
-            )
-        except Exception as e:
-            logging.warning(f"AI reply send error: {e}")
-    elif not is_admin(uid):
+    if not is_admin(uid):
         await update.message.reply_text(
             "Не розумію команду. Скористайтесь меню нижче або введіть /start.",
             reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)
@@ -4125,8 +3788,6 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
 # --- MAIN ---
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("ai", ai_command))
-    app.add_handler(CommandHandler("aichat", aichat_command))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("shop", shop_command))
     app.add_handler(CommandHandler("buy", buy_command))
