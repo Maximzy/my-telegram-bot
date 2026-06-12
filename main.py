@@ -159,6 +159,8 @@ def run_migrations(connection):
     _ord_cols = [r[1] for r in c.fetchall()]
     if "notified_admin" not in _ord_cols:
         c.execute("ALTER TABLE orders ADD COLUMN notified_admin INTEGER DEFAULT 0")
+    if "payment_bank" not in _ord_cols:
+        c.execute("ALTER TABLE orders ADD COLUMN payment_bank TEXT")
     c.execute("CREATE TABLE IF NOT EXISTS banned_users (user_id INTEGER PRIMARY KEY, reason TEXT, banned_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS cart (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, pack TEXT, added_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, chat_id INTEGER, username TEXT, category TEXT, message TEXT, status TEXT DEFAULT 'open', admin_reply TEXT, created_at TEXT, replied_at TEXT)")
@@ -640,7 +642,7 @@ def push_notification(user_id, ntype, message):
     except Exception as e:
         logging.warning(f"push_notification error: {e}")
 
-def _notify_admin_order(order_id, pack, player_id, amount, user_id, username, mix_packs_list=None, player_nick=None):
+def _notify_admin_order(order_id, pack, player_id, amount, user_id, username, mix_packs_list=None, player_nick=None, payment_bank=None):
     row = db_query_one("SELECT notified_admin FROM orders WHERE id=?", (order_id,))
     if row and row[0]:
         return
@@ -659,7 +661,8 @@ def _notify_admin_order(order_id, pack, player_id, amount, user_id, username, mi
         else:
             pack_info = f"🎁 {pack}"
         nick_line = f"\n🪪 Нік: {player_nick}" if player_nick else ""
-        text = (f"💰 ОПЛАТА (Mini App)!\n{rise_marker}🆔 {order_id}\n👤 {user_label_str}\n{pack_info}\n🎮 ID: {player_id}{nick_line}\n💵 Сума: {amount} грн")
+        bank_line = f"\n🏦 Банк: {payment_bank}" if payment_bank else ""
+        text = (f"💰 ОПЛАТА (Mini App)!\n{rise_marker}🆔 {order_id}\n👤 {user_label_str}\n{pack_info}\n🎮 ID: {player_id}{nick_line}\n💵 Сума: {amount} грн{bank_line}")
         ok_btn = json.dumps({"inline_keyboard": [[
             {"text": "✅ Готово", "callback_data": f"ok_{order_id}"},
             {"text": "❌ Відхилити", "callback_data": f"no_{order_id}"}
@@ -1018,7 +1021,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
             if not target_id2:
                 _json_response(self, {"ok": False, "error": "Користувача не знайдено в базі"}); return
             profile2 = db_query_one("SELECT first_seen, last_seen, consecutive_days FROM user_profile WHERE user_id=?", (target_id2,))
-            orders2 = db_query("SELECT id, pack, status, player_id, created_at, amount FROM orders WHERE chat_id=? ORDER BY rowid DESC", (target_id2,))
+            orders2 = db_query("SELECT id, pack, status, player_id, created_at, amount, payment_bank FROM orders WHERE chat_id=? ORDER BY rowid DESC", (target_id2,))
             points_row2 = db_query_one("SELECT points FROM user_points WHERE user_id=?", (target_id2,))
             bonuses2 = db_query("SELECT id, bonus_type, bonus_value, used, created_at FROM user_bonuses WHERE user_id=? ORDER BY id DESC", (target_id2,))
             cart2 = db_query("SELECT id, pack, added_at FROM cart WHERE user_id=? ORDER BY id DESC", (target_id2,))
@@ -1037,7 +1040,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 "is_banned": is_banned2,
                 "profile": {"first_seen": (profile2[0] if profile2 else ""), "last_seen": (profile2[1] if profile2 else ""), "consecutive_days": (profile2[2] if profile2 else 0)} if profile2 else None,
                 "total_spent": total_spent2,
-                "orders": [{"id": r[0], "pack": r[1], "status": r[2], "player_id": r[3], "created_at": (r[4] or "")[:16], "amount": r[5] or "?"} for r in orders2],
+                "orders": [{"id": r[0], "pack": r[1], "status": r[2], "player_id": r[3], "created_at": (r[4] or "")[:16], "amount": r[5] or "?", "payment_bank": r[6] or ""} for r in orders2],
                 "points": points_row2[0] if points_row2 else 0,
                 "bonuses": [{"id": r[0], "bonus_type": r[1], "value": r[2], "used": bool(r[3]), "created_at": (r[4] or "")[:16]} for r in bonuses2],
                 "cart": [{"id": r[0], "pack": r[1], "added_at": (r[2] or "")[:16]} for r in cart2],
@@ -1064,11 +1067,11 @@ class PolicyHandler(BaseHTTPRequestHandler):
             if not user_id:
                 _json_response(self, {"orders": []}); return
             rows = db_query(
-                "SELECT id, pack, status, player_id, created_at, amount, player_nick FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 20",
+                "SELECT id, pack, status, player_id, created_at, amount, player_nick, payment_bank FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 20",
                 (user_id,)
             )
             orders = [{"id": r[0], "pack": r[1], "status": r[2], "player_id": r[3],
-                       "created_at": (r[4] or "")[:16], "amount": r[5] or "?", "player_nick": r[6] or ""} for r in rows]
+                       "created_at": (r[4] or "")[:16], "amount": r[5] or "?", "player_nick": r[6] or "", "payment_bank": r[7] or ""} for r in rows]
             _json_response(self, {"orders": orders}); return
 
         if path == "/api/all-orders":
@@ -1076,11 +1079,11 @@ class PolicyHandler(BaseHTTPRequestHandler):
             if not user_id:
                 _json_response(self, {"orders": []}); return
             rows = db_query(
-                "SELECT id, pack, status, player_id, created_at, amount, player_nick FROM orders WHERE chat_id=? ORDER BY rowid DESC",
+                "SELECT id, pack, status, player_id, created_at, amount, player_nick, payment_bank FROM orders WHERE chat_id=? ORDER BY rowid DESC",
                 (user_id,)
             )
             orders = [{"id": r[0], "pack": r[1], "status": r[2], "player_id": r[3],
-                       "created_at": (r[4] or "")[:16], "amount": r[5] or "?", "player_nick": r[6] or ""} for r in rows]
+                       "created_at": (r[4] or "")[:16], "amount": r[5] or "?", "player_nick": r[6] or "", "payment_bank": r[7] or ""} for r in rows]
             _json_response(self, {"orders": orders}); return
 
         if path == "/api/bonuses":
@@ -1247,9 +1250,9 @@ class PolicyHandler(BaseHTTPRequestHandler):
             _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
             if not _ok_adm:
                 _json_response(self, {"ok": False, "error": _err_adm}, 403); return
-            rows = db_query("SELECT id, user, pack, player_id, chat_id, created_at, amount, player_nick FROM orders WHERE status='pending' ORDER BY rowid DESC")
+            rows = db_query("SELECT id, user, pack, player_id, chat_id, created_at, amount, player_nick, payment_bank FROM orders WHERE status='pending' ORDER BY rowid DESC")
             orders = [{"id": r[0], "user": f"@{r[1]}" if r[1] else str(r[4]), "pack": r[2],
-                       "player_id": r[3], "chat_id": r[4], "created_at": (r[5] or "")[:16], "amount": r[6] or "?", "player_nick": r[7] or ""} for r in rows]
+                       "player_id": r[3], "chat_id": r[4], "created_at": (r[5] or "")[:16], "amount": r[6] or "?", "player_nick": r[7] or "", "payment_bank": r[8] or ""} for r in rows]
             _json_response(self, {"ok": True, "orders": orders}); return
 
         if path == "/api/admin/stats":
@@ -1573,6 +1576,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
             pack = str(data.get("pack", ""))
             player_id = _sanitize(str(data.get("player_id", "")), 32).strip()
             player_nick = _sanitize(str(data.get("player_nick", "")).strip(), 64)
+            payment_bank = _sanitize(str(data.get("payment_bank", "") or ""), 64).strip()
             base_amount = int(data.get("amount", 0))
             flash_order = bool(data.get("flash_order", False))
             mix_packs = data.get("mix_packs", None)
@@ -1613,12 +1617,13 @@ class PolicyHandler(BaseHTTPRequestHandler):
                     db_exec("DELETE FROM ref_discounts WHERE id=?", (disc_id,))
             order_id = str(uuid.uuid4()).replace("-", "")[:12].upper()
             db_exec(
-                "INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, player_nick) VALUES (?,?,?,?,?,?,?,?,?)",
-                (order_id, username, pack, "pending", user_id, player_id, created_at_now(), str(final_price), player_nick or None)
+                "INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, player_nick, payment_bank) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (order_id, username, pack, "pending", user_id, player_id, created_at_now(), str(final_price), player_nick or None, payment_bank or None)
             )
             _notify_admin_order(order_id, pack, player_id, final_price, user_id, username,
                                mix_packs_list=mix_packs if mix_packs is not None else None,
-                               player_nick=player_nick or None)
+                               player_nick=player_nick or None,
+                               payment_bank=payment_bank or None)
             update_user_profile(user_id)
             if flash_order:
                 grant_achievement(user_id, "flash")
