@@ -577,7 +577,8 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       </div>
       <div class="card">
         <div class="section-title" style="margin-top:0">💳 Оплата карткою</div>
-        <div style="font-size:17px;font-weight:700;letter-spacing:2px;color:var(--acc);cursor:pointer;margin-bottom:6px" onclick="copyCard()">4874 0700 2036 7247</div>
+        <div id="payCardSelector" style="margin-bottom:10px"></div>
+        <div style="font-size:17px;font-weight:700;letter-spacing:2px;color:var(--acc);cursor:pointer;margin-bottom:6px" id="payCardDisplay" onclick="copyCard()">—</div>
         <div style="font-size:11px;color:var(--muted);cursor:pointer" onclick="copyCard()">Натисніть щоб скопіювати картку</div>
       </div>
       <button class="btn" id="payBtn" onclick="submitOrder()">✅ Я оплатив</button>
@@ -1074,6 +1075,8 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div class="sub-tab" data-atab="atickets">🎫 Тікети</div>
         <div class="sub-tab" data-atab="apolicy">📄 Політика</div>
         <div class="sub-tab" data-atab="asales">🎉 Акції</div>
+        <div class="sub-tab" data-atab="auserfull">👤 Юзер</div>
+        <div class="sub-tab" data-atab="acards">💳 Картки</div>
       </div>
 
       <!-- Orders -->
@@ -1383,6 +1386,28 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         <div id="aPolicyCurrentWrap" class="card" style="margin-bottom:10px;padding:10px 12px;font-size:12px;color:var(--muted);white-space:pre-wrap;line-height:1.6;max-height:200px;overflow-y:auto"><div class="spinner" style="width:18px;height:18px"></div></div>
         <textarea id="aPolicyInput" placeholder="Текст політики (Markdown)..." style="width:100%;min-height:180px;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-size:12px;resize:vertical;box-sizing:border-box;outline:none;font-family:inherit"></textarea>
         <button class="btn" style="margin-top:8px;width:100%" onclick="saveAPolicy()">💾 Зберегти</button>
+      </div>
+
+      <!-- User Full Profile (admin) -->
+      <div class="atab" id="atab-auserfull" style="display:none">
+        <div style="font-weight:700;font-size:16px;margin-bottom:12px">👤 Профіль користувача</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input id="userFullQ" type="text" class="input-field" placeholder="@тег або Telegram ID" style="flex:1">
+          <button class="btn-primary" onclick="loadUserFull()" style="padding:10px 16px">Знайти</button>
+        </div>
+        <div id="userFullResult"></div>
+      </div>
+
+      <!-- Payment Cards (admin) -->
+      <div class="atab" id="atab-acards" style="display:none">
+        <div style="font-weight:700;font-size:16px;margin-bottom:12px">💳 Платіжні картки</div>
+        <div id="cardsListAdmin" style="margin-bottom:16px"><div class="muted-text">Завантаження...</div></div>
+        <div style="background:var(--surface);border-radius:12px;padding:14px;border:1px solid var(--border)">
+          <div style="font-weight:600;margin-bottom:10px">➕ Додати картку</div>
+          <input id="newCardBank" type="text" class="input-field" placeholder="Назва банку (напр. MonoBank)" style="margin-bottom:8px">
+          <input id="newCardNumber" type="text" class="input-field" placeholder="Номер картки (тільки цифри)" style="margin-bottom:10px">
+          <button class="btn-primary" onclick="addCard()" style="width:100%">➕ Додати</button>
+        </div>
       </div>
 
       <!-- Sales / Promotions -->
@@ -1737,6 +1762,7 @@ document.querySelectorAll('#aTabs .sub-tab').forEach(el => {
     else if (tab === 'apromos') loadAPromos();
     else if (tab === 'aprices') loadAPrices();
     else if (tab === 'apointsprices') loadAPointsPrices();
+    else if (tab === 'acards') loadACards();
     else if (tab === 'atgprices') loadATgPrices();
     else if (tab === 'areviews') loadAReviews();
     else if (tab === 'awheel') loadPendingWheels();
@@ -1789,11 +1815,22 @@ function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 // ─── SHOP ────────────────────────────────────────────────────────────────────
 const CAT_FILTER = {
   uc: k => k.includes('UC') && !k.includes('Набір Підйом'),
+  uc_small:  k => { const m = k.match(/^(\d+)\s*UC/); return m && parseInt(m[1]) <= 660; },
+  uc_medium: k => { const m = k.match(/^(\d+)\s*UC/); return m && parseInt(m[1]) >= 1800 && parseInt(m[1]) <= 8100; },
+  uc_large:  k => { const m = k.match(/^(\d+)\s*UC/); return m && parseInt(m[1]) >= 16200; },
   prime: k => k.includes('👑 Prime') && !k.includes('Plus'),
   primeplus: k => k.includes('Prime Plus'),
   rise: k => k.includes('⭐️ Набір Підйом')
 };
-const CAT_LABEL = { uc: '<img src="/uc_icon.png" style="width:24px;height:24px;object-fit:contain;vertical-align:middle"> UC Паки', prime: '<img src="/prime_crown.png" style="width:24px;height:24px;object-fit:contain;vertical-align:middle"> Prime Паки', primeplus: '<img src="/prime_crown.png" style="width:24px;height:24px;object-fit:contain;vertical-align:middle"> Prime Plus Паки', rise: '<img src="/crate_icon.png" style="width:24px;height:24px;object-fit:contain;vertical-align:middle"> Набори Підйом' };
+const CAT_LABEL = {
+  uc: '<img src="/uc_icon.png" style="width:24px;height:24px;object-fit:contain;vertical-align:middle"> UC Паки',
+  uc_small:  '<img src="/uc_icon.png" style="width:24px;height:24px;object-fit:contain;vertical-align:middle"> UC — Малі (30–660)',
+  uc_medium: '<img src="/uc_icon.png" style="width:24px;height:24px;object-fit:contain;vertical-align:middle"> UC — Середні (1800–8100)',
+  uc_large:  '<img src="/uc_icon.png" style="width:24px;height:24px;object-fit:contain;vertical-align:middle"> UC — Великі (16200–81000)',
+  prime: '<img src="/prime_crown.png" style="width:24px;height:24px;object-fit:contain;vertical-align:middle"> Prime Паки',
+  primeplus: '<img src="/prime_crown.png" style="width:24px;height:24px;object-fit:contain;vertical-align:middle"> Prime Plus Паки',
+  rise: '<img src="/crate_icon.png" style="width:24px;height:24px;object-fit:contain;vertical-align:middle"> Набори Підйом'
+};
 
 async function showPacks(cat) {
   curCat = cat;
@@ -1841,7 +1878,7 @@ function showGroup(group) {
     list.innerHTML = `
       <div class="section-title" style="margin-top:4px">PUBG Mobile</div>
       <div class="category-grid" style="margin-bottom:10px">
-        <div class="category-card subcat-card" onclick="showPacks('uc')">
+        <div class="category-card subcat-card" onclick="showUCSizes()">
           <div class="subcat-icon"><img src="/uc_icon.png" style="width:64px;height:64px;object-fit:contain;filter:drop-shadow(0 0 10px #ffd16699)" draggable="false"></div>
           <div class="subcat-label">UC</div>
         </div>
@@ -1876,6 +1913,31 @@ function showGroup(group) {
         </div>
       </div>`;
   }
+  document.getElementById('shopCats').style.display = 'none';
+  showWithAnim(document.getElementById('shopSubCats'));
+}
+
+function showUCSizes() {
+  const list = document.getElementById('subCatsList');
+  list.innerHTML = `
+    <div class="section-title" style="margin-top:4px">🎮 UC — Оберіть розмір</div>
+    <div class="category-grid" style="margin-bottom:10px">
+      <div class="category-card subcat-card" onclick="showPacks('uc_small')" style="background:linear-gradient(135deg,#0d1a0d,#152015);border-color:rgba(80,200,80,.2)">
+        <div class="subcat-icon" style="font-size:52px;filter:drop-shadow(0 0 12px rgba(80,200,80,.6))">🟢</div>
+        <div class="subcat-label" style="color:#6de06d">Малі</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">30 – 660 UC</div>
+      </div>
+      <div class="category-card subcat-card" onclick="showPacks('uc_medium')" style="background:linear-gradient(135deg,#0d1020,#151830);border-color:rgba(80,140,255,.2)">
+        <div class="subcat-icon" style="font-size:52px;filter:drop-shadow(0 0 12px rgba(80,140,255,.6))">🔵</div>
+        <div class="subcat-label" style="color:#7ab4ff">Середні</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">1800 – 8100 UC</div>
+      </div>
+      <div class="category-card subcat-card" style="grid-column:1/-1" onclick="showPacks('uc_large')" style="background:linear-gradient(135deg,#12001a,#200028);border-color:rgba(180,80,255,.2)">
+        <div class="subcat-icon" style="font-size:52px;filter:drop-shadow(0 0 14px rgba(180,80,255,.7))">💎</div>
+        <div class="subcat-label" style="color:#c084fc">Великі</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">16200 – 81000 UC</div>
+      </div>
+    </div>`;
   document.getElementById('shopCats').style.display = 'none';
   showWithAnim(document.getElementById('shopSubCats'));
 }
@@ -2040,11 +2102,56 @@ function goToPaymentDirect() {
   document.getElementById('payNick').textContent = gnick || '';
   document.getElementById('shopId').style.display = 'none';
   document.getElementById('shopMix').style.display = 'none';
+  loadPayCards();
   showWithAnim(document.getElementById('shopPay'));
 }
 
+let _payCards = [];
+let _selectedCardIdx = 0;
+
+function renderPayCardSelector() {
+  const sel = document.getElementById('payCardSelector');
+  const disp = document.getElementById('payCardDisplay');
+  if (!sel) return;
+  if (_payCards.length <= 1) {
+    sel.innerHTML = '';
+    const c = (_payCards[0] || {card_number: '4874070020367247', bank_name: 'Карта'});
+    const fmt = c.card_number.replace(/(\d{4})/g,'$1 ').trim();
+    disp.textContent = fmt;
+    _selectedCardIdx = 0;
+  } else {
+    sel.innerHTML = _payCards.map((c, i) => {
+      const fmt = c.card_number.replace(/(\d{4})/g,'$1 ').trim();
+      const active = i === _selectedCardIdx;
+      return `<div onclick="selectPayCard(${i})" style="padding:9px 12px;margin-bottom:6px;border-radius:10px;cursor:pointer;border:2px solid ${active ? 'var(--acc)' : 'var(--border)'};background:${active ? 'rgba(255,200,100,.07)' : 'var(--card2)'};transition:border .15s,background .15s">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:2px">${esc(c.bank_name)}</div>
+        <div style="font-size:15px;font-weight:700;color:var(--acc);letter-spacing:2px">${fmt}</div>
+      </div>`;
+    }).join('');
+    const sel0 = _payCards[_selectedCardIdx] || _payCards[0];
+    disp.textContent = sel0.card_number.replace(/(\d{4})/g,'$1 ').trim();
+  }
+}
+
+function selectPayCard(idx) {
+  _selectedCardIdx = idx;
+  renderPayCardSelector();
+}
+
+async function loadPayCards() {
+  try {
+    const r = await api('/api/payment-cards');
+    _payCards = (r.ok && r.cards && r.cards.length) ? r.cards : [{bank_name:'Карта', card_number:'4874070020367247'}];
+  } catch(e) {
+    _payCards = [{bank_name:'Карта', card_number:'4874070020367247'}];
+  }
+  _selectedCardIdx = 0;
+  renderPayCardSelector();
+}
+
 function copyCard() {
-  navigator.clipboard?.writeText('4874070020367247')
+  const c = _payCards[_selectedCardIdx] || {card_number:'4874070020367247'};
+  navigator.clipboard?.writeText(c.card_number.replace(/\s/g,''))
     .then(() => toast('Картку скопійовано!', 'success'))
     .catch(() => {});
 }
@@ -2768,7 +2875,8 @@ async function loadProfile() {
     if (r.ok) {
       document.getElementById('pPoints').textContent = r.points || 0;
       document.getElementById('pAchs').textContent = r.achievements || 0;
-      document.getElementById('pDays').textContent = r.consecutive_days || 0;
+      const _daysSince = r.first_seen ? Math.max(1, Math.floor((Date.now() - new Date(r.first_seen).getTime()) / 86400000) + 1) : (r.consecutive_days || 0);
+      document.getElementById('pDays').textContent = _daysSince;
       document.getElementById('pSpent').textContent = r.total_spent || 0;
       document.getElementById('pOrds').textContent = r.total_orders || 0;
       document.getElementById('pUC').textContent = r.total_uc || 0;
@@ -3100,12 +3208,20 @@ async function loadAPointsPrices() {
     const badge = data.is_custom
       ? `<span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 5px;border-radius:4px;margin-left:5px">CUSTOM</span>`
       : '';
-    const deleteBtn = data.is_custom
-      ? `<button onclick="doDeleteCustomPrize('${id}')" style="background:none;border:none;color:#e55;font-size:14px;cursor:pointer;padding:2px 6px;float:right" title="Видалити">🗑</button>`
+    const hiddenBadge = data.is_hidden
+      ? `<span style="font-size:9px;background:#555;color:#ddd;padding:1px 5px;border-radius:4px;margin-left:5px">ПРИХОВ.</span>`
       : '';
-    return `<div class="card" style="margin-bottom:6px;padding:9px 13px;position:relative">
-      ${deleteBtn}
-      <div style="font-size:11px;font-weight:600">${esc(data.name)}${badge}</div>
+    const actionBtns = data.is_custom
+      ? `<div style="display:flex;gap:4px;float:right">
+          <button onclick="doTogglePointsItem('${id}')" style="background:none;border:1px solid var(--border);border-radius:5px;color:${data.is_hidden?'#6de06d':'#e5a500'};font-size:11px;cursor:pointer;padding:2px 7px" title="${data.is_hidden?'Показати':'Приховати'}">${data.is_hidden?'👁 Показати':'🙈 Сховати'}</button>
+          <button onclick="doDeleteCustomPrize('${id}')" style="background:none;border:none;color:#e55;font-size:14px;cursor:pointer;padding:2px 6px" title="Видалити">🗑</button>
+        </div>`
+      : `<div style="float:right">
+          <button onclick="doTogglePointsItem('${id}')" style="background:none;border:1px solid var(--border);border-radius:5px;color:${data.is_hidden?'#6de06d':'#e5a500'};font-size:11px;cursor:pointer;padding:2px 7px" title="${data.is_hidden?'Показати':'Приховати'}">${data.is_hidden?'👁 Показати':'🙈 Сховати'}</button>
+        </div>`;
+    return `<div class="card" style="margin-bottom:6px;padding:9px 13px;position:relative;opacity:${data.is_hidden?'0.6':'1'}">
+      ${actionBtns}
+      <div style="font-size:11px;font-weight:600">${esc(data.name)}${badge}${hiddenBadge}</div>
       <div style="font-size:13px;margin-top:2px">
         <span style="color:var(--pts);font-weight:700">${data.current} балів</span>
         ${changed ? `<span style="font-size:10px;color:var(--muted);margin-left:6px">база: ${data.base} балів</span>` : ''}
@@ -3129,6 +3245,12 @@ async function doAddCustomPrize() {
     document.getElementById('customPrizeType').value = '';
     loadAPointsPrices();
   } else toast(r.error || 'Помилка', 'error');
+}
+
+async function doTogglePointsItem(item_id) {
+  const r = await api('/api/admin/toggle-points-item', 'POST', { password: adminPass, item_id });
+  if (r.ok) { toast(r.message, 'success'); loadAPointsPrices(); }
+  else toast(r.error || 'Помилка', 'error');
 }
 
 function doDeleteCustomPrize(item_id) {
@@ -3685,6 +3807,130 @@ async function submitRating() {
   if (r.ok) { toast('⭐ Дякуємо за оцінку!', 'success'); loadTickets(); closeTicketChat(); }
   else toast(r.error || 'Помилка', 'error');
   ratingForTicketId = null;
+}
+
+// ─── USER FULL PROFILE (ADMIN) ───────────────────────────────────────────────
+async function loadUserFull() {
+  const q = (document.getElementById('userFullQ').value || '').trim();
+  if (!q) { toast('Введіть @тег або ID', 'error'); return; }
+  const el = document.getElementById('userFullResult');
+  el.innerHTML = '<div class="empty"><div class="spinner" style="width:18px;height:18px"></div></div>';
+  const r = await api(`/api/admin/user-full?password=${encodeURIComponent(adminPass)}&query=${encodeURIComponent(q)}`);
+  if (!r.ok) { el.innerHTML = `<div class="empty" style="color:#e55">${esc(r.error || 'Помилка')}</div>`; return; }
+  const banBadge = r.is_banned ? `<span style="background:#e55;color:#fff;font-size:10px;border-radius:4px;padding:2px 7px;margin-left:8px">ЗАБЛОК.</span>` : '';
+  const prof = r.profile || {};
+  el.innerHTML = `
+    <div class="card" style="padding:14px;margin-bottom:10px">
+      <div style="font-size:15px;font-weight:700">👤 ${r.username ? '@'+esc(r.username) : 'Без тегу'}${banBadge}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">ID: ${r.user_id}</div>
+      <div style="font-size:11px;color:var(--muted)">Реєстрація: ${prof.first_seen ? prof.first_seen.substring(0,10) : '—'} · Останній: ${prof.last_seen ? prof.last_seen.substring(0,10) : '—'}</div>
+      <div style="font-size:12px;margin-top:6px">💰 Витрачено: <b>${r.total_spent} грн</b> · 📦 Замовлень: <b>${r.orders.length}</b> · 🪙 Балів: <b>${r.points}</b></div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        ${r.is_banned
+          ? `<button class="btn-ghost btn btn-sm" style="color:#6de06d;border-color:#6de06d" onclick="adminBanUser(${r.user_id},'unban')">✅ Розблокувати</button>`
+          : `<button class="btn-ghost btn btn-sm" style="color:#e55;border-color:#e55" onclick="adminBanUser(${r.user_id},'ban')">🚫 Заблокувати</button>`}
+        <button class="btn-ghost btn btn-sm" onclick="adminAdjPoints(${r.user_id})">🪙 Змінити бали</button>
+      </div>
+    </div>
+    ${r.orders.length ? `<div style="font-weight:600;font-size:13px;margin-bottom:6px">📦 Замовлення (${r.orders.length}):</div>
+    <div style="max-height:200px;overflow-y:auto;margin-bottom:12px">
+      ${r.orders.map(o => `<div class="card" style="padding:8px 12px;margin-bottom:5px;font-size:12px">
+        <span style="color:${o.status==='done'?'#6de06d':o.status==='canceled'?'#e55':'var(--acc)'}">${o.status==='done'?'✅':o.status==='canceled'?'❌':'⏳'}</span>
+        <b>#${o.id}</b> ${esc(o.pack)} · ${o.amount} грн · ID: ${esc(o.player_id||'—')} · ${esc(o.created_at)}
+      </div>`).join('')}
+    </div>` : ''}
+    ${r.bonuses.length ? `<div style="font-weight:600;font-size:13px;margin-bottom:6px">🎁 Бонуси (${r.bonuses.length}):</div>
+    <div style="max-height:160px;overflow-y:auto;margin-bottom:12px">
+      ${r.bonuses.map(b => `<div class="card" style="padding:8px 12px;margin-bottom:5px;font-size:12px;display:flex;justify-content:space-between;align-items:center">
+        <span>${b.used?'<span style="color:var(--muted)">[використано]</span> ':''}${esc(b.bonus_type)} · <b>${esc(String(b.value))}</b> · ${esc(b.created_at)}</span>
+        ${!b.used?`<button onclick="adminDeleteBonus(${b.id})" style="background:none;border:none;color:#e55;font-size:13px;cursor:pointer" title="Видалити">🗑</button>`:''}
+      </div>`).join('')}
+    </div>` : ''}
+    <button class="btn-ghost btn btn-sm" style="width:100%;margin-top:4px" onclick="loadUserFull()">↻ Оновити</button>
+  `;
+}
+
+async function adminBanUser(uid, action) {
+  if (action === 'unban') {
+    showConfirmModal(`Розблокувати користувача ${uid}?`, async () => {
+      const r = await api('/api/admin/ban-user', 'POST', { password: adminPass, user_id: uid, action: 'unban', reason: '' });
+      if (r.ok) { toast(r.message, 'success'); loadUserFull(); } else toast(r.error || 'Помилка', 'error');
+    });
+  } else {
+    showInputModal('Причина блокування (необов\'язково):', '', async (reason) => {
+      const r = await api('/api/admin/ban-user', 'POST', { password: adminPass, user_id: uid, action: 'ban', reason: reason || 'Заблокований адміном' });
+      if (r.ok) { toast(r.message, 'success'); loadUserFull(); } else toast(r.error || 'Помилка', 'error');
+    });
+  }
+}
+
+async function adminDeleteBonus(bonusId) {
+  showConfirmModal('Видалити цей бонус?', async () => {
+    const r = await api('/api/admin/delete-bonus', 'POST', { password: adminPass, bonus_id: bonusId });
+    if (r.ok) { toast(r.message, 'success'); loadUserFull(); } else toast(r.error || 'Помилка', 'error');
+  });
+}
+
+async function adminAdjPoints(uid) {
+  showInputModal('Зміна балів (напр. 50 або -20):', '', async (val) => {
+    const delta = parseInt(val || '0');
+    if (!delta) { toast('Введіть ненульове число', 'error'); return; }
+    const r = await api('/api/admin/adjust-points', 'POST', { password: adminPass, user_id: uid, delta });
+    if (r.ok) { toast(r.message, 'success'); loadUserFull(); } else toast(r.error || 'Помилка', 'error');
+  });
+}
+
+// ─── PAYMENT CARDS ADMIN ─────────────────────────────────────────────────────
+async function loadACards() {
+  const el = document.getElementById('cardsListAdmin');
+  if (!el) return;
+  el.innerHTML = '<div class="empty"><div class="spinner" style="width:18px;height:18px"></div></div>';
+  const r = await api(`/api/admin/cards?password=${encodeURIComponent(adminPass)}`);
+  if (!r.ok) { el.innerHTML = `<div class="empty" style="color:#e55">${esc(r.error || 'Помилка')}</div>`; return; }
+  if (!r.cards.length) {
+    el.innerHTML = '<div class="empty" style="color:var(--muted)">Картки не додані. Буде використовуватись системна картка.</div>';
+    return;
+  }
+  el.innerHTML = r.cards.map(c => {
+    const fmt = c.card_number.replace(/(\d{4})/g,'$1 ').trim();
+    return `<div class="card" style="padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:${c.is_active ? 'var(--acc)' : 'var(--muted)'}">${esc(c.bank_name)} ${c.is_active ? '🟢' : '🔴'}</div>
+        <div style="font-size:14px;letter-spacing:2px;font-weight:700">${fmt}</div>
+        <div style="font-size:10px;color:var(--muted)">${c.added_at}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-direction:column">
+        <button class="btn-ghost btn btn-sm" onclick="toggleCard(${c.id})">${c.is_active ? 'Вимк.' : 'Увімк.'}</button>
+        <button class="btn-ghost btn btn-sm" style="color:#e55;border-color:#e55" onclick="deleteCard(${c.id})">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addCard() {
+  const bank_name = (document.getElementById('newCardBank').value || '').trim();
+  const card_number = (document.getElementById('newCardNumber').value || '').trim().replace(/\s/g,'');
+  if (!bank_name) { toast('Введіть назву банку', 'error'); return; }
+  if (!card_number || card_number.length < 13) { toast('Невірний номер картки', 'error'); return; }
+  const r = await api('/api/admin/add-card', 'POST', { password: adminPass, bank_name, card_number });
+  if (r.ok) {
+    toast(r.message, 'success');
+    document.getElementById('newCardBank').value = '';
+    document.getElementById('newCardNumber').value = '';
+    loadACards();
+  } else toast(r.error || 'Помилка', 'error');
+}
+
+async function deleteCard(id) {
+  showConfirmModal('Видалити цю картку?', async () => {
+    const r = await api('/api/admin/delete-card', 'POST', { password: adminPass, card_id: id });
+    if (r.ok) { toast(r.message, 'success'); loadACards(); } else toast(r.error || 'Помилка', 'error');
+  });
+}
+
+async function toggleCard(id) {
+  const r = await api('/api/admin/toggle-card', 'POST', { password: adminPass, card_id: id });
+  if (r.ok) { loadACards(); } else toast(r.error || 'Помилка', 'error');
 }
 
 // ─── SALES ADMIN ────────────────────────────────────────────────────────────

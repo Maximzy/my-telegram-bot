@@ -174,6 +174,8 @@ def run_migrations(connection):
     c.execute("CREATE TABLE IF NOT EXISTS admin_action_log (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id INTEGER, action TEXT, detail TEXT, ts TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS fake_pay_log (user_id INTEGER PRIMARY KEY, count INTEGER DEFAULT 0, last_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS donations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, amount INTEGER, method TEXT, status TEXT DEFAULT 'pending', created_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS payment_cards (id INTEGER PRIMARY KEY AUTOINCREMENT, bank_name TEXT, card_number TEXT, is_active INTEGER DEFAULT 1, added_at TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS hidden_points_items (item_id TEXT PRIMARY KEY)")
     connection.commit()
 
 run_migrations(conn)
@@ -686,10 +688,12 @@ def _notify_admin_ticket(ticket_id, user_id, username, category, message):
 # --- ДОСЯГНЕННЯ + БАЛИ: ХЕЛПЕРИ ---
 def get_all_points_shop_items():
     overrides = {r[0]: r[1] for r in db_query("SELECT item_id, cost FROM points_price_overrides")}
-    items = [dict(i, cost=overrides.get(i["id"], i["cost"]), is_custom=False) for i in POINTS_SHOP]
+    hidden = {r[0] for r in db_query("SELECT item_id FROM hidden_points_items")}
+    items = [dict(i, cost=overrides.get(i["id"], i["cost"]), is_custom=False) for i in POINTS_SHOP if i["id"] not in hidden]
     custom = db_query("SELECT id, name, cost, bonus_type FROM custom_points_items ORDER BY created_at")
     for c in custom:
-        items.append({"id": c[0], "name": c[1], "cost": c[2], "bonus_type": c[3], "is_custom": True})
+        if c[0] not in hidden:
+            items.append({"id": c[0], "name": c[1], "cost": c[2], "bonus_type": c[3], "is_custom": True})
     return items
 
 def add_points(user_id, delta, reason=""):
@@ -960,16 +964,100 @@ class PolicyHandler(BaseHTTPRequestHandler):
             admin_last_seen = time.time()
             _json_response(self, {"ok": True}); return
 
-        if path == "/api/admin/set_policy":
-            pwd = data.get("password", "")
-            ok_adm, err_adm = is_trusted_admin_post(ip, pwd)
-            if not ok_adm:
-                _json_response(self, {"ok": False, "error": err_adm}, 403); return
-            new_policy = (data.get("policy") or "").strip()
-            if not new_policy:
-                _json_response(self, {"ok": False, "error": "Порожній текст"}); return
-            set_setting("policy_text", new_policy)
-            _json_response(self, {"ok": True}); return
+        if path == "/api/public-profile":
+            try:
+                target_id = int(params.get("user_id", 0))
+            except Exception:
+                target_id = 0
+            target_username = (params.get("username") or "").strip().lstrip("@")
+            if not target_id and target_username:
+                row_u = db_query_one("SELECT DISTINCT chat_id FROM orders WHERE user=? AND chat_id IS NOT NULL LIMIT 1", (target_username,))
+                if row_u:
+                    target_id = row_u[0]
+            if not target_id:
+                _json_response(self, {"ok": False, "error": "Користувача не знайдено. Введіть коректний @тег або Telegram ID"}); return
+            done_orders = db_query("SELECT pack, amount FROM orders WHERE chat_id=? AND status='done'", (target_id,))
+            def _si2(v):
+                try: return int(float(v or 0))
+                except: return 0
+            total_spent = sum(_si2(r[1]) for r in done_orders)
+            badge = get_spend_badge(total_spent)
+            earned_rows = db_query("SELECT achievement_id FROM user_achievements WHERE user_id=?", (target_id,))
+            achs = []
+            for row_a in earned_rows:
+                aid = row_a[0]
+                if aid in ACHIEVEMENTS:
+                    a = ACHIEVEMENTS[aid]
+                    achs.append({"id": aid, "emoji": a["emoji"], "name": a["name"]})
+            urow = db_query_one("SELECT user FROM orders WHERE chat_id=? AND user IS NOT NULL AND user!='' LIMIT 1", (target_id,))
+            username = urow[0] if urow else None
+            _json_response(self, {
+                "ok": True, "user_id": target_id,
+                "username": username,
+                "total_orders": len(done_orders),
+                "total_spent": total_spent,
+                "badge": badge,
+                "achievements": achs,
+                "ach_count": len(achs),
+            }); return
+
+        if path == "/api/admin/user-full":
+            pwd = params.get("password", "")
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            query_raw = (params.get("query") or "").strip().lstrip("@")
+            if not query_raw:
+                _json_response(self, {"ok": False, "error": "Введіть @тег або ID"}); return
+            target_id2 = 0
+            try: target_id2 = int(query_raw)
+            except: pass
+            if not target_id2:
+                row_u2 = db_query_one("SELECT DISTINCT chat_id FROM orders WHERE LOWER(user)=? AND chat_id IS NOT NULL LIMIT 1", (query_raw.lower(),))
+                if row_u2: target_id2 = row_u2[0]
+            if not target_id2:
+                _json_response(self, {"ok": False, "error": "Користувача не знайдено в базі"}); return
+            profile2 = db_query_one("SELECT first_seen, last_seen, consecutive_days FROM user_profile WHERE user_id=?", (target_id2,))
+            orders2 = db_query("SELECT id, pack, status, player_id, created_at, amount FROM orders WHERE chat_id=? ORDER BY rowid DESC", (target_id2,))
+            points_row2 = db_query_one("SELECT points FROM user_points WHERE user_id=?", (target_id2,))
+            bonuses2 = db_query("SELECT id, bonus_type, bonus_value, used, created_at FROM user_bonuses WHERE user_id=? ORDER BY id DESC", (target_id2,))
+            cart2 = db_query("SELECT id, pack, added_at FROM cart WHERE user_id=? ORDER BY id DESC", (target_id2,))
+            achievements2 = db_query("SELECT achievement_id FROM user_achievements WHERE user_id=?", (target_id2,))
+            is_banned2 = bool(db_query_one("SELECT user_id FROM banned_users WHERE user_id=?", (target_id2,)))
+            urow2 = db_query_one("SELECT user FROM orders WHERE chat_id=? AND user IS NOT NULL AND user!='' LIMIT 1", (target_id2,))
+            username2 = urow2[0] if urow2 else None
+            def _si3(v):
+                try: return int(float(v or 0))
+                except: return 0
+            total_spent2 = sum(_si3(r[5]) for r in orders2 if r[2] == "done")
+            _json_response(self, {
+                "ok": True,
+                "user_id": target_id2,
+                "username": username2,
+                "is_banned": is_banned2,
+                "profile": {"first_seen": (profile2[0] if profile2 else ""), "last_seen": (profile2[1] if profile2 else ""), "consecutive_days": (profile2[2] if profile2 else 0)} if profile2 else None,
+                "total_spent": total_spent2,
+                "orders": [{"id": r[0], "pack": r[1], "status": r[2], "player_id": r[3], "created_at": (r[4] or "")[:16], "amount": r[5] or "?"} for r in orders2],
+                "points": points_row2[0] if points_row2 else 0,
+                "bonuses": [{"id": r[0], "bonus_type": r[1], "value": r[2], "used": bool(r[3]), "created_at": (r[4] or "")[:16]} for r in bonuses2],
+                "cart": [{"id": r[0], "pack": r[1], "added_at": (r[2] or "")[:16]} for r in cart2],
+                "achievements": [r[0] for r in achievements2],
+            }); return
+
+        if path == "/api/admin/cards":
+            pwd = params.get("password", "")
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            cards = db_query("SELECT id, bank_name, card_number, is_active, added_at FROM payment_cards ORDER BY id")
+            _json_response(self, {"ok": True, "cards": [{"id": r[0], "bank_name": r[1], "card_number": r[2], "is_active": bool(r[3]), "added_at": (r[4] or "")[:16]} for r in cards]}); return
+
+        if path == "/api/payment-cards":
+            cards_pub = db_query("SELECT bank_name, card_number FROM payment_cards WHERE is_active=1 ORDER BY id")
+            result_cards = [{"bank_name": r[0], "card_number": r[1]} for r in cards_pub]
+            if not result_cards:
+                result_cards = [{"bank_name": "Карта", "card_number": PAYMENT_CARD}]
+            _json_response(self, {"ok": True, "cards": result_cards}); return
 
         if path == "/api/orders":
             user_id = int(params.get("user_id", 0))
@@ -1128,11 +1216,16 @@ class PolicyHandler(BaseHTTPRequestHandler):
             _json_response(self, {"ok": True, "sale": get_active_sale()}); return
 
         if path == "/api/tg-config":
+            _active_cards = db_query("SELECT bank_name, card_number FROM payment_cards WHERE is_active=1 ORDER BY id")
+            _cards_list = [{"bank_name": r[0], "card_number": r[1]} for r in _active_cards]
+            if not _cards_list:
+                _cards_list = [{"bank_name": "Карта", "card_number": PAYMENT_CARD}]
             _json_response(self, {
                 "ok": True,
                 "shop_tag": SHOP_TAG,
                 "stars_rate": get_stars_rate(),
                 "payment_card": PAYMENT_CARD,
+                "payment_cards": _cards_list,
                 "premium_packs": get_premium_packs()
             }); return
 
@@ -2112,17 +2205,19 @@ class PolicyHandler(BaseHTTPRequestHandler):
             if not _ok_adm:
                 _json_response(self, {"ok": False, "error": _err_adm}, 403); return
             overrides = {r[0]: r[1] for r in db_query("SELECT item_id, cost FROM points_price_overrides")}
+            hidden_set = {r[0] for r in db_query("SELECT item_id FROM hidden_points_items")}
             result = {}
             for item in POINTS_SHOP:
                 result[item["id"]] = {
                     "name": item["name"],
                     "base": item["cost"],
                     "current": overrides.get(item["id"], item["cost"]),
-                    "is_custom": False
+                    "is_custom": False,
+                    "is_hidden": item["id"] in hidden_set
                 }
             custom = db_query("SELECT id, name, cost FROM custom_points_items ORDER BY created_at")
             for c in custom:
-                result[c[0]] = {"name": c[1], "base": c[2], "current": c[2], "is_custom": True}
+                result[c[0]] = {"name": c[1], "base": c[2], "current": c[2], "is_custom": True, "is_hidden": c[0] in hidden_set}
             _json_response(self, {"ok": True, "items": result}); return
 
         if path == "/api/admin/update-points-price":
@@ -2253,42 +2348,108 @@ class PolicyHandler(BaseHTTPRequestHandler):
             db_exec("DELETE FROM user_achievements WHERE user_id=? AND achievement_id=?", (target_id, ach_id))
             _json_response(self, {"ok": True, "message": f"Досягнення {ach_id} відкликано"}); return
 
-        if path == "/api/public-profile":
-            try:
-                target_id = int(params.get("user_id", 0))
-            except Exception:
-                target_id = 0
-            target_username = (params.get("username") or "").strip().lstrip("@")
-            if not target_id and target_username:
-                row_u = db_query_one("SELECT DISTINCT chat_id FROM orders WHERE user=? AND chat_id IS NOT NULL LIMIT 1", (target_username,))
-                if row_u:
-                    target_id = row_u[0]
-            if not target_id:
-                _json_response(self, {"ok": False, "error": "Користувача не знайдено. Введіть коректний @тег або Telegram ID"}); return
-            done_orders = db_query("SELECT pack, amount FROM orders WHERE chat_id=? AND status='done'", (target_id,))
-            def _si2(v):
-                try: return int(float(v or 0))
-                except: return 0
-            total_spent = sum(_si2(r[1]) for r in done_orders)
-            badge = get_spend_badge(total_spent)
-            earned_rows = db_query("SELECT achievement_id FROM user_achievements WHERE user_id=?", (target_id,))
-            achs = []
-            for row_a in earned_rows:
-                aid = row_a[0]
-                if aid in ACHIEVEMENTS:
-                    a = ACHIEVEMENTS[aid]
-                    achs.append({"id": aid, "emoji": a["emoji"], "name": a["name"]})
-            urow = db_query_one("SELECT user FROM orders WHERE chat_id=? AND user IS NOT NULL AND user!='' LIMIT 1", (target_id,))
-            username = urow[0] if urow else None
-            _json_response(self, {
-                "ok": True, "user_id": target_id,
-                "username": username,
-                "total_orders": len(done_orders),
-                "total_spent": total_spent,
-                "badge": badge,
-                "achievements": achs,
-                "ach_count": len(achs),
-            }); return
+        if path == "/api/admin/set_policy":
+            pwd = data.get("password", "")
+            ok_adm, err_adm = is_trusted_admin_post(ip, pwd)
+            if not ok_adm:
+                _json_response(self, {"ok": False, "error": err_adm}, 403); return
+            new_policy = (data.get("policy") or "").strip()
+            if not new_policy:
+                _json_response(self, {"ok": False, "error": "Порожній текст"}); return
+            set_setting("policy_text", new_policy)
+            _json_response(self, {"ok": True}); return
+
+        if path == "/api/admin/ban-user":
+            pwd = str(data.get("password", ""))
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            target_uid = int(data.get("user_id", 0))
+            action = str(data.get("action", "ban"))
+            reason = str(data.get("reason", "Заблокований адміном"))
+            if not target_uid:
+                _json_response(self, {"ok": False, "error": "user_id required"}); return
+            if action == "unban":
+                db_exec("DELETE FROM banned_users WHERE user_id=?", (target_uid,))
+                _json_response(self, {"ok": True, "message": f"✅ Користувача {target_uid} розблоковано"}); return
+            else:
+                db_exec("INSERT OR REPLACE INTO banned_users (user_id, reason, banned_at) VALUES (?,?,?)", (target_uid, reason, created_at_now()))
+                _json_response(self, {"ok": True, "message": f"🚫 Користувача {target_uid} заблоковано"}); return
+
+        if path == "/api/admin/delete-bonus":
+            pwd = str(data.get("password", ""))
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            bonus_id = int(data.get("bonus_id", 0))
+            if not bonus_id:
+                _json_response(self, {"ok": False, "error": "bonus_id required"}); return
+            db_exec("DELETE FROM user_bonuses WHERE id=?", (bonus_id,))
+            _json_response(self, {"ok": True, "message": "Бонус видалено"}); return
+
+        if path == "/api/admin/adjust-points":
+            pwd = str(data.get("password", ""))
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            target_uid2 = int(data.get("user_id", 0))
+            delta2 = int(data.get("delta", 0))
+            if not target_uid2:
+                _json_response(self, {"ok": False, "error": "user_id required"}); return
+            db_exec("INSERT OR IGNORE INTO user_points (user_id, points) VALUES (?,0)", (target_uid2,))
+            db_exec("UPDATE user_points SET points=MAX(0,points+?) WHERE user_id=?", (delta2, target_uid2))
+            new_pts = get_points(target_uid2)
+            _json_response(self, {"ok": True, "message": f"Баланс оновлено: {'+' if delta2>=0 else ''}{delta2} → {new_pts} балів", "new_points": new_pts}); return
+
+        if path == "/api/admin/add-card":
+            pwd = str(data.get("password", ""))
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            bank_name = (data.get("bank_name") or "").strip()
+            card_number = (data.get("card_number") or "").strip().replace(" ", "")
+            if not bank_name:
+                _json_response(self, {"ok": False, "error": "Введіть назву банку"}); return
+            if len(card_number) < 13 or not card_number.isdigit():
+                _json_response(self, {"ok": False, "error": "Невірний номер картки (тільки цифри, від 13 до 19)"}); return
+            db_exec("INSERT INTO payment_cards (bank_name, card_number, is_active, added_at) VALUES (?,?,1,?)", (bank_name, card_number, created_at_now()))
+            _json_response(self, {"ok": True, "message": f"Картку {bank_name} додано"}); return
+
+        if path == "/api/admin/delete-card":
+            pwd = str(data.get("password", ""))
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            card_id = int(data.get("card_id", 0))
+            if not card_id:
+                _json_response(self, {"ok": False, "error": "card_id required"}); return
+            db_exec("DELETE FROM payment_cards WHERE id=?", (card_id,))
+            _json_response(self, {"ok": True, "message": "Картку видалено"}); return
+
+        if path == "/api/admin/toggle-card":
+            pwd = str(data.get("password", ""))
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            card_id = int(data.get("card_id", 0))
+            db_exec("UPDATE payment_cards SET is_active=CASE WHEN is_active=1 THEN 0 ELSE 1 END WHERE id=?", (card_id,))
+            _json_response(self, {"ok": True}); return
+
+        if path == "/api/admin/toggle-points-item":
+            pwd = str(data.get("password", ""))
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            item_id = str(data.get("item_id", ""))
+            if not item_id:
+                _json_response(self, {"ok": False, "error": "item_id required"}); return
+            existing = db_query_one("SELECT item_id FROM hidden_points_items WHERE item_id=?", (item_id,))
+            if existing:
+                db_exec("DELETE FROM hidden_points_items WHERE item_id=?", (item_id,))
+                _json_response(self, {"ok": True, "hidden": False, "message": "Товар показано в магазині"}); return
+            else:
+                db_exec("INSERT OR IGNORE INTO hidden_points_items (item_id) VALUES (?)", (item_id,))
+                _json_response(self, {"ok": True, "hidden": True, "message": "Товар прихований з магазину"}); return
 
         if path == "/api/admin/create-sale":
             pwd = str(data.get("password", ""))
