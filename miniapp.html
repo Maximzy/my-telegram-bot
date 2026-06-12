@@ -1144,6 +1144,12 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
             <optgroup label="🎰 Рулетка">
               <option value="extra_spin">Повторний прокрут рулетки</option>
             </optgroup>
+            <optgroup label="⭐ Telegram Stars">
+              <option value="stars_50_prize">⭐ 50 Telegram Stars</option>
+              <option value="stars_100_prize">⭐ 100 Telegram Stars</option>
+              <option value="stars_150_prize">⭐ 150 Telegram Stars</option>
+              <option value="stars_200_prize">⭐ 200 Telegram Stars</option>
+            </optgroup>
           </select>
           <div id="npCustomRange" style="display:none;flex-direction:column;gap:8px">
             <input type="number" id="npDiscPct" placeholder="Відсоток знижки (1–99)" min="1" max="99">
@@ -1536,8 +1542,12 @@ async function api(path, method = 'GET', body = null) {
   if (body) opts.body = JSON.stringify(body);
   try {
     const r = await fetch(BASE + path, opts);
-    return await r.json();
-  } catch (e) { return { ok: false, error: 'Помилка мережі' }; }
+    try {
+      return await r.json();
+    } catch (je) {
+      return { ok: false, error: `Помилка сервера (${r.status})` };
+    }
+  } catch (e) { return { ok: false, error: 'Помилка мережі. Перевірте з\'єднання.' }; }
 }
 
 // ─── TOAST ───────────────────────────────────────────────────────────────────
@@ -2395,18 +2405,41 @@ async function loadBonuses() {
   for (const b of bonuses) {
     if (b.type === 'free_uc_30') freeHtml += `<button class="btn mt-8" onclick="claimFreeUC(30,'free_uc_30')">🎁 Отримати 30 UC безкоштовно</button>`;
     if (b.type === 'free_uc_60') freeHtml += `<button class="btn mt-8" onclick="claimFreeUC(60,'free_uc_60')">🎁 Отримати 60 UC безкоштовно</button>`;
+    if (b.type === 'free_uc_120') freeHtml += `<button class="btn mt-8" onclick="claimFreeUC(120,'free_uc_120')">🎁 Отримати 120 UC безкоштовно</button>`;
+    if (b.type === 'stars_50_prize') freeHtml += `<button class="btn mt-8" style="background:linear-gradient(135deg,#f59e0b,#fbbf24)" onclick="claimStars(50,'stars_50_prize')">⭐ Отримати 50 Telegram Stars</button>`;
+    if (b.type === 'stars_100_prize') freeHtml += `<button class="btn mt-8" style="background:linear-gradient(135deg,#f59e0b,#fbbf24)" onclick="claimStars(100,'stars_100_prize')">⭐ Отримати 100 Telegram Stars</button>`;
+    if (b.type === 'stars_150_prize') freeHtml += `<button class="btn mt-8" style="background:linear-gradient(135deg,#f59e0b,#fbbf24)" onclick="claimStars(150,'stars_150_prize')">⭐ Отримати 150 Telegram Stars</button>`;
+    if (b.type === 'stars_200_prize') freeHtml += `<button class="btn mt-8" style="background:linear-gradient(135deg,#f59e0b,#fbbf24)" onclick="claimStars(200,'stars_200_prize')">⭐ Отримати 200 Telegram Stars</button>`;
   }
   document.getElementById('freeUcSection').innerHTML = freeHtml;
 }
 
-async function claimFreeUC(uc, bt) {
-  const pid = prompt(`Введіть ігровий ID для нарахування ${uc} UC:`);
-  if (!pid || pid.trim().length < 5) { toast('Невірний ігровий ID', 'error'); return; }
-  const pnick = prompt(`Введіть ваш нік в PUBG Mobile (для перевірки ID):`);
-  if (!pnick || !pnick.trim()) { toast('Введіть ваш нік', 'error'); return; }
-  const r = await api('/api/claim-free-uc', 'POST', { user_id: uid, username: uname, player_id: pid.trim(), player_nick: pnick.trim(), bonus_type: bt });
-  if (r.ok) { toast(r.message, 'success'); sakura(); lazyLoaded['svc_bonus'] = false; loadBonuses(); }
-  else toast(r.error || 'Помилка', 'error');
+function claimFreeUC(uc, bt) {
+  showDoubleInputModal(
+    `🎁 Отримати ${uc} UC безкоштовно`,
+    'Ігровий ID (5–16 цифр)', 'Нік в PUBG Mobile',
+    async (pid, pnick) => {
+      if (!pid || pid.trim().length < 5) { toast('Невірний ігровий ID', 'error'); return false; }
+      if (!pnick || !pnick.trim()) { toast('Введіть ваш нік', 'error'); return false; }
+      const r = await api('/api/claim-free-uc', 'POST', { user_id: uid, username: uname, player_id: pid.trim(), player_nick: pnick.trim(), bonus_type: bt });
+      if (r.ok) { toast(r.message, 'success'); sakura(); lazyLoaded['svc_bonus'] = false; loadBonuses(); return true; }
+      else { toast(r.error || 'Помилка', 'error'); return false; }
+    }
+  );
+}
+
+function claimStars(count, bt) {
+  showInputModal(
+    `⭐ Отримати ${count} Stars`,
+    'Ваш @тег Telegram (без @)',
+    async (tag) => {
+      tag = tag.trim().replace(/^@/, '');
+      if (!tag || tag.length < 3) { toast('Введіть коректний @тег', 'error'); return false; }
+      const r = await api('/api/claim-stars', 'POST', { user_id: uid, username: uname, tg_tag: tag, bonus_type: bt });
+      if (r.ok) { toast(r.message, 'success'); sakura(); lazyLoaded['svc_bonus'] = false; loadBonuses(); return true; }
+      else { toast(r.error || 'Помилка', 'error'); return false; }
+    }
+  );
 }
 
 async function activatePromo() {
@@ -2975,11 +3008,12 @@ async function createPromo() {
   } else toast(r.error || 'Помилка', 'error');
 }
 
-async function deletePromo(code) {
-  if (!confirm(`Видалити промокод ${code}?`)) return;
-  const r = await api('/api/admin/delete-promo', 'POST', { password: adminPass, code });
-  if (r.ok) { toast(r.message, 'success'); loadAPromos(); }
-  else toast(r.error || 'Помилка', 'error');
+function deletePromo(code) {
+  showConfirmModal(`Видалити промокод ${code}?`, async () => {
+    const r = await api('/api/admin/delete-promo', 'POST', { password: adminPass, code });
+    if (r.ok) { toast(r.message, 'success'); loadAPromos(); }
+    else toast(r.error || 'Помилка', 'error');
+  });
 }
 
 async function loadAPrices() {
@@ -3067,7 +3101,7 @@ async function loadAPointsPrices() {
       ? `<span style="font-size:9px;background:var(--accent);color:#fff;padding:1px 5px;border-radius:4px;margin-left:5px">CUSTOM</span>`
       : '';
     const deleteBtn = data.is_custom
-      ? `<button onclick="doDeleteCustomPrize('${id}', this)" style="background:none;border:none;color:#e55;font-size:14px;cursor:pointer;padding:2px 6px;float:right" title="Видалити">🗑</button>`
+      ? `<button onclick="doDeleteCustomPrize('${id}')" style="background:none;border:none;color:#e55;font-size:14px;cursor:pointer;padding:2px 6px;float:right" title="Видалити">🗑</button>`
       : '';
     return `<div class="card" style="margin-bottom:6px;padding:9px 13px;position:relative">
       ${deleteBtn}
@@ -3097,12 +3131,12 @@ async function doAddCustomPrize() {
   } else toast(r.error || 'Помилка', 'error');
 }
 
-async function doDeleteCustomPrize(item_id, btn) {
-  if (!confirm('Видалити цей приз?')) return;
-  btn.disabled = true;
-  const r = await api('/api/admin/delete_points_item', 'POST', { password: adminPass, item_id });
-  if (r.ok) { toast(r.message, 'success'); loadAPointsPrices(); }
-  else { toast(r.error || 'Помилка', 'error'); btn.disabled = false; }
+function doDeleteCustomPrize(item_id) {
+  showConfirmModal('Видалити цей приз?', async () => {
+    const r = await api('/api/admin/delete_points_item', 'POST', { password: adminPass, item_id });
+    if (r.ok) { toast(r.message, 'success'); loadAPointsPrices(); }
+    else toast(r.error || 'Помилка', 'error');
+  });
 }
 
 async function doUpdatePointsPrice() {
@@ -3234,13 +3268,14 @@ async function doFind() {
   el.innerHTML = header + orders.map(orderCard).join('');
 }
 
-async function doBroadcast() {
+function doBroadcast() {
   const msg = document.getElementById('bcastMsg').value.trim();
   if (!msg) { toast('Повідомлення порожнє', 'error'); return; }
-  if (!confirm(`Надіслати всім: "${msg}"?`)) return;
-  const r = await api('/api/admin/broadcast', 'POST', { password: adminPass, message: msg });
-  if (r.ok) { toast(r.message, 'success'); document.getElementById('bcastMsg').value = ''; }
-  else toast(r.error || 'Помилка', 'error');
+  showConfirmModal(`Надіслати всім: "${msg.slice(0,50)}${msg.length>50?'...':''}"?`, async () => {
+    const r = await api('/api/admin/broadcast', 'POST', { password: adminPass, message: msg });
+    if (r.ok) { toast(r.message, 'success'); document.getElementById('bcastMsg').value = ''; }
+    else toast(r.error || 'Помилка', 'error');
+  });
 }
 
 async function loadPendingWheels() {
@@ -3258,11 +3293,12 @@ async function loadPendingWheels() {
     </div>`).join('');
 }
 
-async function approveWheel(spinId) {
-  if (!confirm(`Крутити колесо для запиту #${spinId}?`)) return;
-  const r = await api('/api/admin/approve-wheel', 'POST', { password: adminPass, spin_id: spinId });
-  if (r.ok) { toast(`✅ Приз: ${r.prize?.name} — ${r.message}`, 'success'); loadPendingWheels(); }
-  else toast(r.error || 'Помилка', 'error');
+function approveWheel(spinId) {
+  showConfirmModal(`Крутити колесо для запиту #${spinId}?`, async () => {
+    const r = await api('/api/admin/approve-wheel', 'POST', { password: adminPass, spin_id: spinId });
+    if (r.ok) { toast(`✅ Приз: ${r.prize?.name} — ${r.message}`, 'success'); loadPendingWheels(); }
+    else toast(r.error || 'Помилка', 'error');
+  });
 }
 
 function switchWheelTab(el, tab) {
@@ -3683,17 +3719,25 @@ async function doCreateSale() {
   if (r.ok) { toast(r.message, 'success'); loadASales(); } else toast(r.error || 'Помилка', 'error');
 }
 
-async function doCancelSale() {
-  if (!confirm('Скасувати активну акцію?')) return;
-  const r = await api('/api/admin/cancel-sale', 'POST', { password: adminPass });
-  if (r.ok) { toast(r.message, 'success'); loadASales(); } else toast(r.error || 'Помилка', 'error');
+function doCancelSale() {
+  showConfirmModal('Скасувати активну акцію?', async () => {
+    const r = await api('/api/admin/cancel-sale', 'POST', { password: adminPass });
+    if (r.ok) { toast(r.message, 'success'); loadASales(); } else toast(r.error || 'Помилка', 'error');
+  });
 }
 
-// ─── USERNAME LOOKUP FOR ACHIEVEMENTS ────────────────────────────────────────
+// ─── UNIVERSAL USER LOOKUP (username or ID) ───────────────────────────────────
 async function doLookupByUsername() {
-  const val = document.getElementById('achUsername').value.trim().replace(/^@/, '');
-  if (!val) { toast('Введіть нікнейм', 'error'); return; }
-  const r = await api('/api/admin/user-by-username', 'POST', { password: adminPass, username: val });
+  const raw = document.getElementById('achUsername').value.trim();
+  if (!raw) { toast('Введіть нікнейм або ID', 'error'); return; }
+  const isId = /^\d+$/.test(raw);
+  if (isId) {
+    document.getElementById('achUID').value = parseInt(raw);
+    toast(`User ID: ${raw}`, 'success');
+    return;
+  }
+  const username = raw.replace(/^@/, '');
+  const r = await api('/api/admin/user-by-username', 'POST', { password: adminPass, username });
   if (r.ok) {
     document.getElementById('achUID').value = r.user_id;
     toast(`Знайдено: @${r.username} → ID ${r.user_id}`, 'success');
@@ -3702,9 +3746,31 @@ async function doLookupByUsername() {
 
 // ─── PUBLIC PROFILE ──────────────────────────────────────────────────────────
 function openPublicProfileSearch() {
-  const id = prompt('Введіть Telegram ID гравця:');
-  if (!id || isNaN(id)) return;
-  openPublicProfile(parseInt(id));
+  showInputModal(
+    '🔍 Пошук профілю',
+    '@нікнейм або Telegram ID',
+    async (val) => {
+      val = val.trim();
+      if (!val) { toast('Введіть нікнейм або ID', 'error'); return false; }
+      const isId = /^\d+$/.test(val);
+      if (isId) {
+        await openPublicProfile(parseInt(val));
+      } else {
+        const tag = val.replace(/^@/, '');
+        await openPublicProfileByTag(tag);
+      }
+      return true;
+    }
+  );
+}
+
+async function openPublicProfileByTag(tag) {
+  const modal = document.getElementById('publicProfileModal');
+  const content = document.getElementById('pubProfileContent');
+  modal.style.display = 'flex';
+  content.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  const r = await api('/api/public-profile?username=' + encodeURIComponent(tag));
+  _renderPublicProfile(r, content);
 }
 
 async function openPublicProfile(targetId) {
@@ -3713,6 +3779,10 @@ async function openPublicProfile(targetId) {
   modal.style.display = 'flex';
   content.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
   const r = await api('/api/public-profile?user_id=' + targetId);
+  _renderPublicProfile(r, content);
+}
+
+function _renderPublicProfile(r, content) {
   if (!r.ok) {
     content.innerHTML = `<div class="empty">${esc(r.error || 'Помилка')}</div>`;
     return;
@@ -3728,6 +3798,7 @@ async function openPublicProfile(targetId) {
     <div style="text-align:center;margin-bottom:10px">
       <div style="font-size:32px">👤</div>
       <div style="font-weight:700;font-size:16px">${uname}</div>
+      ${r.user_id ? `<div style="font-size:10px;color:var(--muted)">Telegram ID: ${r.user_id}</div>` : ''}
       <div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-top:4px">${badge}</div>
     </div>
     <div class="stats-grid" style="grid-template-columns:repeat(2,1fr)">
@@ -3750,6 +3821,123 @@ async function skipRating() {
     loadTickets(); closeTicketChat();
   }
   ratingForTicketId = null;
+}
+
+// ─── MODAL HELPERS (замість prompt/confirm) ──────────────────────────────────
+let _modalCallback = null;
+let _modalConfirmCallback = null;
+
+function showInputModal(title, placeholder, onSubmit) {
+  let modal = document.getElementById('_inputModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = '_inputModal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);align-items:center;justify-content:center';
+    modal.innerHTML = `<div style="background:var(--card);border-radius:18px;padding:20px 18px;width:88%;max-width:360px">
+      <div id="_imTitle" style="font-weight:700;font-size:15px;margin-bottom:12px"></div>
+      <input id="_imInput" style="width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:14px;box-sizing:border-box;outline:none" autocomplete="off">
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button onclick="_imCancel()" class="btn-ghost btn" style="flex:1">Скасувати</button>
+        <button onclick="_imSubmit()" class="btn" style="flex:1">OK</button>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#_imInput').addEventListener('keydown', e => { if (e.key === 'Enter') _imSubmit(); if (e.key === 'Escape') _imCancel(); });
+  }
+  modal.querySelector('#_imTitle').textContent = title;
+  const inp = modal.querySelector('#_imInput');
+  inp.placeholder = placeholder;
+  inp.value = '';
+  _modalCallback = onSubmit;
+  modal.style.display = 'flex';
+  setTimeout(() => inp.focus(), 100);
+}
+
+async function _imSubmit() {
+  const modal = document.getElementById('_inputModal');
+  const val = modal.querySelector('#_imInput').value;
+  if (_modalCallback) {
+    const ok = await _modalCallback(val);
+    if (ok !== false) modal.style.display = 'none';
+  } else { modal.style.display = 'none'; }
+}
+function _imCancel() {
+  const modal = document.getElementById('_inputModal');
+  if (modal) modal.style.display = 'none';
+  _modalCallback = null;
+}
+
+function showDoubleInputModal(title, placeholder1, placeholder2, onSubmit) {
+  let modal = document.getElementById('_dblModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = '_dblModal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);align-items:center;justify-content:center';
+    modal.innerHTML = `<div style="background:var(--card);border-radius:18px;padding:20px 18px;width:88%;max-width:360px">
+      <div id="_dmTitle" style="font-weight:700;font-size:15px;margin-bottom:12px"></div>
+      <input id="_dmInput1" style="width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:14px;box-sizing:border-box;outline:none;margin-bottom:8px" autocomplete="off">
+      <input id="_dmInput2" style="width:100%;background:var(--card2);border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:14px;box-sizing:border-box;outline:none" autocomplete="off">
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button onclick="_dmCancel()" class="btn-ghost btn" style="flex:1">Скасувати</button>
+        <button onclick="_dmSubmit()" class="btn" style="flex:1">OK</button>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#_dmInput2').addEventListener('keydown', e => { if (e.key === 'Enter') _dmSubmit(); if (e.key === 'Escape') _dmCancel(); });
+  }
+  modal.querySelector('#_dmTitle').textContent = title;
+  const i1 = modal.querySelector('#_dmInput1'), i2 = modal.querySelector('#_dmInput2');
+  i1.placeholder = placeholder1; i1.value = '';
+  i2.placeholder = placeholder2; i2.value = '';
+  _modalCallback = onSubmit;
+  modal.style.display = 'flex';
+  setTimeout(() => i1.focus(), 100);
+}
+
+async function _dmSubmit() {
+  const modal = document.getElementById('_dblModal');
+  const v1 = modal.querySelector('#_dmInput1').value;
+  const v2 = modal.querySelector('#_dmInput2').value;
+  if (_modalCallback) {
+    const ok = await _modalCallback(v1, v2);
+    if (ok !== false) modal.style.display = 'none';
+  } else { modal.style.display = 'none'; }
+}
+function _dmCancel() {
+  const modal = document.getElementById('_dblModal');
+  if (modal) modal.style.display = 'none';
+  _modalCallback = null;
+}
+
+function showConfirmModal(text, onConfirm) {
+  let modal = document.getElementById('_confirmModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = '_confirmModal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);align-items:center;justify-content:center';
+    modal.innerHTML = `<div style="background:var(--card);border-radius:18px;padding:20px 18px;width:88%;max-width:340px;text-align:center">
+      <div id="_cmText" style="font-size:14px;margin-bottom:16px;line-height:1.5"></div>
+      <div style="display:flex;gap:8px">
+        <button onclick="_cmCancel()" class="btn-ghost btn" style="flex:1">Скасувати</button>
+        <button onclick="_cmConfirm()" class="btn btn-danger" style="flex:1">Підтвердити</button>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+  }
+  modal.querySelector('#_cmText').textContent = text;
+  _modalConfirmCallback = onConfirm;
+  modal.style.display = 'flex';
+}
+async function _cmConfirm() {
+  const modal = document.getElementById('_confirmModal');
+  modal.style.display = 'none';
+  if (_modalConfirmCallback) await _modalConfirmCallback();
+  _modalConfirmCallback = null;
+}
+function _cmCancel() {
+  const modal = document.getElementById('_confirmModal');
+  if (modal) modal.style.display = 'none';
+  _modalConfirmCallback = null;
 }
 
 // ── SPLASH SCREEN ───────────────────────────────────────────────

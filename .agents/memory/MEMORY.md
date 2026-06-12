@@ -1,0 +1,3 @@
+- [Telegram Mini App quirks](tma-quirks.md) — prompt()/confirm()/alert() blocked in Telegram WebApp; always use custom modals instead.
+- [Server error handling](server-error-handling.md) — do_GET/do_POST wrapped in try/except via _do_GET_inner/_do_POST_inner to prevent unhandled exceptions from causing "Помилка мережі" on client.
+- [Stars prize flow](stars-prize-flow.md) — stars_50/100/150/200_prize bonus types delivered by @tag (not player_id); admin notified, sends manually.

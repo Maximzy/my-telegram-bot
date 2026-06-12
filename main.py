@@ -216,21 +216,25 @@ SMALL_UC = set(list(PACKS.keys())[:6])
 MEDIUM_UC = set(list(PACKS.keys())[6:9])
 
 BONUS_TYPES = {
-    "free_uc_30":       "🎁 30 UC безкоштовно на акаунт",
-    "free_uc_60":       "🎁 60 UC безкоштовно на акаунт",
-    "free_uc_120":      "🎁 120 UC безкоштовно на акаунт",
-    "discount_small_5": "Знижка 5% на малі UC паки (30–660 UC)",
-    "discount_small_4": "Знижка 4% на малі UC паки (30–660 UC)",
-    "discount_small_3": "Знижка 3% на малі UC паки (30–660 UC)",
-    "discount_small_2": "Знижка 2% на малі UC паки (30–660 UC)",
-    "discount_small_1": "Знижка 1% на малі UC паки (30–660 UC)",
-    "discount_medium_2":"Знижка 2% на середні UC паки (1800–8100 UC)",
-    "discount_medium_1":"Знижка 1% на середні UC паки (1800–8100 UC)",
-    "points_50":        "🪙 50 балів",
-    "points_100":       "🪙 100 балів",
-    "points_200":       "💰 200 балів",
-    "points_500":       "💰 500 балів",
-    "extra_spin":       "🎰 Повторний прокрут рулетки",
+    "free_uc_30":        "🎁 30 UC безкоштовно на акаунт",
+    "free_uc_60":        "🎁 60 UC безкоштовно на акаунт",
+    "free_uc_120":       "🎁 120 UC безкоштовно на акаунт",
+    "discount_small_5":  "Знижка 5% на малі UC паки (30–660 UC)",
+    "discount_small_4":  "Знижка 4% на малі UC паки (30–660 UC)",
+    "discount_small_3":  "Знижка 3% на малі UC паки (30–660 UC)",
+    "discount_small_2":  "Знижка 2% на малі UC паки (30–660 UC)",
+    "discount_small_1":  "Знижка 1% на малі UC паки (30–660 UC)",
+    "discount_medium_2": "Знижка 2% на середні UC паки (1800–8100 UC)",
+    "discount_medium_1": "Знижка 1% на середні UC паки (1800–8100 UC)",
+    "points_50":         "🪙 50 балів",
+    "points_100":        "🪙 100 балів",
+    "points_200":        "💰 200 балів",
+    "points_500":        "💰 500 балів",
+    "extra_spin":        "🎰 Повторний прокрут рулетки",
+    "stars_50_prize":    "⭐ 50 Telegram Stars на акаунт",
+    "stars_100_prize":   "⭐ 100 Telegram Stars на акаунт",
+    "stars_150_prize":   "⭐ 150 Telegram Stars на акаунт",
+    "stars_200_prize":   "⭐ 200 Telegram Stars на акаунт",
 }
 
 # --- ДОСЯГНЕННЯ ---
@@ -887,6 +891,14 @@ class PolicyHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        try:
+            self._do_GET_inner()
+        except Exception as _ex:
+            logging.error(f"do_GET unhandled: {_ex}", exc_info=True)
+            try: _json_response(self, {"ok": False, "error": "Внутрішня помилка сервера"}, 500)
+            except Exception: pass
+
+    def _do_GET_inner(self):
         path = self.path.split("?")[0]
         query = self.path[len(path)+1:] if "?" in self.path else ""
         params = dict(urllib.parse.parse_qsl(query))
@@ -1380,6 +1392,14 @@ class PolicyHandler(BaseHTTPRequestHandler):
         self.send_response(404); self.end_headers()
 
     def do_POST(self):
+        try:
+            self._do_POST_inner()
+        except Exception as _ex:
+            logging.error(f"do_POST unhandled: {_ex}", exc_info=True)
+            try: _json_response(self, {"ok": False, "error": "Внутрішня помилка сервера"}, 500)
+            except Exception: pass
+
+    def _do_POST_inner(self):
         length = int(self.headers.get("Content-Length", 0))
         if length > MAX_POST_BYTES:
             _json_response(self, {"ok": False, "error": "Request too large"}, 413); return
@@ -1760,6 +1780,29 @@ class PolicyHandler(BaseHTTPRequestHandler):
             db_exec("INSERT INTO reviews (user, text) VALUES (?,?)", (user_label_str, text))
             _json_response(self, {"ok": True, "message": "Відгук збережено!"}); return
 
+        if path == "/api/claim-stars":
+            user_id = int(data.get("user_id", 0))
+            if user_id and not _rl_allow(f"claimstars:{user_id}", 2, 3600):
+                _json_response(self, {"ok": False, "error": "Забагато запитів. Зачекайте годину."}, 429); return
+            username = _sanitize(str(data.get("username", "")), 64)
+            tg_tag = _sanitize(str(data.get("tg_tag", "")).strip().lstrip("@"), 64)
+            bonus_type = str(data.get("bonus_type", "stars_50_prize"))
+            stars_map = {"stars_50_prize": 50, "stars_100_prize": 100, "stars_150_prize": 150, "stars_200_prize": 200}
+            stars_count = stars_map.get(bonus_type, 0)
+            if not stars_count:
+                _json_response(self, {"ok": False, "error": "Невідомий тип бонусу"}); return
+            if not tg_tag or len(tg_tag) < 3:
+                _json_response(self, {"ok": False, "error": "Введіть коректний @тег акаунту Telegram (мін. 3 символи)"}); return
+            bonus = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type=? AND used=0 LIMIT 1", (user_id, bonus_type))
+            if not bonus:
+                _json_response(self, {"ok": False, "error": f"Бонус {BONUS_TYPES.get(bonus_type,'')} недоступний"}); return
+            db_exec("UPDATE user_bonuses SET used=1 WHERE id=?", (bonus[0],))
+            oid = str(uuid.uuid4()).replace("-", "")[:12].upper()
+            db_exec("INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (oid, username, f"⭐ {stars_count} Stars (бонус)", "pending", user_id, tg_tag, created_at_now(), 0, "bonus"))
+            _send_tg_message(MY_ID, f"⭐ STARS БОНУС!\n🆔 {oid}\n👤 {'@'+username if username else str(user_id)}\n📲 Telegram: @{tg_tag}\n🌟 {stars_count} Stars\n\n⚡ Переведіть зірки вручну акаунту @{tg_tag}")
+            _json_response(self, {"ok": True, "message": f"Заявку прийнято! {stars_count} ⭐ Stars буде нараховано адміном."}); return
+
         if path == "/api/claim-free-uc":
             user_id = int(data.get("user_id", 0))
             if user_id and not _rl_allow(f"freeuc:{user_id}", 2, 3600):
@@ -2002,7 +2045,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 bonus_type = f"discount_custom_{discount_pct}"
                 all_types_ok = True
             else:
-                all_types = list(BONUS_TYPES.keys()) + ["points_50","points_100","points_200","points_500"]
+                all_types = list(BONUS_TYPES.keys())
                 all_types_ok = bonus_type in all_types
             if not all_types_ok:
                 _json_response(self, {"ok": False, "error": "Невідомий тип бонусу"}); return
@@ -2211,9 +2254,17 @@ class PolicyHandler(BaseHTTPRequestHandler):
             _json_response(self, {"ok": True, "message": f"Досягнення {ach_id} відкликано"}); return
 
         if path == "/api/public-profile":
-            target_id = int(params.get("user_id", 0))
+            try:
+                target_id = int(params.get("user_id", 0))
+            except Exception:
+                target_id = 0
+            target_username = (params.get("username") or "").strip().lstrip("@")
+            if not target_id and target_username:
+                row_u = db_query_one("SELECT DISTINCT chat_id FROM orders WHERE user=? AND chat_id IS NOT NULL LIMIT 1", (target_username,))
+                if row_u:
+                    target_id = row_u[0]
             if not target_id:
-                _json_response(self, {"ok": False, "error": "user_id required"}); return
+                _json_response(self, {"ok": False, "error": "Користувача не знайдено. Введіть коректний @тег або Telegram ID"}); return
             done_orders = db_query("SELECT pack, amount FROM orders WHERE chat_id=? AND status='done'", (target_id,))
             def _si2(v):
                 try: return int(float(v or 0))
