@@ -1255,6 +1255,46 @@ class PolicyHandler(BaseHTTPRequestHandler):
                        "player_id": r[3], "chat_id": r[4], "created_at": (r[5] or "")[:16], "amount": r[6] or "?", "player_nick": r[7] or "", "payment_bank": r[8] or ""} for r in rows]
             _json_response(self, {"ok": True, "orders": orders}); return
 
+        if path == "/api/admin/search-orders":
+            pwd = params.get("password", "")
+            _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
+            if not _ok_adm:
+                _json_response(self, {"ok": False, "error": _err_adm}, 403); return
+            status_filter = (params.get("status") or "all").strip()
+            q = (params.get("q") or "").strip().lower()
+            limit_n = min(int(params.get("limit", 100)), 200)
+            if status_filter == "all":
+                base_rows = db_query(
+                    "SELECT id, user, pack, player_id, chat_id, created_at, amount, player_nick, payment_bank, status FROM orders ORDER BY rowid DESC LIMIT 500"
+                )
+            else:
+                base_rows = db_query(
+                    "SELECT id, user, pack, player_id, chat_id, created_at, amount, player_nick, payment_bank, status FROM orders WHERE status=? ORDER BY rowid DESC LIMIT 500",
+                    (status_filter,)
+                )
+            result = []
+            for r in base_rows:
+                oid, user, pack, pid, chat_id, cat, amt, pnick, pbank, status = r
+                user_disp = f"@{user}" if user else str(chat_id or "")
+                if q:
+                    haystack = " ".join([
+                        str(oid or ""), str(user or ""), str(pid or ""),
+                        str(pnick or ""), str(pbank or ""), str(pack or ""),
+                        str(chat_id or ""), str(amt or "")
+                    ]).lower()
+                    if q not in haystack:
+                        continue
+                result.append({
+                    "id": oid, "user": user_disp, "pack": pack,
+                    "player_id": pid or "", "chat_id": chat_id,
+                    "created_at": (cat or "")[:16], "amount": amt or "?",
+                    "player_nick": pnick or "", "payment_bank": pbank or "",
+                    "status": status
+                })
+                if len(result) >= limit_n:
+                    break
+            _json_response(self, {"ok": True, "orders": result, "total": len(result)}); return
+
         if path == "/api/admin/stats":
             pwd = params.get("password", "")
             _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)

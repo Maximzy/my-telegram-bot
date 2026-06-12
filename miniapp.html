@@ -1082,10 +1082,19 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
       <!-- Orders -->
       <div class="atab" id="atab-aords">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div class="section-title" style="margin:0">Очікують виконання</div>
-          <button class="btn-ghost btn btn-sm" onclick="loadAOrders()">↻</button>
+        <!-- Status filter tabs -->
+        <div class="sub-tabs" style="margin-bottom:10px;flex-wrap:wrap;gap:4px">
+          <div class="sub-tab active" data-ostatus="pending" onclick="switchAOrdersStatus(this,'pending')">⏳ Очікують</div>
+          <div class="sub-tab" data-ostatus="done" onclick="switchAOrdersStatus(this,'done')">✅ Виконані</div>
+          <div class="sub-tab" data-ostatus="canceled" onclick="switchAOrdersStatus(this,'canceled')">❌ Відхилені</div>
+          <div class="sub-tab" data-ostatus="all" onclick="switchAOrdersStatus(this,'all')">📋 Всі</div>
         </div>
+        <!-- Search bar -->
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <input id="aOrdsSearch" type="text" class="input-field" placeholder="🔍 Пошук по ID, юзеру, ID гравця, банку, паку..." style="flex:1;font-size:13px" oninput="debounceAOrdsSearch()">
+          <button class="btn-ghost btn btn-sm" onclick="loadAOrders()" style="white-space:nowrap">↻</button>
+        </div>
+        <div id="aOrdsCount" style="font-size:11px;color:var(--muted);margin-bottom:8px"></div>
         <div id="aOrdersList"><div class="empty"><div class="spinner"></div></div></div>
       </div>
 
@@ -2979,21 +2988,50 @@ function aLogout() {
   _stopAdminHeartbeat();
 }
 
+let _aOrdsStatus = 'pending';
+let _aOrdsSearchTimer = null;
+
+function switchAOrdersStatus(el, status) {
+  _aOrdsStatus = status;
+  document.querySelectorAll('#atab-aords .sub-tab[data-ostatus]').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  loadAOrders();
+}
+
+function debounceAOrdsSearch() {
+  clearTimeout(_aOrdsSearchTimer);
+  _aOrdsSearchTimer = setTimeout(() => loadAOrders(), 400);
+}
+
 async function loadAOrders() {
   const el = document.getElementById('aOrdersList');
+  const countEl = document.getElementById('aOrdsCount');
   el.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
-  const r = await api(`/api/admin/orders?password=${adminPass}`);
+  const q = encodeURIComponent((document.getElementById('aOrdsSearch')?.value || '').trim());
+  const r = await api(`/api/admin/search-orders?password=${encodeURIComponent(adminPass)}&status=${_aOrdsStatus}&q=${q}&limit=150`);
   const orders = r.orders || [];
-  if (!orders.length) { el.innerHTML = '<div class="empty">🎉 Нових замовлень немає</div>'; return; }
+  if (countEl) countEl.textContent = orders.length ? `Знайдено: ${orders.length}${orders.length >= 150 ? '+ (показані перші 150)' : ''}` : '';
+  if (!orders.length) {
+    const emptyMsg = {pending:'🎉 Очікуючих замовлень немає', done:'Виконаних замовлень поки що немає', canceled:'Відхилених замовлень немає', all:'Замовлень ще немає'};
+    el.innerHTML = `<div class="empty">${emptyMsg[_aOrdsStatus] || 'Замовлень не знайдено'}</div>`; return;
+  }
+  const sIcon = {pending:'⏳',done:'✅',canceled:'❌'};
+  const sCls  = {pending:'s-pending',done:'s-done',canceled:'s-canceled'};
   el.innerHTML = orders.map(o => `
-    <div class="order-card">
-      <div class="order-header"><span class="order-id">#${esc(o.id)}</span><span class="status-badge s-pending">⏳ Очікує</span></div>
+    <div class="order-card" style="opacity:${o.status==='canceled'?'0.7':'1'}">
+      <div class="order-header">
+        <span class="order-id">#${esc(o.id)}</span>
+        <span class="status-badge ${sCls[o.status]||''}">${sIcon[o.status]||o.status} ${o.status==='pending'?'Очікує':o.status==='done'?'Виконано':'Відхилено'}</span>
+      </div>
       <div class="order-pack">${esc(o.pack)}</div>
-      <div class="order-meta">${esc(o.user)} · ID: ${esc(o.player_id)}${o.player_nick ? ` · 🪪 ${esc(o.player_nick)}` : ''}<br>${esc(o.created_at)} · ${esc(o.amount)} грн${o.payment_bank ? ` · <span style="color:#ffd166;font-weight:600">🏦 ${esc(o.payment_bank)}</span>` : ''}</div>
-      <div class="order-acts">
+      <div class="order-meta">
+        ${esc(o.user)} · ID: ${esc(o.player_id)}${o.player_nick ? ` · 🪪 ${esc(o.player_nick)}` : ''}<br>
+        ${esc(o.created_at)} · <b>${esc(o.amount)} грн</b>${o.payment_bank ? ` · <span style="color:#ffd166;font-weight:600">🏦 ${esc(o.payment_bank)}</span>` : ''}
+      </div>
+      ${o.status === 'pending' ? `<div class="order-acts">
         <button class="btn btn-sm" style="background:var(--success)" onclick="aAction('${esc(o.id)}','ok')">✅ Виконано</button>
         <button class="btn btn-sm btn-danger" onclick="aAction('${esc(o.id)}','no')">❌ Відхилити</button>
-      </div>
+      </div>` : ''}
     </div>`).join('');
 }
 
