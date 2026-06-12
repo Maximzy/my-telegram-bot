@@ -10,3 +10,10 @@ APScheduler==3.10.4
 pytz==2026.2
 tzlocal==5.3.1
 six==1.17.0
+anyio
+APScheduler
+httpx
+python-telegram-bot[job-queue]
+pytz
+telegram
+tzlocal
