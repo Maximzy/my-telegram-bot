@@ -735,7 +735,8 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       </div>
       <div class="card">
         <div class="section-title" style="margin-top:0">💳 Оплата карткою</div>
-        <div style="font-size:17px;font-weight:700;letter-spacing:2px;color:var(--acc);cursor:pointer;margin-bottom:6px" id="tgPayCardNum" onclick="copyTgCard()"></div>
+        <div id="tgPayCardSelector" style="margin-bottom:10px"></div>
+        <div style="font-size:17px;font-weight:700;letter-spacing:2px;color:var(--acc);cursor:pointer;margin-bottom:6px" id="tgPayCardDisplay" onclick="copyTgCard()">—</div>
         <div style="font-size:11px;color:var(--muted);cursor:pointer" onclick="copyTgCard()">Натисніть щоб скопіювати</div>
       </div>
       <div class="card" style="background:linear-gradient(135deg,#0d1a0d,#111e11);border-color:rgba(74,222,128,.2)">
@@ -2109,16 +2110,15 @@ function goToPaymentDirect() {
 let _payCards = [];
 let _selectedCardIdx = 0;
 
-function renderPayCardSelector() {
-  const sel = document.getElementById('payCardSelector');
-  const disp = document.getElementById('payCardDisplay');
-  if (!sel) return;
+function _renderCardSelectorTo(selectorId, displayId) {
+  const sel = document.getElementById(selectorId);
+  const disp = document.getElementById(displayId);
+  if (!sel || !disp) return;
   if (_payCards.length <= 1) {
     sel.innerHTML = '';
     const c = (_payCards[0] || {card_number: '4874070020367247', bank_name: 'Карта'});
     const fmt = c.card_number.replace(/(\d{4})/g,'$1 ').trim();
     disp.textContent = fmt;
-    _selectedCardIdx = 0;
   } else {
     sel.innerHTML = _payCards.map((c, i) => {
       const fmt = c.card_number.replace(/(\d{4})/g,'$1 ').trim();
@@ -2131,6 +2131,11 @@ function renderPayCardSelector() {
     const sel0 = _payCards[_selectedCardIdx] || _payCards[0];
     disp.textContent = sel0.card_number.replace(/(\d{4})/g,'$1 ').trim();
   }
+}
+
+function renderPayCardSelector() {
+  _renderCardSelectorTo('payCardSelector', 'payCardDisplay');
+  _renderCardSelectorTo('tgPayCardSelector', 'tgPayCardDisplay');
 }
 
 function selectPayCard(idx) {
@@ -2282,6 +2287,7 @@ function goToTgPay() {
   document.getElementById('tgPayAmt').textContent = amount + ' грн';
   document.getElementById('tgShopTagDisplay').textContent = tgShopTag || '@NezukoUCShop';
   document.getElementById('shopTg').style.display = 'none';
+  loadPayCards();
   showWithAnim(document.getElementById('shopTgPay'));
 }
 
@@ -2365,9 +2371,8 @@ function backToTgStep1() {
 }
 
 function copyTgCard() {
-  const card = (document.getElementById('tgPayCardNum').textContent || '').replace(/\s/g, '');
-  if (!card) return;
-  navigator.clipboard.writeText(card)
+  const c = _payCards[_selectedCardIdx] || {card_number:'4874070020367247'};
+  navigator.clipboard?.writeText(c.card_number.replace(/\s/g,''))
     .then(() => toast('Картку скопійовано!', 'success'))
     .catch(() => {});
 }
@@ -2380,9 +2385,12 @@ async function submitTgOrder() {
   if (!tgTag || !packName || amount <= 0) { toast('Помилка даних', 'error'); return; }
   const btn = document.getElementById('tgPayBtn');
   btn.disabled = true; btn.textContent = 'Відправляємо...';
+  const _tgSelCard = _payCards[_selectedCardIdx] || null;
+  const _tgBankName = _tgSelCard ? _tgSelCard.bank_name : '';
   const r = await api('/api/submit-tg-order', 'POST', {
     user_id: uid, username: uname,
-    pack: packName, tg_tag: tgTag, amount
+    pack: packName, tg_tag: tgTag, amount,
+    payment_bank: _tgBankName
   });
   btn.disabled = false; btn.textContent = '✅ Я оплатив';
   if (r.ok) {

@@ -1638,18 +1638,20 @@ class PolicyHandler(BaseHTTPRequestHandler):
             pack = _sanitize(str(data.get("pack", "")), 128)
             tg_tag = _sanitize(str(data.get("tg_tag", "")), 64).strip()
             amount = int(data.get("amount", 0))
+            tg_payment_bank = _sanitize(str(data.get("payment_bank", "") or ""), 64).strip()
             if not pack or not tg_tag or amount <= 0:
                 _json_response(self, {"ok": False, "error": "Відсутні дані"}); return
             if len(tg_tag) < 3:
                 _json_response(self, {"ok": False, "error": "Введіть правильний Telegram тег"}); return
             order_id = str(uuid.uuid4()).replace("-", "")[:12].upper()
             db_exec(
-                "INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount) VALUES (?,?,?,?,?,?,?,?)",
-                (order_id, username, pack, "pending", user_id, tg_tag, created_at_now(), str(amount))
+                "INSERT INTO orders (id, user, pack, status, chat_id, player_id, created_at, amount, payment_bank) VALUES (?,?,?,?,?,?,?,?,?)",
+                (order_id, username, pack, "pending", user_id, tg_tag, created_at_now(), str(amount), tg_payment_bank or None)
             )
             try:
                 user_label_str = f"@{username}" if username else str(user_id)
-                text = (f"⭐ ТГ ЗАМОВЛЕННЯ!\n🆔 {order_id}\n👤 {user_label_str}\n🎁 {pack}\n📲 Тег: {tg_tag}\n💵 Сума: {amount} грн")
+                bank_line_tg = f"\n🏦 Банк: {tg_payment_bank}" if tg_payment_bank else ""
+                text = (f"⭐ ТГ ЗАМОВЛЕННЯ!\n🆔 {order_id}\n👤 {user_label_str}\n🎁 {pack}\n📲 Тег: {tg_tag}\n💵 Сума: {amount} грн{bank_line_tg}")
                 ok_btn = json.dumps({"inline_keyboard": [[
                     {"text": "✅ Готово", "callback_data": f"ok_{order_id}"},
                     {"text": "❌ Відхилити", "callback_data": f"no_{order_id}"}
