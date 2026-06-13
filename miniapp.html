@@ -396,6 +396,18 @@ button{cursor:pointer;border:none;border-radius:12px;font-size:14px;font-weight:
 @keyframes spin{to{transform:rotate(360deg)}}
 input[type=number]{-moz-appearance:textfield}
 input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
+/* ── NEZUKO MOOD ────────────────────────────────── */
+.nezuko-mood-card{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:10px 14px;margin-bottom:12px;transition:border-color .4s,background .4s}
+.nezuko-mood-card.mood-happy{border-color:rgba(255,100,180,.4);background:linear-gradient(135deg,rgba(255,100,180,.08),var(--card))}
+.nezuko-mood-card.mood-excited{border-color:rgba(255,160,60,.5);background:linear-gradient(135deg,rgba(255,140,30,.1),var(--card))}
+.nezuko-mood-card.mood-sad{border-color:rgba(100,120,255,.35);background:linear-gradient(135deg,rgba(80,100,200,.08),var(--card))}
+.nezuko-mood-card.mood-sleepy{border-color:rgba(140,100,220,.35);background:linear-gradient(135deg,rgba(100,70,180,.08),var(--card))}
+.nezuko-mood-emoji{font-size:36px;line-height:1;flex-shrink:0;transition:transform .3s}
+.nezuko-mood-card:hover .nezuko-mood-emoji{transform:scale(1.15) rotate(-5deg)}
+.nezuko-mood-text{font-size:13px;font-weight:600;color:var(--text);line-height:1.4}
+.nezuko-mood-sub{font-size:10px;color:var(--muted);margin-top:2px}
+@keyframes mood-pulse{0%,100%{opacity:1}50%{opacity:.7}}
+.mood-excited .nezuko-mood-emoji{animation:mood-pulse 1s ease-in-out infinite}
 </style>
 </head>
 <body>
@@ -484,6 +496,14 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
   <div class="page" style="padding-top:12px">
     <!-- Step 1 – Group selection -->
     <div id="shopCats">
+      <!-- Nezuko Mood Card -->
+      <div class="nezuko-mood-card" id="nezukoMoodCard">
+        <div class="nezuko-mood-emoji" id="nezukoMoodEmoji">🌸</div>
+        <div>
+          <div class="nezuko-mood-text" id="nezukoMoodText">Незуко чекає на твоє замовлення!</div>
+          <div class="nezuko-mood-sub" id="nezukoMoodSub">Настрій магазину • онлайн: <span id="nezukoOnlineCnt">—</span></div>
+        </div>
+      </div>
       <div id="saleBanner" style="display:none;background:linear-gradient(135deg,#7c3aed,#db2777);border-radius:12px;padding:10px 14px;margin-bottom:10px;text-align:center">
         <div style="font-size:14px;font-weight:800;color:#fff" id="saleBannerText">🎉 Акція!</div>
         <div style="font-size:11px;color:rgba(255,255,255,.85)" id="saleBannerSub"></div>
@@ -1621,7 +1641,55 @@ async function pollNotifications() {
     }
   } catch (_) {}
 }
-setInterval(pollNotifications, 15000);
+// SSE замінює і pollNotifications і refreshOnline
+let _sseSource = null;
+let _sseFallbackTimer = null;
+
+function updateNezukoMood(m) {
+  if (!m) return;
+  const card = document.getElementById('nezukoMoodCard');
+  const emojiEl = document.getElementById('nezukoMoodEmoji');
+  const textEl = document.getElementById('nezukoMoodText');
+  if (!card || !emojiEl || !textEl) return;
+  emojiEl.textContent = m.emoji || '🌸';
+  textEl.textContent = m.text || '';
+  card.className = 'nezuko-mood-card mood-' + (m.mood || 'normal');
+}
+
+function startSSE() {
+  if (_sseSource) { try { _sseSource.close(); } catch(_){} _sseSource = null; }
+  const url = '/api/sse' + (uid ? '?user_id=' + uid : '');
+  try {
+    _sseSource = new EventSource(url);
+    _sseSource.onmessage = function(e) {
+      try {
+        const d = JSON.parse(e.data);
+        if (d.online !== undefined) {
+          document.getElementById('onlineCnt').textContent = d.online;
+          const nz = document.getElementById('nezukoOnlineCnt');
+          if (nz) nz.textContent = d.online;
+        }
+        if (d.mood) updateNezukoMood(d.mood);
+        if (d.notifications && d.notifications.length) {
+          d.notifications.forEach(n => showPushNotif(n.message, n.type));
+        }
+      } catch(_) {}
+    };
+    _sseSource.onerror = function() {
+      try { _sseSource.close(); } catch(_) {}
+      _sseSource = null;
+      if (_sseFallbackTimer) clearTimeout(_sseFallbackTimer);
+      _sseFallbackTimer = setTimeout(startSSE, 10000);
+    };
+  } catch(_) {
+    // SSE не підтримується — fallback на polling
+    setInterval(pollNotifications, 15000);
+    setInterval(refreshOnline, 30000);
+  }
+}
+
+// Запускаємо SSE після ініціалізації uid
+setTimeout(() => { startSSE(); }, 500);
 
 // ─── SAKURA ──────────────────────────────────────────────────────────────────
 function sakura() {
@@ -1642,13 +1710,14 @@ function sakura() {
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
-// ─── ONLINE COUNT ────────────────────────────────────────────────────────────
+// ─── ONLINE COUNT (fallback якщо SSE не запущено) ────────────────────────────
 async function refreshOnline() {
   const r = await api('/api/online-count');
   document.getElementById('onlineCnt').textContent = r.online || 0;
+  const nz = document.getElementById('nezukoOnlineCnt');
+  if (nz) nz.textContent = r.online || 0;
 }
 refreshOnline();
-setInterval(refreshOnline, 30000);
 
 // ─── INIT USER (клієнт + сервер fallback) ────────────────────────────────────
 async function initUser() {

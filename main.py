@@ -1178,6 +1178,45 @@ class PolicyHandler(BaseHTTPRequestHandler):
             count = db_query_one("SELECT COUNT(*) FROM user_profile WHERE last_seen >= ?", (cutoff,))
             _json_response(self, {"online": count[0] if count else 0}); return
 
+        if path == "/api/nezuko-mood":
+            _json_response(self, {"ok": True, "mood": get_nezuko_mood()}); return
+
+        if path == "/api/sse":
+            user_id = int(params.get("user_id", 0) or 0)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+            try:
+                last_notif_id = 0
+                while True:
+                    payload = {}
+                    cutoff2 = (datetime.now() - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
+                    cnt2 = db_query_one("SELECT COUNT(*) FROM user_profile WHERE last_seen >= ?", (cutoff2,))
+                    payload["online"] = cnt2[0] if cnt2 else 0
+                    payload["mood"] = get_nezuko_mood()
+                    notifs = []
+                    if user_id:
+                        rows2 = db_query(
+                            "SELECT id, type, message FROM notifications WHERE user_id=? AND read=0 AND id>? ORDER BY id ASC LIMIT 5",
+                            (user_id, last_notif_id))
+                        if rows2:
+                            notifs = [{"id": r[0], "type": r[1], "message": r[2]} for r in rows2]
+                            ids2 = tuple(r[0] for r in rows2)
+                            last_notif_id = ids2[-1]
+                            ph2 = ",".join(["?"] * len(ids2))
+                            db_exec(f"UPDATE notifications SET read=1 WHERE user_id=? AND id IN ({ph2})", (user_id, *ids2))
+                    payload["notifications"] = notifs
+                    msg = "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
+                    self.wfile.write(msg.encode("utf-8"))
+                    self.wfile.flush()
+                    time.sleep(5)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+            return
+
         if path == "/api/wheel/status":
             user_id = int(params.get("user_id", 0))
             wheel = db_query_one("SELECT last_free_spin FROM wheel_data WHERE user_id=?", (user_id,))
@@ -2658,6 +2697,40 @@ def get_pack_price(pack):
     if pack in ALL_PACKS: return ALL_PACKS[pack]
     m = re.search(r"(\d+)\s*грн", pack)
     return int(m.group(1)) if m else 0
+
+def get_nezuko_mood() -> dict:
+    now = datetime.now()
+    hour = now.hour
+    today = now.strftime("%Y-%m-%d")
+    today_row = db_query_one(
+        "SELECT COUNT(*) FROM orders WHERE status='done' AND COALESCE(completed_at, created_at) LIKE ?",
+        (f"{today}%",))
+    today_count = today_row[0] if today_row else 0
+    last_row = db_query_one(
+        "SELECT COALESCE(completed_at, created_at) FROM orders WHERE status='done' ORDER BY id DESC LIMIT 1")
+    minutes_since = 9999
+    if last_row and last_row[0]:
+        try:
+            last_dt = datetime.strptime(last_row[0][:19], "%Y-%m-%d %H:%M:%S")
+            minutes_since = int((now - last_dt).total_seconds() / 60)
+        except Exception:
+            pass
+    if 0 <= hour < 7:
+        mood, emoji = "sleepy", "😴"
+        text = "Незуко відпочиває... тихенько роби замовлення 🌙"
+    elif today_count == 0 and minutes_since > 240:
+        mood, emoji = "sad", "😢"
+        text = "Незуко сумує... вже давно не було замовлень"
+    elif today_count >= 5 or (today_count >= 3 and minutes_since < 30):
+        mood, emoji = "excited", "🔥"
+        text = f"Незуко в огні! Вже {today_count} замовлень сьогодні 🌸"
+    elif today_count >= 2:
+        mood, emoji = "happy", "🌸"
+        text = f"Незуко щаслива! {today_count} замовлення сьогодні ✨"
+    else:
+        mood, emoji = "normal", "😊"
+        text = "Незуко чекає на твоє замовлення!"
+    return {"mood": mood, "emoji": emoji, "text": text, "orders_today": today_count}
 
 def dynamic_label(pack_key: str) -> str:
     current_price = get_pack_price(pack_key)
