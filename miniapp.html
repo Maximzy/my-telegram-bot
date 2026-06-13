@@ -602,7 +602,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <div id="tgStarsSection">
         <div class="card" style="background:linear-gradient(135deg,#100d1e,#161228);border-color:rgba(180,130,255,.25);margin-bottom:12px">
           <div style="font-size:18px;font-weight:800;margin-bottom:6px">⭐ Зірки Telegram</div>
-          <div id="tgStarsRateDisplay" style="font-size:14px;color:#e8c840;font-weight:700">1 ⭐ = 0.73 грн</div>
+          <div id="tgStarsRateDisplay" style="font-size:14px;color:#e8c840;font-weight:700">1 ⭐ = 0.81 грн</div>
           <div style="font-size:11px;color:var(--muted);margin-top:5px">Мінімальна кількість: 50 зірок</div>
         </div>
         <div class="section-title">Кількість зірок</div>
@@ -717,7 +717,8 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       </div>
       <div class="card">
         <div class="section-title" style="margin-top:0">💳 Оплата карткою</div>
-        <div style="font-size:17px;font-weight:700;letter-spacing:2px;color:var(--acc);cursor:pointer;margin-bottom:6px" onclick="copyGiftCard()">4874 0700 2036 7247</div>
+        <div id="giftCardSelector" style="margin-bottom:8px"></div>
+        <div id="giftCardDisplay" style="font-size:17px;font-weight:700;letter-spacing:2px;color:var(--acc);cursor:pointer;margin-bottom:6px" onclick="copyGiftCard()"></div>
         <div style="font-size:11px;color:var(--muted);cursor:pointer" onclick="copyGiftCard()">Натисніть щоб скопіювати</div>
       </div>
       <button class="btn" onclick="submitGiftOrder(this)">✅ Я оплатив</button>
@@ -1240,7 +1241,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
         </div>
         <div class="promo-form" style="margin-top:10px">
           <label style="font-size:12px;color:var(--muted);margin-bottom:2px">Курс: 1 ⭐ = ? грн</label>
-          <input type="number" id="tgStarsRateInput" placeholder="0.73" min="0.01" step="0.01">
+          <input type="number" id="tgStarsRateInput" placeholder="0.81" min="0.01" step="0.01">
           <div id="tgStarsRateHint" style="font-size:11px;color:var(--muted);margin-top:-4px"></div>
         </div>
         <div class="section-title" style="margin-top:16px">💎 Telegram Premium</div>
@@ -1521,7 +1522,7 @@ let freePrizes = [], paidPrizes = [];
 let prices = {};
 let curCat = null, curPack = null;
 let curTgCat = null, curTgPack = null, tgStarsAmount = 0;
-let tgStarsRate = 0.73, tgShopTag = '', tgPremiumPacks = [];
+let tgStarsRate = 0.81, tgShopTag = '', tgPremiumPacks = [];
 let mixExtra = [], mixFinalPack = '', mixFinalAmount = 0, mixCounts = {}, _mixUcPacks = [];
 let userBonuses = [];
 
@@ -2150,6 +2151,7 @@ function renderPayCardSelector() {
 function selectPayCard(idx) {
   _selectedCardIdx = idx;
   renderPayCardSelector();
+  _renderCardSelectorTo('giftCardSelector', 'giftCardDisplay');
 }
 
 async function loadPayCards() {
@@ -2230,18 +2232,27 @@ async function showTgShop(cat) {
   document.getElementById('starsAmountInput').value = '';
   document.getElementById('tgTagInput').value = '';
   showWithAnim(document.getElementById('shopTg'));
-  const r = await api('/api/tg-config');
-  if (r.ok) {
-    tgStarsRate = r.stars_rate;
-    tgShopTag = r.shop_tag;
-    tgPremiumPacks = r.premium_packs || [];
-    if (r.payment_card) {
-      const c = r.payment_card.replace(/(\d{4})/g,'$1 ').trim();
-      document.getElementById('tgPayCardNum').textContent = c;
+  try {
+    const r = await api('/api/tg-config');
+    if (r.ok) {
+      tgStarsRate = r.stars_rate || 0.81;
+      tgShopTag = r.shop_tag || '';
+      if (r.premium_packs && r.premium_packs.length > 0) tgPremiumPacks = r.premium_packs;
+      if (r.payment_card) {
+        const c = r.payment_card.replace(/(\d{4})/g,'$1 ').trim();
+        document.getElementById('tgPayCardNum').textContent = c;
+      }
+      document.getElementById('tgStarsRateDisplay').textContent = `1 ⭐ = ${tgStarsRate} грн`;
     }
-    document.getElementById('tgStarsRateDisplay').textContent = `1 ⭐ = ${r.stars_rate} грн`;
-    if (cat === 'premium') renderPremiumPacks();
+  } catch(e) {}
+  if (!tgPremiumPacks.length) {
+    tgPremiumPacks = [
+      {id:'prem_3m',  label:'Telegram Premium 3 міс',  price: 530},
+      {id:'prem_6m',  label:'Telegram Premium 6 міс',  price: 700},
+      {id:'prem_12m', label:'Telegram Premium 12 міс', price:1250}
+    ];
   }
+  if (cat === 'premium') renderPremiumPacks();
 }
 
 function renderPremiumPacks() {
@@ -2346,13 +2357,17 @@ function goToGiftPay() {
   document.getElementById('giftPayTag').textContent = tag;
   document.getElementById('shopGifts').style.display = 'none';
   showWithAnim(document.getElementById('shopGiftPay'));
+  _renderCardSelectorTo('giftCardSelector', 'giftCardDisplay');
+  loadPayCards().then(() => _renderCardSelectorTo('giftCardSelector', 'giftCardDisplay'));
 }
 function backToGifts() {
   document.getElementById('shopGiftPay').style.display = 'none';
   showWithAnim(document.getElementById('shopGifts'));
 }
 function copyGiftCard() {
-  navigator.clipboard.writeText('4874070020367247')
+  const c = _payCards[_selectedCardIdx] || {card_number:'4874070020367247'};
+  const num = c.card_number.replace(/\s/g,'');
+  navigator.clipboard.writeText(num)
     .then(() => toast('Картку скопійовано!', 'success'))
     .catch(() => {});
 }
@@ -2362,8 +2377,10 @@ async function submitGiftOrder(btn) {
   if (!btn) btn = document.querySelector('#shopGiftPay .btn');
   btn.disabled = true; btn.textContent = 'Відправляємо...';
   try {
+    const _gc = _payCards[_selectedCardIdx] || null;
+    const _gBank = _gc ? _gc.bank_name : '';
     const r = await api('/api/submit-tg-order', 'POST', {
-      user_id: uid, username: uname, pack: curGiftName, tg_tag: tag, amount: 50, category: 'gift'
+      user_id: uid, username: uname, pack: curGiftName, tg_tag: tag, amount: 50, category: 'gift', payment_bank: _gBank
     });
     if (r.ok) {
       document.getElementById('shopGiftPay').style.display = 'none';
@@ -2805,18 +2822,15 @@ async function runCalc() {
       if (m && price > 0) ucPacks.push({ name, uc: parseInt(m[1]), price });
     }
     if (!ucPacks.length) { resEl.innerHTML = '<div class="empty">Немає доступних паків</div>'; return; }
-    // Sort by UC/price ratio descending (best value first)
+    // Sort by price descending (biggest pack first), then by UC/price ratio desc
     ucPacks.sort((a, b) => (b.uc / b.price) - (a.uc / a.price));
-    // Greedy algorithm: maximize UC within budget
+    // Greedy algorithm: max 1 of each pack type so variety is shown
     let remaining = budget;
     const result = [];
     for (const pack of ucPacks) {
       if (pack.price <= remaining) {
-        const count = Math.floor(remaining / pack.price);
-        if (count > 0) {
-          result.push({ label: pack.name.replace(/\s*-\s*\d+\s*грн$/, ''), count, uc: pack.uc * count, spent: pack.price * count });
-          remaining -= pack.price * count;
-        }
+        result.push({ label: pack.name.replace(/\s*-\s*\d+\s*грн$/, ''), count: 1, uc: pack.uc, spent: pack.price });
+        remaining -= pack.price;
       }
     }
     if (!result.length) {

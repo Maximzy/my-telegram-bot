@@ -2673,7 +2673,8 @@ def label_to_pack_key(label: str):
     return None
 
 def calc_best_uc(budget: int) -> tuple:
-    """Greedy: maximize UC within budget using only UC packs (PACKS), real DB prices."""
+    """Greedy: maximize UC within budget using only UC packs (PACKS), real DB prices.
+    Each pack type used at most once so the result shows variety."""
     uc_packs = []
     for pack_key in PACKS:
         price = get_pack_price(pack_key)
@@ -2686,10 +2687,8 @@ def calc_best_uc(budget: int) -> tuple:
     result = []
     for pack_key, uc_amount, price in uc_packs:
         if price <= remaining:
-            count = remaining // price
-            if count > 0:
-                result.append((pack_key, count, uc_amount * count, price * count))
-                remaining -= price * count
+            result.append((pack_key, 1, uc_amount, price))
+            remaining -= price
     return result, remaining
 
 def format_calc_result(budget: int) -> str:
@@ -2922,7 +2921,14 @@ def get_policy_text() -> str:
     return saved if saved else DEFAULT_POLICY_TEXT
 
 async def policy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(get_policy_text(), parse_mode="Markdown")
+    txt = get_policy_text()
+    try:
+        await update.message.reply_text(txt, parse_mode="Markdown")
+    except Exception:
+        try:
+            await update.message.reply_text(txt)
+        except Exception:
+            pass
 
 async def reviews_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     revs = db_query("SELECT user, text FROM reviews ORDER BY rowid DESC LIMIT 15")
@@ -3738,9 +3744,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)
         ); return
 
-    if text in ("🎁 60 UC Free", "🎁 30 UC Free"):
-        bt = "free_uc_60" if "60" in text else "free_uc_30"
-        uc = 60 if "60" in text else 30
+    if text in ("🎁 120 UC Free", "🎁 60 UC Free", "🎁 30 UC Free"):
+        bt = "free_uc_120" if "120" in text else ("free_uc_60" if "60" in text else "free_uc_30")
+        uc = 120 if "120" in text else (60 if "60" in text else 30)
         bonus = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type=? AND used=0 LIMIT 1", (uid, bt))
         if not bonus:
             await update.message.reply_text("❌ Цей бонус недоступний.", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True)); return
