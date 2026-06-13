@@ -2822,23 +2822,35 @@ async function runCalc() {
       if (m && price > 0) ucPacks.push({ name, uc: parseInt(m[1]), price });
     }
     if (!ucPacks.length) { resEl.innerHTML = '<div class="empty">Немає доступних паків</div>'; return; }
-    // Sort by price descending (biggest pack first), then by UC/price ratio desc
-    ucPacks.sort((a, b) => (b.uc / b.price) - (a.uc / a.price));
-    // Greedy algorithm: max 1 of each pack type so variety is shown
-    let remaining = budget;
-    const result = [];
-    for (const pack of ucPacks) {
-      if (pack.price <= remaining) {
-        result.push({ label: pack.name.replace(/\s*-\s*\d+\s*грн$/, ''), count: 1, uc: pack.uc, spent: pack.price });
-        remaining -= pack.price;
-      }
-    }
-    if (!result.length) {
+    // Filter to packs that fit individually
+    const affordable = ucPacks.filter(p => p.price <= budget);
+    if (!affordable.length) {
       const minPrice = Math.min(...ucPacks.map(p => p.price));
       resEl.innerHTML = `<div class="empty">❌ Бюджет замалий.<br>Мінімальний пак — ${minPrice} грн</div>`; return;
     }
-    const totalUC = result.reduce((s, i) => s + i.uc, 0);
-    const totalSpent = budget - remaining;
+    // 0/1 knapsack: try all subsets (each pack max 1 time), find combo with most UC within budget
+    const na = affordable.length;
+    let bestUC = 0, bestCost = 0, bestMask = 0;
+    for (let mask = 1; mask < (1 << na); mask++) {
+      let tUC = 0, tCost = 0;
+      for (let i = 0; i < na; i++) if (mask & (1 << i)) { tUC += affordable[i].uc; tCost += affordable[i].price; }
+      if (tCost <= budget && (tUC > bestUC || (tUC === bestUC && tCost < bestCost))) {
+        bestUC = tUC; bestCost = tCost; bestMask = mask;
+      }
+    }
+    // Build result from best mask
+    const result = [];
+    for (let i = 0; i < na; i++) {
+      if (bestMask & (1 << i)) {
+        const p = affordable[i];
+        result.push({ label: p.name.replace(/\s*-\s*\d+\s*грн$/, ''), count: 1, uc: p.uc, spent: p.price });
+      }
+    }
+    // Sort by UC descending for display
+    result.sort((a, b) => b.uc - a.uc);
+    const remaining = budget - bestCost;
+    const totalUC = bestUC;
+    const totalSpent = bestCost;
     const ratio = (totalUC / totalSpent).toFixed(2);
     let html = '<div class="section-title">📦 Найкраща комбінація</div>';
     result.forEach(item => {

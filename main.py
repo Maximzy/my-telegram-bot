@@ -2673,23 +2673,38 @@ def label_to_pack_key(label: str):
     return None
 
 def calc_best_uc(budget: int) -> tuple:
-    """Greedy: maximize UC within budget using only UC packs (PACKS), real DB prices.
-    Each pack type used at most once so the result shows variety."""
+    """0/1 knapsack: find combo of distinct UC packs that maximises UC within budget."""
     uc_packs = []
     for pack_key in PACKS:
         price = get_pack_price(pack_key)
         m = re.search(r'^(\d+)\s*UC', pack_key)
         if m and price > 0:
             uc_packs.append((pack_key, int(m.group(1)), price))
-    # Sort by UC per hryvnia descending (best value first)
-    uc_packs.sort(key=lambda x: x[1] / x[2], reverse=True)
-    remaining = budget
-    result = []
-    for pack_key, uc_amount, price in uc_packs:
-        if price <= remaining:
-            result.append((pack_key, 1, uc_amount, price))
-            remaining -= price
-    return result, remaining
+    # Keep only packs that fit individually
+    affordable = [(k, uc, p) for k, uc, p in uc_packs if p <= budget]
+    if not affordable:
+        return [], budget
+    na = len(affordable)
+    best_uc = 0
+    best_cost = 0
+    best_mask = 0
+    for mask in range(1, 1 << na):
+        t_uc = 0
+        t_cost = 0
+        for i in range(na):
+            if mask & (1 << i):
+                t_uc += affordable[i][1]
+                t_cost += affordable[i][2]
+        if t_cost <= budget and (t_uc > best_uc or (t_uc == best_uc and t_cost < best_cost)):
+            best_uc = t_uc
+            best_cost = t_cost
+            best_mask = mask
+    # Build result sorted by UC descending for display
+    subset = [(affordable[i][0], affordable[i][1], affordable[i][2])
+              for i in range(na) if best_mask & (1 << i)]
+    subset.sort(key=lambda x: x[1], reverse=True)
+    result = [(k, 1, uc, price) for k, uc, price in subset]
+    return result, budget - best_cost
 
 def format_calc_result(budget: int) -> str:
     combos, leftover = calc_best_uc(budget)
