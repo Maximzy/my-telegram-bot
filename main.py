@@ -3967,6 +3967,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(MY_ID,
                     f"💰 ОПЛАТА (Bot)!\n🆔 {oid}\n👤 {user_label(update.effective_user.username, uid)}\n🎁 {pack}\n🎮 ID: {pid}{nick_line.replace('*','')}\n💵 Сума: {final_price} грн",
                     reply_markup=btns)
+                db_exec("UPDATE orders SET notified_admin=1 WHERE id=?", (oid,))
             except: pass
 
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Я оплатив", callback_data=f"paid_{oid}")]])

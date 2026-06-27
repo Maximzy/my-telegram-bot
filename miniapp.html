@@ -2055,7 +2055,7 @@ async function selectPack(p) {
   document.getElementById('shopCats').style.display = 'none';
   document.getElementById('shopSubCats').style.display = 'none';
   const cartBtn = document.getElementById('addToCartBtn');
-  if (cartBtn) cartBtn.style.display = curCat === 'uc' ? '' : 'none';
+  if (cartBtn) cartBtn.style.display = '';
   showWithAnim(document.getElementById('shopId'));
 }
 
@@ -2075,7 +2075,7 @@ function goToPayment() {
   if (!gid || gid.length < 5) { toast('Введіть правильний ігровий ID', 'error'); return; }
   const gnick = document.getElementById('gameNickInput').value.trim();
   if (!gnick) { toast('Введіть ваш нік в PUBG Mobile', 'error'); return; }
-  if (curCat === 'uc') {
+  if (curCat === 'uc' || (curPack && CAT_FILTER.uc(curPack))) {
     mixExtra = []; mixCounts = {};
     document.getElementById('mixBase').textContent = `📦 Базовий: ${stripPackPrice(curPack)}  —  ${prices[curPack] || 0} грн`;
     const ucPacks = Object.keys(prices).filter(k => CAT_FILTER.uc(k));
