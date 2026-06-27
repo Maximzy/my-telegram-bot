@@ -15,7 +15,6 @@ APScheduler
 httpx
 python-telegram-bot[job-queue]
 pytz
-telegram
 tzlocal
 anyio==4.13.0
 APScheduler==3.10.4
