@@ -1,0 +1,15 @@
+.git
+.env
+*.db
+*.db-shm
+*.db-wal
+backup/
+__pycache__/
+*.pyc
+test_apis.py
+artifacts/
+package*.json
+.replit
+replit.md
+.canvas/
+.agents/

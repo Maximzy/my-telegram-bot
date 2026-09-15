@@ -1,0 +1,30 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Database
+bot.db
+bot.db-shm
+bot.db-wal
+*.db
+*.db-shm
+*.db-wal
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Backups
+backup/
+
+# IDE
+.replit
+
+# OS
+.DS_Store
+Thumbs.db

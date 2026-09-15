@@ -4,6 +4,19 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, KeyboardButton, LabeledPrice
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters, PreCheckoutQueryHandler
 
+# ── Payment service: Monobank verification + FazerCards auto-delivery ──
+import payment_service
+from payment_service import (
+    verify_and_deliver as _ps_verify_and_deliver,
+    monobank as _monobank_client,
+    fazercards as _fazercards_client,
+    verify_fazercards_webhook as _verify_fc_webhook,
+    notify_telegram as _ps_notify_telegram,
+    get_offer_id_for_pack as _get_offer_id,
+    is_auto_deliverable as _is_auto_deliverable,
+    extract_uc_amount as _extract_uc,
+)
+
 # --- НАЛАШТУВАННЯ ---
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 # Strip accidental "TELEGRAM_BOT_TOKEN " prefix if user pasted the var name too
@@ -161,6 +174,17 @@ def run_migrations(connection):
         c.execute("ALTER TABLE orders ADD COLUMN notified_admin INTEGER DEFAULT 0")
     if "payment_bank" not in _ord_cols:
         c.execute("ALTER TABLE orders ADD COLUMN payment_bank TEXT")
+    # ── Monobank + FazerCards integration columns ──
+    if "monobank_tx_id" not in _ord_cols:
+        c.execute("ALTER TABLE orders ADD COLUMN monobank_tx_id TEXT")
+    if "fazercards_order_id" not in _ord_cols:
+        c.execute("ALTER TABLE orders ADD COLUMN fazercards_order_id TEXT")
+    if "fazercards_status" not in _ord_cols:
+        c.execute("ALTER TABLE orders ADD COLUMN fazercards_status TEXT")
+    if "payment_verified" not in _ord_cols:
+        c.execute("ALTER TABLE orders ADD COLUMN payment_verified INTEGER DEFAULT 0")
+    if "auto_delivered" not in _ord_cols:
+        c.execute("ALTER TABLE orders ADD COLUMN auto_delivered INTEGER DEFAULT 0")
     c.execute("CREATE TABLE IF NOT EXISTS banned_users (user_id INTEGER PRIMARY KEY, reason TEXT, banned_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS cart (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, pack TEXT, added_at TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, chat_id INTEGER, username TEXT, category TEXT, message TEXT, status TEXT DEFAULT 'open', admin_reply TEXT, created_at TEXT, replied_at TEXT)")
@@ -627,9 +651,12 @@ def _html_response(handler, html):
     handler.end_headers()
     handler.wfile.write(body)
 
-def _send_tg_message(chat_id, text):
+def _send_tg_message(chat_id, text, parse_mode=None):
     try:
-        params = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode()
+        payload = {"chat_id": chat_id, "text": text}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        params = urllib.parse.urlencode(payload).encode()
         req = urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data=params)
         urllib.request.urlopen(req, timeout=5)
     except Exception as e:
@@ -2601,6 +2628,139 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 except: pass
             _json_response(self, {"ok": True, "message": f"Розсилку надіслано. Отримали: {sent}"}); return
 
+        # ── Mini App: verify payment (Monobank) + auto-deliver UC (FazerCards) ──
+        if path == "/api/verify-payment":
+            order_id = str(data.get("order_id", "")).strip()
+            if not order_id:
+                _json_response(self, {"ok": False, "error": "Відсутній order_id"}); return
+            res = db_query_one("SELECT pack, player_id, amount, status, chat_id FROM orders WHERE id=?", (order_id,))
+            if not res:
+                _json_response(self, {"ok": False, "error": "Замовлення не знайдено"}); return
+            pack, player_id, amount_str, status, chat_id = res
+            if status != "pending":
+                _json_response(self, {"ok": True, "verified": True, "message": "Замовлення вже оброблено", "status": status}); return
+            try:
+                amount_uah = float(amount_str) if amount_str else 0
+            except (ValueError, TypeError):
+                amount_uah = 0
+            result = _ps_verify_and_deliver(
+                order_id=order_id, pack=pack, player_id=player_id,
+                amount_uah=amount_uah, chat_id=chat_id or 0, bot_token=TOKEN,
+            )
+            verified = result.get("verified", False)
+            if verified:
+                fc_order_id = result.get("fazercards_order_id")
+                fc_status = result.get("fazercards_status")
+                mono_tx_id = result.get("monobank_tx_id")
+                db_exec(
+                    "UPDATE orders SET payment_verified=1, monobank_tx_id=?, fazercards_order_id=?, fazercards_status=? WHERE id=?",
+                    (mono_tx_id or "", fc_order_id or "", fc_status or "", order_id)
+                )
+                if fc_order_id:
+                    db_exec("UPDATE orders SET auto_delivered=1, status='processing' WHERE id=?", (order_id,))
+                _send_tg_message(chat_id, result.get("message", "✅ Оплата підтверджена!"), parse_mode="HTML")
+                _send_tg_message(MY_ID,
+                    f"🤖 АВТО-ВИДАЧА (Mini App)\n🆔 {order_id}\n📦 {pack}\n🎮 {player_id}\n💵 {amount_str} грн\n"
+                    f"✅ Monobank: {mono_tx_id}\n📦 FazerCards: {fc_order_id or 'ручна'} ({fc_status or ''})")
+                _json_response(self, {"ok": True, "verified": True, "message": result.get("message"),
+                                      "fazercards_order_id": fc_order_id, "status": "processing" if fc_order_id else "verified"}); return
+            else:
+                _json_response(self, {"ok": True, "verified": False, "message": result.get("message")}); return
+
+        # ── Monobank webhook: real-time transaction notification ──────────────
+        if path == "/webhooks/monobank":
+            logging.info(f"Monobank webhook received from {ip}")
+            try:
+                stmt = data.get("data", {}).get("statementItem", data.get("data", {}))
+                if not stmt:
+                    _json_response(self, {"status": "ok"}); return
+                amount = stmt.get("amount", 0)
+                tx_id = stmt.get("id", "")
+                if amount <= 0:
+                    _json_response(self, {"status": "ok"}); return
+                amount_uah = amount / 100.0
+                logging.info(f"Monobank webhook: tx={tx_id} amount={amount_uah:.2f} UAH")
+                # Find pending orders matching this amount
+                pending = db_query(
+                    "SELECT id, pack, player_id, chat_id FROM orders WHERE status='pending' AND CAST(amount AS REAL) LIKE ?",
+                    (f"%{amount_uah:.0f}%",)
+                )
+                if not pending:
+                    logging.info(f"No pending orders matching {amount_uah:.2f} UAH")
+                    _json_response(self, {"status": "ok"}); return
+                # Auto-verify first matching order
+                for row in pending:
+                    oid, pck, pid, chid = row
+                    result = _ps_verify_and_deliver(
+                        order_id=oid, pack=pck, player_id=pid,
+                        amount_uah=amount_uah, chat_id=chid or 0, bot_token=TOKEN,
+                    )
+                    if result.get("verified"):
+                        fc_id = result.get("fazercards_order_id", "")
+                        fc_st = result.get("fazercards_status", "")
+                        mono_tx = result.get("monobank_tx_id", "")
+                        db_exec(
+                            "UPDATE orders SET payment_verified=1, monobank_tx_id=?, fazercards_order_id=?, fazercards_status=? WHERE id=?",
+                            (mono_tx, fc_id, fc_st, oid)
+                        )
+                        if fc_id:
+                            db_exec("UPDATE orders SET auto_delivered=1, status='processing' WHERE id=?", (oid,))
+                        _send_tg_message(chid, result.get("message", "✅ Оплата підтверджена!"), parse_mode="HTML")
+                        _send_tg_message(MY_ID,
+                            f"🤖 АВТО-ВИДАЧА (Webhook)\n🆔 {oid}\n📦 {pck}\n🎮 {pid}\n💵 {amount_uah:.0f} грн\n"
+                            f"✅ Monobank: {mono_tx}\n📦 FazerCards: {fc_id or 'ручна'} ({fc_st})")
+                        break
+            except Exception as e:
+                logging.error(f"Monobank webhook error: {e}", exc_info=True)
+            _json_response(self, {"status": "ok"}); return
+
+        # ── FazerCards webhook: order status update ────────────────────────────
+        if path == "/webhooks/fazercards":
+            fc_sig = self.headers.get("X-Webhook-Signature", "")
+            fc_event = self.headers.get("X-Webhook-Event", "unknown")
+            logging.info(f"FazerCards webhook: event={fc_event} from {ip}")
+            # Verify signature
+            secret = payment_service.FAZERCARDS_WEBHOOK_SECRET
+            if secret:
+                if not _verify_fc_webhook(body, fc_sig, secret):
+                    logging.error("FazerCards webhook: INVALID SIGNATURE")
+                    _json_response(self, {"ok": False, "error": "Invalid signature"}, 401); return
+            try:
+                event_data = data.get("data", {})
+                fc_order_id = event_data.get("order_id", "")
+                order_status = event_data.get("status", "")
+                if not fc_order_id:
+                    _json_response(self, {"status": "ok"}); return
+                logging.info(f"FazerCards webhook: order={fc_order_id} status={order_status}")
+                # Find order by fazercards_order_id
+                row = db_query_one(
+                    "SELECT id, chat_id, pack, player_id, amount FROM orders WHERE fazercards_order_id=? OR fazercards_order_id LIKE ?",
+                    (fc_order_id, f"%{fc_order_id}%")
+                )
+                if not row:
+                    logging.warning(f"FazerCards webhook: order {fc_order_id} not found in DB")
+                    _json_response(self, {"status": "ok"}); return
+                oid, chid, pck, pid, amt = row
+                db_exec("UPDATE orders SET fazercards_status=? WHERE id=?", (order_status, oid))
+                if order_status == "completed":
+                    db_exec("UPDATE orders SET status='done', completed_at=? WHERE id=?", (created_at_now(), oid))
+                    done_msg = f"✅ {pck} нараховано! Дякуємо 🌸"
+                    _send_tg_message(chid, done_msg)
+                    _send_tg_message(MY_ID, f"✅ АВТО-ВИДАЧА ЗАВЕРШЕНА\n🆔 {oid}\n📦 {pck}\n🎮 {pid}\n💵 {amt} грн\n📦 FazerCards: {fc_order_id}")
+                    check_achievements(chid)
+                elif order_status == "failed":
+                    err = event_data.get("error", "FazerCards order failed")
+                    db_exec("UPDATE orders SET status='failed' WHERE id=?", (oid,))
+                    _send_tg_message(chid, f"⚠️ Сталася помилка при нарахуванні UC. Адмін перевірить та допоможе.\nПомилка: {err}")
+                    _send_tg_message(MY_ID, f"❌ ПОМИЛКА ВИДАЧІ\n🆔 {oid}\n📦 {pck}\n📦 FC: {fc_order_id}\nПомилка: {err}")
+                elif order_status == "refund":
+                    db_exec("UPDATE orders SET status='failed' WHERE id=?", (oid,))
+                    _send_tg_message(chid, "⚠️ Замовлення відмінено (повернення коштів). Зверніться в підтримку.")
+                    _send_tg_message(MY_ID, f"⚠️ REFUND\n🆔 {oid}\n📦 {pck}\n📦 FC: {fc_order_id}")
+            except Exception as e:
+                logging.error(f"FazerCards webhook error: {e}", exc_info=True)
+            _json_response(self, {"status": "ok"}); return
+
         self.send_response(404); self.end_headers()
 
     def log_message(self, format, *args):
@@ -2647,6 +2807,119 @@ def _db_backup_worker():
 def start_db_backup():
     threading.Thread(target=_db_backup_worker, daemon=True).start()
     logging.info("Автобекап БД запущено (кожні 30 хв)")
+
+
+def _get_webhook_base_url():
+    """Return https://<domain> for webhook registration, or None if not available."""
+    # Prefer explicit WEBAPP_URL (it already contains https:// + domain + path)
+    webapp_url = os.environ.get("WEBAPP_URL", "").strip()
+    if webapp_url:
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(webapp_url)
+            if parsed.scheme and parsed.netloc:
+                return f"{parsed.scheme}://{parsed.netloc}"
+        except Exception:
+            pass
+    domain = _get_domain()
+    if not domain:
+        return None
+    return f"https://{domain}"
+
+
+def start_payment_webhooks():
+    """Register Monobank + FazerCards webhooks on startup (background thread)."""
+    def _worker():
+        import time as _t
+        _t.sleep(5)  # let web server start first
+        base = _get_webhook_base_url()
+        if not base:
+            logging.warning("Webhook registration skipped: no public domain configured")
+            return
+
+        # ── Monobank webhook ──
+        mono_token = os.environ.get("MONOBANK_TOKEN", "")
+        if mono_token:
+            webhook_url = f"{base}/webhooks/monobank"
+            try:
+                result = _monobank_client.register_webhook(webhook_url)
+                logging.info(f"Monobank webhook registered: {webhook_url} -> {result}")
+            except Exception as e:
+                logging.warning(f"Monobank webhook registration failed: {e}")
+        else:
+            logging.info("Monobank token not set — webhook registration skipped")
+
+        # ── FazerCards webhook ──
+        fc_key = os.environ.get("FAZERCARDS_API_KEY", "")
+        if fc_key:
+            fc_webhook_url = f"{base}/webhooks/fazercards"
+            try:
+                result = _fazercards_client.set_webhook(fc_webhook_url, enabled=True)
+                logging.info(f"FazerCards webhook registered: {fc_webhook_url} -> {result}")
+            except Exception as e:
+                logging.warning(f"FazerCards webhook registration failed: {e}")
+        else:
+            logging.info("FazerCards API key not set — webhook registration skipped")
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+def _fazercards_poller_worker():
+    """Background poller: check FazerCards order status for processing orders.
+
+    Runs every 60 seconds. For each order with fazercards_order_id and
+    status='processing', polls FazerCards API. Updates status when completed/failed.
+    """
+    import time as _t
+    while True:
+        try:
+            rows = db_query(
+                "SELECT id, fazercards_order_id, chat_id, pack, player_id, amount "
+                "FROM orders WHERE status='processing' AND fazercards_order_id != '' "
+                "AND fazercards_order_id IS NOT NULL"
+            )
+            for oid, fc_oid, chid, pck, pid, amt in rows:
+                try:
+                    fc_data = _fazercards_client.get_order(fc_oid)
+                    fc_status = fc_data.get("status", "")
+                    if not fc_status:
+                        continue
+                    db_exec("UPDATE orders SET fazercards_status=? WHERE id=?", (fc_status, oid))
+
+                    if fc_status == "completed":
+                        db_exec("UPDATE orders SET status='done', completed_at=? WHERE id=?",
+                                (created_at_now(), oid))
+                        _send_tg_message(chid, f"✅ {pck} нараховано! Дякуємо 🌸")
+                        _send_tg_message(MY_ID,
+                            f"✅ АВТО-ВИДАЧА ЗАВЕРШЕНА (poller)\n🆔 {oid}\n📦 {pck}\n"
+                            f"🎮 {pid}\n💵 {amt} грн\n📦 FazerCards: {fc_oid}")
+                        check_achievements(chid)
+                        logging.info(f"FazerCards poller: order {oid} completed")
+                    elif fc_status in ("failed", "refund", "cancelled"):
+                        err = fc_data.get("error", f"FazerCards status: {fc_status}")
+                        db_exec("UPDATE orders SET status='failed' WHERE id=?", (oid,))
+                        _send_tg_message(chid,
+                            f"⚠️ Сталася помилка при нарахуванні UC.\n"
+                            f"Адмін перевірить та допоможе.\nПомилка: {err}")
+                        _send_tg_message(MY_ID,
+                            f"❌ ПОМИЛКА ВИДАЧІ (poller)\n🆔 {oid}\n📦 {pck}\n"
+                            f"📦 FC: {fc_oid}\nСтатус: {fc_status}\nПомилка: {err}")
+                        logging.warning(f"FazerCards poller: order {oid} {fc_status}")
+                except Exception as e:
+                    logging.debug(f"FazerCards poller: error checking {fc_oid}: {e}")
+        except Exception as e:
+            logging.warning(f"FazerCards poller error: {e}")
+        _t.sleep(60)
+
+
+def start_fazercards_poller():
+    """Start the background FazerCards order status poller."""
+    fc_key = os.environ.get("FAZERCARDS_API_KEY", "")
+    if not fc_key:
+        logging.info("FazerCards poller not started (no API key)")
+        return
+    threading.Thread(target=_fazercards_poller_worker, daemon=True).start()
+    logging.info("FazerCards poller запущено (кожні 60 сек)")
 
 
 # --- ПОМІЧНИКИ ---
@@ -2864,10 +3137,14 @@ def uses_left_label(uses_left, total_uses=None):
 
 # --- КОМАНДИ ---
 def get_miniapp_url():
+    # Explicit WEBAPP_URL wins (for ngrok / dev / Railway)
+    webapp_url = os.environ.get("WEBAPP_URL", "").strip()
+    if webapp_url:
+        return webapp_url
     domain = _get_domain()
     if domain:
         return f"https://{domain}/app"
-    logging.warning("BOT_DOMAIN не задан — кнопка Mini App не буде працювати! Встанови змінну BOT_DOMAIN.")
+    logging.warning("BOT_DOMAIN/WEBAPP_URL не задані — кнопка Mini App не буде працювати! Встанови змінну BOT_DOMAIN або WEBAPP_URL.")
     return ""
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2891,10 +3168,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mini_app_btn = None
     # Hidden letter N in the welcome message
     await update.message.reply_text(
-        "👋 Вітаємо у магазині UC від Nezuko! 🌸\n\n"
-        "Скористайся зручним міні-застосунком або звичайними кнопками нижче.\n\n"
-        "┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n"
-        "🔤 N · · · · · · · · · · · · ·",
+        "🌸 Nezuko UC Shop\n\n"
+        "Вітаю!\n"
+        "Тут можна швидко та зручно придбати:\n"
+        "• UC та Prime для PUBG Mobile\n"
+        "• Telegram Premium\n"
+        "• Зірки (Stars)\n"
+        "• Старі подарунки Telegram\n\n"
+        "Telegram-послуги (Premium, зірки, подарунки) доступні тільки в Mini App.\n\n"
+        "Обери зручний спосіб:\n"
+        "• Відкрити Mini App\n"
+        "• Або скористатися кнопками нижче",
         reply_markup=mini_app_btn
     )
     await update.message.reply_text("⬇️ Або обери дію:", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
@@ -4215,10 +4499,10 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("paid_"):
         order_id = data[5:]
         pay_uid = q.from_user.id
-        res = db_query_one("SELECT pack, player_id, amount, status FROM orders WHERE id=?", (order_id,))
+        res = db_query_one("SELECT pack, player_id, amount, status, chat_id FROM orders WHERE id=?", (order_id,))
         if not res:
             await q.answer("Замовлення не знайдено."); return
-        pack, player_id, amount, status = res
+        pack, player_id, amount_str, status, chat_id = res
         if status != "pending":
             await q.answer("Це замовлення вже оброблено."); return
         if _check_fake_pay(pay_uid):
@@ -4233,15 +4517,101 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(MY_ID, f"🕵️ Підозрілий PUBG ID!\n🎮 ID: {player_id}\n👤 {user_label(q.from_user.username, pay_uid)}\nЦей ID вже використовувався з інших акаунтів!")
             except: pass
+
+        # ── Notify admin (fallback for manual processing) ──
         notif_row = db_query_one("SELECT notified_admin FROM orders WHERE id=?", (order_id,))
         if not (notif_row and notif_row[0]):
             try:
                 btns = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Готово", callback_data=f"ok_{order_id}"), InlineKeyboardButton("❌ Відхилити", callback_data=f"no_{order_id}")]])
                 rise_marker = "⭐️ НАБІР ПІДЙОМ\n" if "Набір Підйом" in pack else ""
-                await context.bot.send_message(MY_ID, f"💰 ОПЛАТА (Telegram)!\n{rise_marker}🆔 {order_id}\n👤 {user_label(q.from_user.username, pay_uid)}\n🎁 {pack}\n🎮 ID: {player_id}\n💵 {amount} грн", reply_markup=btns)
+                await context.bot.send_message(MY_ID, f"💰 ОПЛАТА (Telegram)!\n{rise_marker}🆔 {order_id}\n👤 {user_label(q.from_user.username, pay_uid)}\n🎁 {pack}\n🎮 ID: {player_id}\n💵 {amount_str} грн", reply_markup=btns)
                 db_exec("UPDATE orders SET notified_admin=1 WHERE id=?", (order_id,))
             except: pass
-        await q.edit_message_text(f"✅ Дякуємо! Замовлення прийнято.\n🆔 {order_id}\nАдмін підтвердить незабаром.")
+
+        # ── AUTO-VERIFY via Monobank + AUTO-DELIVER via FazerCards ──
+        try:
+            amount_uah = float(amount_str) if amount_str else 0
+        except (ValueError, TypeError):
+            amount_uah = 0
+
+        # Show "checking" message
+        await q.edit_message_text(
+            f"⏳ <b>Перевіряємо оплату...</b>\n\n"
+            f"🆔 Замовлення {order_id}\n"
+            f"📦 {pack}\n"
+            f"💵 {amount_str} грн\n\n"
+            f"Перевіряємо надходження коштів через Monobank API...",
+            parse_mode="HTML"
+        )
+
+        # Run sync payment verification in a thread (non-blocking)
+        result = await asyncio.to_thread(
+            _ps_verify_and_deliver,
+            order_id=order_id,
+            pack=pack,
+            player_id=player_id,
+            amount_uah=amount_uah,
+            chat_id=chat_id,
+            bot_token=TOKEN,
+        )
+
+        verified = result.get("verified", False)
+        msg = result.get("message", "")
+        fc_order_id = result.get("fazercards_order_id")
+        fc_status = result.get("fazercards_status")
+        mono_tx_id = result.get("monobank_tx_id")
+
+        if verified:
+            # Payment verified — update order
+            db_exec(
+                "UPDATE orders SET payment_verified=1, monobank_tx_id=?, fazercards_order_id=?, fazercards_status=? WHERE id=?",
+                (mono_tx_id or "", fc_order_id or "", fc_status or "", order_id)
+            )
+
+            if fc_order_id:
+                # Auto-delivered via FazerCards
+                db_exec("UPDATE orders SET auto_delivered=1, status='processing' WHERE id=?", (order_id,))
+
+                # Nice success message for user
+                btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 В меню", callback_data="back_to_main")]])
+                await q.edit_message_text(msg, reply_markup=btn, parse_mode="HTML")
+
+                # Notify admin about auto-delivery
+                try:
+                    await context.bot.send_message(MY_ID,
+                        f"🤖 <b>АВТО-ВИДАЧА UC</b>\n"
+                        f"🆔 {order_id}\n"
+                        f"📦 {pack}\n"
+                        f"🎮 ID: {player_id}\n"
+                        f"💵 {amount_str} грн\n"
+                        f"✅ Monobank: {mono_tx_id}\n"
+                        f"📦 FazerCards: {fc_order_id} ({fc_status})",
+                        parse_mode="HTML"
+                    )
+                except: pass
+            else:
+                # Verified but manual delivery needed (30/120/180 UC, TG gifts, etc.)
+                btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 В меню", callback_data="back_to_main")]])
+                await q.edit_message_text(msg, reply_markup=btn, parse_mode="HTML")
+
+                # Notify admin that payment verified but manual delivery needed
+                try:
+                    await context.bot.send_message(MY_ID,
+                        f"✅ <b>Оплата підтверджена (Monobank)</b>\n"
+                        f"🆔 {order_id}\n"
+                        f"📦 {pack} (ручна видача)\n"
+                        f"🎮 ID: {player_id}\n"
+                        f"💵 {amount_str} грн\n"
+                        f"💳 Monobank tx: {mono_tx_id}",
+                        parse_mode="HTML"
+                    )
+                except: pass
+
+            check_achievements(chat_id)
+        else:
+            # Payment not found — let user retry
+            btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Я оплатив", callback_data=f"paid_{order_id}")]])
+            await q.edit_message_text(msg, reply_markup=btn, parse_mode="HTML")
         return
 
     if data == "promo_create":
@@ -4398,6 +4768,8 @@ if __name__ == "__main__":
     import asyncio as _asyncio
     start_policy_server()
     start_db_backup()
+    start_payment_webhooks()
+    start_fazercards_poller()
     if os.environ.get("DISABLE_BOT") == "1":
         logging.info("DISABLE_BOT=1 — бот вимкнено. Веб-сервер працює на порту 5000.")
         while True:

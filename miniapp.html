@@ -609,8 +609,15 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
       <img src="/nezuko_love.png" style="width:180px;height:180px;object-fit:contain;filter:drop-shadow(0 0 18px rgba(255,100,180,.5));animation:nezuko-pop .5s cubic-bezier(.34,1.56,.64,1) both;margin-bottom:6px">
       <div style="font-size:60px;margin-bottom:10px">🎉</div>
       <div style="font-size:20px;font-weight:800;margin-bottom:8px">Замовлення прийнято!</div>
-      <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Адмін підтвердить найближчим часом</div>
-      <div style="font-size:12px;color:var(--muted)">ID: <span id="doneId" style="font-family:monospace;color:var(--acc)"></span></div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:6px">Натисніть кнопку нижче, щоб перевірити оплату та отримати UC</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">ID: <span id="doneId" style="font-family:monospace;color:var(--acc)"></span></div>
+      <div id="donePayInfo" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Сума до сплати:</div>
+        <div style="font-size:24px;font-weight:900;color:var(--acc)" id="donePayAmt"></div>
+        <div style="font-size:12px;color:var(--success);margin-top:2px" id="donePayDisc"></div>
+      </div>
+      <div id="verifyResult" style="display:none;padding:12px;border-radius:12px;margin-bottom:12px"></div>
+      <button class="btn" id="verifyPayBtn" onclick="verifyPaymentFromMiniApp()">⏳ Перевірити оплату</button>
       <button class="btn mt-16" onclick="resetShop()">На головну</button>
     </div>
 
@@ -2171,8 +2178,8 @@ function goToPaymentDirect() {
     document.getElementById('payPackName').textContent = curPack;
     if (pct > 0) {
       const dp = discountedPrice(base, pct);
-      document.getElementById('payAmt').textContent = dp + ' грн';
-      document.getElementById('payDisc').textContent = `✂️ Знижка ${pct}% (було ${base} грн)`;
+      document.getElementById('payAmt').innerHTML = '<s style="opacity:.35;font-size:.55em;font-weight:600">' + base + '</s> ' + dp + ' грн';
+      document.getElementById('payDisc').innerHTML = '✂️ Знижка ' + pct + '% — платіть <b>' + dp + ' грн</b>';
     } else {
       document.getElementById('payAmt').textContent = base + ' грн';
       document.getElementById('payDisc').textContent = '';
@@ -2258,9 +2265,23 @@ async function submitOrder() {
   const r = await api('/api/submit-order', 'POST', payload);
   btn.disabled = false; btn.textContent = '✅ Я оплатив';
   if (r.ok) {
-    if (r.final_price && !mixFinalPack && r.final_price !== prices[curPack]) {
-      document.getElementById('payAmt').textContent = r.final_price + ' грн';
-      if (r.discount) document.getElementById('payDisc').textContent = `✂️ Знижка ${r.discount}% застосована!`;
+    if (r.final_price && !mixFinalPack) {
+      const basePrice = prices[curPack] || 0;
+      const fp = r.final_price;
+      const disc = r.discount || 0;
+      const donePayInfo = document.getElementById('donePayInfo');
+      const donePayAmt = document.getElementById('donePayAmt');
+      const donePayDisc = document.getElementById('donePayDisc');
+      if (disc > 0 && fp !== basePrice) {
+        donePayAmt.innerHTML = '<s style="opacity:.35;font-size:.55em;font-weight:600">' + basePrice + '</s> ' + fp + ' грн';
+        donePayDisc.innerHTML = '✂️ Знижка ' + disc + '% — платіть <b>' + fp + ' грн</b>';
+      } else {
+        donePayAmt.textContent = fp + ' грн';
+        donePayDisc.textContent = '';
+      }
+      donePayInfo.style.display = 'block';
+    } else {
+      document.getElementById('donePayInfo').style.display = 'none';
     }
     document.getElementById('shopPay').style.display = 'none';
     document.getElementById('doneId').textContent = r.order_id;
@@ -2270,6 +2291,37 @@ async function submitOrder() {
   } else toast(r.error || 'Помилка', 'error');
 }
 
+async function verifyPaymentFromMiniApp() {
+  const btn = document.getElementById('verifyPayBtn');
+  const resultDiv = document.getElementById('verifyResult');
+  const orderId = document.getElementById('doneId').textContent.trim();
+  if (!orderId) { toast('Замовлення не знайдено', 'error'); return; }
+  btn.disabled = true; btn.textContent = '⏳ Перевіряємо...';
+  resultDiv.style.display = 'none';
+  try {
+    const r = await api('/api/verify-payment', 'POST', { order_id: orderId });
+    resultDiv.style.display = 'block';
+    if (r.ok && r.verified) {
+      resultDiv.style.background = 'rgba(76,175,80,.15)';
+      resultDiv.style.color = '#4CAF50';
+      resultDiv.innerHTML = r.message || '✅ Оплата підтверджено! UC буде нараховано найближчим часом.';
+      btn.textContent = '✅ Перевірено';
+      btn.disabled = true;
+    } else {
+      resultDiv.style.background = 'rgba(255,152,0,.15)';
+      resultDiv.style.color = '#FF9800';
+      resultDiv.innerHTML = r.message || '❌ Платіж не знайдено. Спробуйте через хвилину.';
+      btn.disabled = false; btn.textContent = '⏳ Перевірити оплату';
+    }
+  } catch {
+    resultDiv.style.display = 'block';
+    resultDiv.style.background = 'rgba(244,67,54,.15)';
+    resultDiv.style.color = '#F44336';
+    resultDiv.textContent = 'Помилка мережі. Спробуйте ще раз.';
+    btn.disabled = false; btn.textContent = '⏳ Перевірити оплату';
+  }
+}
+
 function resetShop() {
   document.getElementById('shopDone').style.display = 'none';
   document.getElementById('shopId').style.display = 'none';
@@ -2277,6 +2329,12 @@ function resetShop() {
   document.getElementById('shopPacks').style.display = 'none';
   document.getElementById('shopTg').style.display = 'none';
   document.getElementById('shopTgPay').style.display = 'none';
+  const dpInfo = document.getElementById('donePayInfo');
+  if (dpInfo) dpInfo.style.display = 'none';
+  const vBtn = document.getElementById('verifyPayBtn');
+  if (vBtn) { vBtn.disabled = false; vBtn.textContent = '⏳ Перевірити оплату'; }
+  const vRes = document.getElementById('verifyResult');
+  if (vRes) vRes.style.display = 'none';
   showWithAnim(document.getElementById('shopCats'));
   document.getElementById('gameIdInput').value = '';
   document.getElementById('gameNickInput').value = '';
