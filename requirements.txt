@@ -1,4 +1,5 @@
 python-telegram-bot[job-queue]>=22.0
+psycopg2-binary>=2.9.9
 httpx==0.28.1
 anyio==4.13.0
 httpcore==1.0.9

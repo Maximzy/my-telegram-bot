@@ -1,4 +1,5 @@
 import sqlite3, uuid, logging, threading, os, re, json, urllib.request, urllib.parse, random, asyncio, time, collections, secrets, hmac as _hmac_mod, hashlib as _hashlib_mod
+import db_compat
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, KeyboardButton, LabeledPrice
@@ -34,6 +35,7 @@ MY_ID = int(os.environ.get("OWNER_ID", "1440236609"))
 SHOP_TAG = os.environ.get("SHOP_TAG", "@NezukoUCShop")
 STARS_RATE_DEFAULT = float(os.environ.get("STARS_RATE", "0.81"))
 STARS_RATE = STARS_RATE_DEFAULT
+TEST_NO_POINTS_DEDUCT = os.environ.get("TEST_NO_POINTS_DEDUCT", "").strip() in ("1", "true", "TRUE", "True")
 PREMIUM_PACKS_BASE = [
     {"id": "prem_3m",  "label": "Telegram Premium 3 міс",  "price": 530},
     {"id": "prem_6m",  "label": "Telegram Premium 6 міс",  "price": 700},
@@ -105,11 +107,13 @@ if _data_dir:
     DB_PATH = os.path.join(_data_dir, "bot.db")
 else:
     DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.db")
-conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+conn = db_compat.connect(DB_PATH)
 db_lock = threading.Lock()
-conn.execute("PRAGMA journal_mode=WAL")
-conn.execute("PRAGMA synchronous=FULL")
-conn.commit()
+# PRAGMA виконує тільки SQLite-бекенд; на Postgres — skip'ається автоматично.
+if db_compat.is_sqlite(conn):
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=FULL")
+    conn.commit()
 
 def db_exec(sql, params=()):
     with db_lock:
@@ -2045,16 +2049,22 @@ class PolicyHandler(BaseHTTPRequestHandler):
             pts = get_points(user_id)
             if pts < actual_cost:
                 _json_response(self, {"ok": False, "error": f"Недостатньо балів. Потрібно {actual_cost}, є {pts}"}); return
-            db_exec("UPDATE user_points SET points=points-? WHERE user_id=?", (actual_cost, user_id))
-            db_exec("INSERT INTO user_points_tx (user_id, delta, reason, created_at) VALUES (?,?,?,?)",
-                    (user_id, -actual_cost, f"Покупка: {item['name']}", created_at_now()))
+            if TEST_NO_POINTS_DEDUCT:
+                logging.info(f"🧪 TEST_NO_POINTS_DEDUCT: skip списание {actual_cost} points у user {user_id} ({item['name']})")
+            else:
+                db_exec("UPDATE user_points SET points=points-? WHERE user_id=?", (actual_cost, user_id))
+                db_exec("INSERT INTO user_points_tx (user_id, delta, reason, created_at) VALUES (?,?,?,?)",
+                        (user_id, -actual_cost, f"Покупка: {item['name']}", created_at_now()))
+            _msg = f"✅ {item['name']} додано! Залишок балів: {pts - actual_cost}"
+            if TEST_NO_POINTS_DEDUCT:
+                _msg = f"🧪 TEST MODE — {item['name']} додано! Бали НЕ списано (TEST_NO_POINTS_DEDUCT=1)."
             if item["bonus_type"] == "extra_spin":
                 db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)",
                         (user_id, "extra_spin", 1, created_at_now()))
             else:
                 db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)",
                         (user_id, item["bonus_type"], 1, created_at_now()))
-            _json_response(self, {"ok": True, "message": f"✅ {item['name']} додано! Залишок балів: {pts - actual_cost}"}); return
+            _json_response(self, {"ok": True, "message": _msg}); return
 
         if path == "/api/wheel/spin-free":
             user_id = int(data.get("user_id", 0))
@@ -2776,7 +2786,13 @@ def start_policy_server():
 
 
 def _db_backup_worker():
-    """Кожні 30 хв робить резервну копію бази у backup/ поряд із DB_PATH."""
+    """Кожні 30 хв робить резервну копію бази у backup/ поряд із DB_PATH.
+
+    На PostgreSQL локальний беккап вимикається — Railway сам робить backup Postgres.
+    """
+    if db_compat.is_postgres(conn):
+        logging.info("DB backup: PostgreSQL — автобекап виконується на рівні Railway. Skip локального беккапу.")
+        return
     backup_dir = os.path.join(os.path.dirname(DB_PATH), "backup")
     os.makedirs(backup_dir, exist_ok=True)
     while True:
@@ -3441,11 +3457,16 @@ async def importdb_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def reconnect_db(new_path: str, source_path: str = None):
     """Close current connection, optionally replace DB file, then reopen.
-    
+
     source_path: if given, copy this file to new_path AFTER safely closing
                  the old connection (prevents old WAL from corrupting new DB).
+
+    На PostgreSQL імпорт файлу БД не підтримується — використовуйте pg_dump/pg_restore
+    або перенесіть дані SQL-експортом.
     """
     global conn
+    if db_compat.is_postgres(conn):
+        raise RuntimeError("reconnect_db: на PostgreSQL ця операція недоступна. Використовуйте pg_dump/pg_restore.")
     with db_lock:
         # Checkpoint WAL so pending writes are flushed before we close
         try:
@@ -3481,6 +3502,12 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid):
         await update.message.reply_text("⛔ Тільки для адміна."); return
+    if db_compat.is_postgres(conn):
+        await update.message.reply_text(
+            "ℹ️ На PostgreSQL локальний .db-бекап недоступний.\n"
+            "Використовуйте Railway → Postgres → Backups, або команду:\n"
+            "`pg_dump $DATABASE_URL` і надішліть файл вручну."
+        ); return
     await update.message.reply_text("⏳ Створюю резервну копію бази даних...")
     try:
         import shutil, tempfile
@@ -3529,6 +3556,13 @@ async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_T
         doc = update.message.document
         if not doc:
             await update.message.reply_text("❌ Надішліть файл бази даних (.db)"); return
+        if db_compat.is_postgres(conn):
+            await update.message.reply_text(
+                "ℹ️ Імпорт .db-файлу недоступний на PostgreSQL.\n"
+                "Перенесіть дані через `pg_dump` → `psql` або SQL-міграцією."
+            )
+            user_states[uid] = None
+            return
         await update.message.reply_text("⏳ Завантажую файл та перевіряю...")
         try:
             import shutil, tempfile
@@ -4668,6 +4702,9 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _send_db_to_owner(context: ContextTypes.DEFAULT_TYPE):
     try:
+        if db_compat.is_postgres(conn):
+            logging.info("_send_db_to_owner: skip — PostgreSQL беккап робить Railway.")
+            return
         tmp = DB_PATH + ".send_tmp"
         with db_lock:
             src = sqlite3.connect(DB_PATH)
