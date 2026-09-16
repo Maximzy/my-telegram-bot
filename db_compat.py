@@ -320,6 +320,20 @@ class _SQLTranslator:
             flags=re.IGNORECASE,
         )
 
+        # MAX(0, expr) → GREATEST(0, expr) — SQLite MAX is scalar with 2+ args,
+        # but PG MAX is aggregate-only. GREATEST works in PG.
+        s = re.sub(r'\bMAX\s*\(\s*0\s*,', 'GREATEST(0,', s, flags=re.IGNORECASE)
+
+        # CAST(... AS REAL) used with LIKE → CAST(... AS TEXT)
+        # PostgreSQL has no "real LIKE text" operator (error: operator does not exist: real ~~ unknown).
+        # SQLite coerces REAL→text for LIKE; we replicate by casting to TEXT instead.
+        s = re.sub(
+            r'CAST\s*\((.+?)\s+AS\s+REAL\)\s*(LIKE|NOT\s+LIKE)',
+            r'CAST(\1 AS TEXT) \2',
+            s,
+            flags=re.IGNORECASE,
+        )
+
         # Quote reserved words (user → "user") + rowid → ctid
         s = _quote_reserved_words(s)
 

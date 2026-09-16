@@ -1141,7 +1141,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/top":
             rows = db_query(
-                "SELECT user, chat_id, SUM(CAST(COALESCE(amount,0) AS INTEGER)) as total "
+                "SELECT MAX(user), chat_id, SUM(CAST(COALESCE(amount,'0') AS INTEGER)) as total "
                 "FROM orders WHERE status='done' GROUP BY chat_id ORDER BY total DESC LIMIT 10"
             )
             top = []
@@ -2692,7 +2692,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 logging.info(f"Monobank webhook: tx={tx_id} amount={amount_uah:.2f} UAH")
                 # Find pending orders matching this amount
                 pending = db_query(
-                    "SELECT id, pack, player_id, chat_id FROM orders WHERE status='pending' AND CAST(amount AS REAL) LIKE ?",
+                    "SELECT id, pack, player_id, chat_id FROM orders WHERE status='pending' AND CAST(amount AS TEXT) LIKE ?",
                     (f"%{amount_uah:.0f}%",)
                 )
                 if not pending:
@@ -3103,9 +3103,9 @@ def user_label(username, chat_id=None):
 def get_done_sum(today_only=False):
     if today_only:
         today = datetime.now().strftime("%Y-%m-%d")
-        rows = db_query("SELECT CAST(COALESCE(amount, 0) AS INTEGER) FROM orders WHERE status='done' AND COALESCE(completed_at, created_at) LIKE ?", (f"{today}%",))
+        rows = db_query("SELECT CAST(COALESCE(amount,'0') AS INTEGER) FROM orders WHERE status='done' AND COALESCE(completed_at, created_at) LIKE ?", (f"{today}%",))
     else:
-        rows = db_query("SELECT CAST(COALESCE(amount, 0) AS INTEGER) FROM orders WHERE status='done'")
+        rows = db_query("SELECT CAST(COALESCE(amount,'0') AS INTEGER) FROM orders WHERE status='done'")
     return sum(r[0] for r in rows)
 
 def get_user_discount(uid, pack_name):
@@ -4049,7 +4049,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "🏆 Топ донатерів":
         # Hidden letter O — uses stored amount column (same as mini app /api/top)
         rows = db_query(
-            "SELECT user, chat_id, SUM(CAST(COALESCE(amount,0) AS INTEGER)) as total "
+            "SELECT MAX(user), chat_id, SUM(CAST(COALESCE(amount,'0') AS INTEGER)) as total "
             "FROM orders WHERE status='done' GROUP BY chat_id ORDER BY total DESC LIMIT 10"
         )
         if not rows:
