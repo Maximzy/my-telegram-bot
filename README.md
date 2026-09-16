@@ -148,8 +148,31 @@ Discounts are configured per-user via promo codes:
 ## Tech Stack
 
 - Python 3.12+ / [python-telegram-bot 22.x](https://docs.python-telegram-bot.org/)
-- SQLite (WAL mode)
+- **PostgreSQL** (via Railway, auto-detected from `DATABASE_URL`) or SQLite fallback
 - Monobank Personal API
 - FazerCards B2B API v2
 - Cloudflare Quick Tunnels
 - No Docker required (runs in VS Code / terminal)
+
+## Database
+
+The bot auto-detects the database backend:
+
+- If `DATABASE_URL` is set in the environment → **PostgreSQL** (via psycopg2)
+- If not set → **SQLite** fallback (local `bot.db`)
+
+All SQL is written in SQLite syntax — `db_compat.py` translates it to PostgreSQL
+at runtime (`?`→`%s`, `INSERT OR REPLACE`→`ON CONFLICT`, `AUTOINCREMENT`→`SERIAL`,
+`PRAGMA`→skip/emulate, `lastrowid`→`RETURNING id`).
+
+### Railway PostgreSQL Setup
+
+1. Railway → New → Database → PostgreSQL
+2. Bot service → Variables → add `DATABASE_URL = ${{Postgres.DATABASE_URL}}`
+3. Push to GitHub → Railway auto-deploys
+4. Check logs: `db_compat: using PostgreSQL backend`
+
+### Test orders without point deduction
+
+Set `TEST_NO_POINTS_DEDUCT=1` in Railway Variables. Purchases will not deduct
+points. **Remove this variable after testing!**
