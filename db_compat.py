@@ -53,7 +53,9 @@ def _adapt_sql(sql):
     if s.upper().startswith("PRAGMA"):
         return None
 
-    # Replace ? with %s (psycopg2 param style)
+    # Escape existing % first (so LIKE 'discount%' becomes 'discount%%'),
+    # THEN replace ? with %s. Order matters — must be these two lines together.
+    sql = sql.replace("%", "%%")
     sql = sql.replace("?", "%s")
 
     # `user` is a reserved word in PostgreSQL. Quote it wherever it appears as a
@@ -116,7 +118,6 @@ def _adapt_sql(sql):
     sql = re.sub(r'\browid\b', 'ctid', sql, flags=re.IGNORECASE)
 
     return sql
-
 
 _HAS_ID_COLUMN_CACHE = {}
 
