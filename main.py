@@ -3422,13 +3422,14 @@ async def restartbot_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _build_pg_create(table_name, cols_info):
-    """Build a PostgreSQL CREATE TABLE from SQLite PRAGMA table_info output."""
+    """Build a PostgreSQL CREATE TABLE from SQLite PRAGMA table_info output.
+    Uses BIGINT for all INTEGER columns to accommodate Telegram IDs > 2^31."""
     pk_cols = [c[1] for c in cols_info if c[5]]
     col_defs = []
     for _cid, name, ctype, _notnull, dflt, pk in cols_info:
         t = (ctype or "TEXT").upper()
         if "INT" in t:
-            base = "INTEGER"
+            base = "BIGINT"
         elif any(x in t for x in ("CHAR", "CLOB", "TEXT")):
             base = "TEXT"
         elif "BLOB" in t:
@@ -3440,9 +3441,9 @@ def _build_pg_create(table_name, cols_info):
         else:
             base = "TEXT"
 
-        single_int_pk = (len(pk_cols) == 1 and pk and base == "INTEGER")
+        single_int_pk = (len(pk_cols) == 1 and pk and base == "BIGINT")
         if single_int_pk:
-            col_defs.append(f'"{name}" SERIAL PRIMARY KEY')
+            col_defs.append(f'"{name}" BIGSERIAL PRIMARY KEY')
         else:
             d = f'"{name}" {base}'
             if pk:
