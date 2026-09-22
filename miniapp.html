@@ -2195,7 +2195,7 @@ function goToPaymentDirect() {
     mixFinalPack = ''; mixFinalAmount = 0;
     const base = prices[curPack] || 0;
     const pct = getPackDiscount(curPack, userBonuses);
-    document.getElementById('payPackName').textContent = curPack;
+        document.getElementById('payPackName').textContent = stripPackPrice(curPack);
     if (pct > 0) {
       const dp = discountedPrice(base, pct);
       document.getElementById('payAmt').innerHTML = '<s style="opacity:.35;font-size:.55em;font-weight:600">' + base + '</s> ' + dp + ' грн';
