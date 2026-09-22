@@ -115,21 +115,42 @@ else:
 def db_exec(sql, params=()):
     with db_lock:
         cur = conn.cursor()
-        cur.execute(sql, params)
-        conn.commit()
-        return cur
+        try:
+            cur.execute(sql, params)
+            conn.commit()
+            return cur
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
 
 def db_query(sql, params=()):
     with db_lock:
         cur = conn.cursor()
-        cur.execute(sql, params)
-        return cur.fetchall()
+        try:
+            cur.execute(sql, params)
+            return cur.fetchall()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
 
 def db_query_one(sql, params=()):
     with db_lock:
         cur = conn.cursor()
-        cur.execute(sql, params)
-        return cur.fetchone()
+        try:
+            cur.execute(sql, params)
+            return cur.fetchone()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
 
 # --- ІНІЦІАЛІЗАЦІЯ ТАБЛИЦЬ ---
 def run_migrations(connection):
@@ -1096,7 +1117,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/top":
             rows = db_query(
-                "SELECT user, chat_id, SUM(CAST(COALESCE(amount,0) AS INTEGER)) as total "
+                "SELECT MAX(user) as user, chat_id, SUM(CAST(COALESCE(amount,0) AS INTEGER)) as total "
                 "FROM orders WHERE status='done' GROUP BY chat_id ORDER BY total DESC LIMIT 10"
             )
             top = []
@@ -4101,7 +4122,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "🏆 Топ донатерів":
         rows = db_query(
-            "SELECT user, chat_id, SUM(CAST(COALESCE(amount,0) AS INTEGER)) as total "
+            "SELECT MAX(user) as user, chat_id, SUM(CAST(COALESCE(amount,0) AS INTEGER)) as total "
             "FROM orders WHERE status='done' GROUP BY chat_id ORDER BY total DESC LIMIT 10"
         )
         if not rows:
