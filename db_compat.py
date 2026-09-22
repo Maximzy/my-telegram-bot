@@ -1,580 +1,304 @@
-"""db_compat.py — SQLite-style compatibility shim with PostgreSQL backend.
-
-Якщо в env є DATABASE_URL → використовується PostgreSQL через psycopg2.
-Інакше — fallback на локальний SQLite (bot.db).
-
-Підтримує синтаксис SQLite-коду:
-  • sqlite3.connect(DB_PATH, check_same_thread=False)
-  • "?" placeholders
-  • INSERT OR REPLACE / INSERT OR IGNORE
-  • INTEGER PRIMARY KEY AUTOINCREMENT
-  • PRAGMA journal_mode=WAL / synchronous=FULL / PRAGMA table_info(...)
-  • cursor.lastrowid після INSERT
-  • conn.execute(sql) / conn.cursor().execute(sql, params)
 """
-
+Database compatibility layer.
+Supports both SQLite (local dev) and PostgreSQL (Railway production).
+Auto-detects via DATABASE_URL environment variable.
+"""
 import os
 import re
-import threading
 import logging
-from typing import Any, Optional, Tuple, List
+import threading
 
-logger = logging.getLogger(__name__)
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+USE_POSTGRES = bool(DATABASE_URL)
 
-# ──────────────────────────────────────────────────────────────────────
-# Backend detection
-# ──────────────────────────────────────────────────────────────────────
+# Maps table name -> primary key column for INSERT OR REPLACE translation
+_INSERT_OR_REPLACE_PKS = {
+    'settings': 'key',
+    'price_overrides': 'pack_name',
+    'points_price_overrides': 'item_id',
+    'banned_users': 'user_id',
+    'promo_codes': 'code',
+}
 
-def _detect_backend() -> str:
-    """Return 'postgres' якщо є DATABASE_URL, інакше 'sqlite'."""
-    return "postgres" if os.environ.get("DATABASE_URL") else "sqlite"
-
-# ──────────────────────────────────────────────────────────────────────
-# SQL translation helpers
-# ──────────────────────────────────────────────────────────────────────
-
-_PRAGMA_TABLE_INFO_RE = re.compile(
-    r"^\s*PRAGMA\s+table_info\(\s*([\w\"\'\`]+)\s*\)\s*;?\s*$",
-    re.IGNORECASE,
-)
-_PRAGMA_RE = re.compile(r"^\s*PRAGMA\s+", re.IGNORECASE)
-_INSERT_OR_REPLACE_RE = re.compile(
-    r"^\s*INSERT\s+OR\s+REPLACE\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)\s*$",
-    re.IGNORECASE | re.DOTALL,
-)
-_INSERT_OR_IGNORE_RE = re.compile(
-    r"^\s*INSERT\s+OR\s+IGNORE\s+INTO\s+(\w+)\s*(\([^)]*\)\s*VALUES\s*\([^)]*\))?\s*$",
-    re.IGNORECASE | re.DOTALL,
-)
-
-
-def _replace_question_marks(sql: str) -> str:
-    """Конвертуємо '?' у '%s', ігноруючи '?' всередині рядків у лапках."""
-    out = []
-    in_str = False
-    esc = False
-    for ch in sql:
-        if esc:
-            out.append(ch)
-            esc = False
-            continue
-        if ch == "\\" and in_str:
-            out.append(ch)
-            esc = True
-            continue
-        if ch == "'":
-            in_str = not in_str
-            out.append(ch)
-            continue
-        if ch == "?" and not in_str:
-            out.append("%s")
-            continue
-        out.append(ch)
-    return "".join(out)
+# Maps table name -> PK column for INSERT OR IGNORE -> ON CONFLICT DO NOTHING.
+# None means composite / unknown PK — fall back to bare "ON CONFLICT DO NOTHING".
+_INSERT_OR_IGNORE_PKS = {
+    'settings': 'key',
+    'price_overrides': 'pack_name',
+    'points_price_overrides': 'item_id',
+    'banned_users': 'user_id',
+    'promo_codes': 'code',
+    'used_promo_codes': None,        # composite (user_id, code)
+    'user_achievements': None,       # composite (user_id, achievement_id)
+    'user_points': 'user_id',
+    'user_profile': 'user_id',
+    'wheel_data': 'user_id',
+    'admins': 'id',
+    'hidden_points_items': 'item_id',
+    'custom_points_items': 'id',
+    'referrals': 'referred_id',
+    'fake_pay_log': 'user_id',
+}
 
 
-def _quote_reserved_words(sql: str) -> str:
-    """Quotes standalone PostgreSQL reserved words used as column names.
-
-    Currently handles 'user' (reserved in PG) — quotes as "user" when it appears
-    as a standalone word outside string literals. Does not touch user_id, user_points, etc.
-    Also replaces standalone 'rowid' (SQLite implicit column) with 'ctid' (PG equivalent).
+def _adapt_sql(sql):
     """
-    out = []
-    in_str = False
-    esc = False
-    i = 0
-    s = sql
-    n = len(s)
-    while i < n:
-        ch = s[i]
-        if esc:
-            out.append(ch)
-            esc = False
-            i += 1
-            continue
-        if ch == "\\" and in_str:
-            out.append(ch)
-            esc = True
-            i += 1
-            continue
-        if ch == "'":
-            in_str = not in_str
-            out.append(ch)
-            i += 1
-            continue
-        if not in_str:
-            # Check for standalone 'user' (PG reserved keyword used as column name)
-            # Word boundary: prev char is not alnum/underscore/quote, next char is not alnum/underscore/quote
-            if s[i:i+4].lower() == "user":
-                prev_ok = (i == 0 or not (s[i-1].isalnum() or s[i-1] == "_" or s[i-1] == '"'))
-                next_ok = (i + 4 >= n or not (s[i+4].isalnum() or s[i+4] == "_" or s[i+4] == '"'))
-                if prev_ok and next_ok:
-                    out.append('"user"')
-                    i += 4
-                    continue
-            # Check for standalone 'rowid' (SQLite implicit row ID → PG ctid)
-            if s[i:i+5].lower() == "rowid":
-                prev_ok = (i == 0 or not (s[i-1].isalnum() or s[i-1] == "_" or s[i-1] == '"'))
-                next_ok = (i + 5 >= n or not (s[i+5].isalnum() or s[i+5] == "_" or s[i+5] == '"'))
-                if prev_ok and next_ok:
-                    out.append("ctid")
-                    i += 5
-                    continue
-        out.append(ch)
-        i += 1
-    return "".join(out)
+    Translate SQLite SQL to PostgreSQL-compatible SQL.
+    Only called when USE_POSTGRES is True.
+    Returns None for PRAGMA statements (should be skipped).
+    """
+    s = sql.strip()
 
+    # Skip PRAGMA entirely
+    if s.upper().startswith("PRAGMA"):
+        return None
 
-def _strip_quotes(name: str) -> str:
-    return name.strip().strip('"').strip("`").strip("'")
+    # Replace ? with %s (psycopg2 param style)
+    sql = sql.replace("?", "%s")
 
+    # ── INSERT OR IGNORE -> INSERT ... ON CONFLICT DO NOTHING ──
+    m = re.match(r'INSERT\s+OR\s+IGNORE\s+INTO\s+["\']?(\w+)["\']?', sql, re.IGNORECASE)
+    if m:
+        table = m.group(1)
+        pk = _INSERT_OR_IGNORE_PKS.get(table, "__unknown__")
+        sql = re.sub(
+            r'INSERT\s+OR\s+IGNORE\s+INTO',
+            'INSERT INTO',
+            sql, count=1, flags=re.IGNORECASE
+        )
+        sql = sql.rstrip().rstrip(";")
+        if pk == "__unknown__" or pk is None:
+            sql = sql + " ON CONFLICT DO NOTHING"
+        else:
+            sql = sql + f" ON CONFLICT ({pk}) DO NOTHING"
+        return sql
 
-def _split_cols(cols_str: str) -> List[str]:
-    return [_strip_quotes(c) for c in cols_str.split(",")]
+    # ── INSERT OR REPLACE -> INSERT ... ON CONFLICT ... DO UPDATE ──
+    m = re.match(r'INSERT\s+OR\s+REPLACE\s+INTO\s+(\w+)\s*\(([^)]+)\)\s*VALUES', sql, re.IGNORECASE)
+    if m:
+        table = m.group(1)
+        cols = [c.strip() for c in m.group(2).split(',')]
+        pk = _INSERT_OR_REPLACE_PKS.get(table)
+        if pk and pk in cols:
+            non_pk = [c for c in cols if c != pk]
+            if non_pk:
+                set_clause = ', '.join(f'{c}=EXCLUDED.{c}' for c in non_pk)
+                sql = re.sub(r'INSERT\s+OR\s+REPLACE\s+INTO', 'INSERT INTO', sql, count=1, flags=re.IGNORECASE)
+                sql = sql.rstrip() + f' ON CONFLICT ({pk}) DO UPDATE SET {set_clause}'
+            else:
+                sql = re.sub(r'INSERT\s+OR\s+REPLACE\s+INTO', 'INSERT INTO', sql, count=1, flags=re.IGNORECASE)
+                sql = sql.rstrip() + f' ON CONFLICT ({pk}) DO NOTHING'
+        else:
+            sql = re.sub(r'INSERT\s+OR\s+REPLACE\s+INTO', 'INSERT INTO', sql, count=1, flags=re.IGNORECASE)
+            sql = sql.rstrip() + ' ON CONFLICT DO NOTHING'
 
-
-def _table_info_sql(table: str) -> str:
-    """Емуляція PRAGMA table_info для PostgreSQL через information_schema."""
-    t = _strip_quotes(table)
-    return (
-        "SELECT "
-        "(ordinal_position - 1) AS cid, "
-        "column_name AS name, "
-        "data_type AS type, "
-        "(CASE WHEN is_nullable = 'NO' THEN 1 ELSE 0 END) AS notnull, "
-        "column_default AS dflt_value, "
-        "0 AS pk "
-        "FROM information_schema.columns "
-        f"WHERE LOWER(table_name) = LOWER('{t}') "
-        "ORDER BY ordinal_position"
+    # AUTOINCREMENT -> SERIAL (in CREATE TABLE)
+    sql = re.sub(
+        r'INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT',
+        'SERIAL PRIMARY KEY',
+        sql, flags=re.IGNORECASE
     )
 
+    # rowid -> ctid (PG system column, gives insertion order approximately)
+    sql = re.sub(r'\browid\b', 'ctid', sql, flags=re.IGNORECASE)
 
-class _SQLTranslator:
-    """Тримає кеш PK таблиць для ON CONFLICT і транслює SQLite-SQL → PG-SQL."""
+    return sql
 
-    def __init__(self):
-        self._pk_cache: dict = {}
-        self._loaded: bool = False
-        self._lock = threading.Lock()
 
-    def load_pk_cache(self, pg_cursor):
-        """Завантажує PK усіх таблиць з information_schema."""
-        with self._lock:
-            if self._loaded:
-                return
-            try:
-                pg_cursor.execute(
-                    "SELECT tc.table_name, kcu.column_name "
-                    "FROM information_schema.table_constraints tc "
-                    "JOIN information_schema.key_column_usage kcu "
-                    "  ON tc.constraint_name = kcu.constraint_name "
-                    "WHERE tc.constraint_type = 'PRIMARY KEY' "
-                    "  AND tc.table_schema = 'public'"
-                )
-                rows = pg_cursor.fetchall()
-            except Exception as e:
-                logger.warning(f"db_compat: failed to load PK cache: {e}")
-                self._loaded = True
-                return
-            for r in rows:
-                tbl = (r[0] or "").lower()
-                col = r[1]
-                if not tbl:
-                    continue
-                if tbl in self._pk_cache:
-                    existing = self._pk_cache[tbl]
-                    if isinstance(existing, str):
-                        self._pk_cache[tbl] = [existing, col]
-                    elif col not in existing:
-                        existing.append(col)
-                else:
-                    self._pk_cache[tbl] = col
-            self._loaded = True
+_HAS_ID_COLUMN_CACHE = {}
 
-    def get_pk(self, table: str):
-        """Повертає список колонок PK (або None, якщо таблиця без PK)."""
-        return self._pk_cache.get(table.lower())
 
-    def ensure_pk_for(self, table: str, pg_cursor) -> None:
-        """Lazy-load PK для конкретної таблиці (наприклад, створеної після connect).
+class PgCursorWrapper:
+    """Wraps psycopg2 cursor to provide SQLite-compatible interface."""
 
-        Запитує information_schema для однієї таблиці і кешує результат.
-        Нічого не робить, якщо таблиця вже є в кеші.
-        """
-        tbl = table.lower()
-        if tbl in self._pk_cache:
-            return
+    def __init__(self, real_cursor):
+        self._cur = real_cursor
+        self.lastrowid = None
+
+    def _has_id_column(self, table):
+        if table in _HAS_ID_COLUMN_CACHE:
+            return _HAS_ID_COLUMN_CACHE[table]
         try:
-            pg_cursor.execute(
-                "SELECT kcu.column_name "
-                "FROM information_schema.table_constraints tc "
-                "JOIN information_schema.key_column_usage kcu "
-                "  ON tc.constraint_name = kcu.constraint_name "
-                "WHERE tc.constraint_type = 'PRIMARY KEY' "
-                "  AND tc.table_schema = 'public' "
-                "  AND LOWER(tc.table_name) = %s",
-                (tbl,)
+            self._cur.execute(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name=%s AND column_name='id' LIMIT 1",
+                (table,)
             )
-            rows = pg_cursor.fetchall()
-        except Exception as e:
-            logger.warning(f"db_compat: ensure_pk_for({table}) failed: {e}")
-            self._pk_cache[tbl] = None  # позначаємо що перевіряли — нема PK
-            return
-        if not rows:
-            self._pk_cache[tbl] = None
-            return
-        cols = [r[0] for r in rows if r[0]]
-        self._pk_cache[tbl] = cols if len(cols) > 1 else cols[0]
+            has = self._cur.fetchone() is not None
+        except Exception:
+            has = False
+        _HAS_ID_COLUMN_CACHE[table] = has
+        return has
 
-    def translate(self, sql: str, pg_cursor=None) -> Optional[str]:
-        """Повертає PG-SQL або None якщо запит треба skip'нути (наприклад, PRAGMA).
+    def execute(self, sql, params=()):
+        s_raw = sql.strip()
 
-        pg_cursor: опціональний psycopg2-cursor для lazy-load PK таблиць,
-                   які були створені після початкового завантаження кешу.
-        """
-        s = sql
-
-        # PRAGMA table_info(<table>) → емуляція
-        m = _PRAGMA_TABLE_INFO_RE.match(s)
-        if m:
-            return _table_info_sql(m.group(1))
-
-        # Інші PRAGMA → skip
-        if _PRAGMA_RE.match(s):
-            return None
-
-        # INSERT OR REPLACE → INSERT ... ON CONFLICT (...) DO UPDATE SET ...
-        m = _INSERT_OR_REPLACE_RE.match(s)
-        if m:
-            table = m.group(1)
-            cols_str = m.group(2)
-            vals = m.group(3)
-            cols = _split_cols(cols_str)
-            if pg_cursor is not None:
-                self.ensure_pk_for(table, pg_cursor)
-            pk = self.get_pk(table)
-            if pk:
-                pk_list = pk if isinstance(pk, list) else [pk]
-                non_pk = [c for c in cols if c not in pk_list]
-                if non_pk:
-                    set_clause = ", ".join([f"{c} = EXCLUDED.{c}" for c in non_pk])
-                    s = (
-                        f"INSERT INTO {table} ({cols_str}) VALUES ({vals}) "
-                        f"ON CONFLICT ({', '.join(pk_list)}) DO UPDATE SET {set_clause}"
-                    )
-                else:
-                    s = (
-                        f"INSERT INTO {table} ({cols_str}) VALUES ({vals}) "
-                        f"ON CONFLICT ({', '.join(pk_list)}) DO NOTHING"
-                    )
-            else:
-                # Без PK — fallback DO NOTHING
-                s = (
-                    f"INSERT INTO {table} ({cols_str}) VALUES ({vals}) "
-                    f"ON CONFLICT DO NOTHING"
-                )
-
-        # INSERT OR IGNORE → INSERT ... ON CONFLICT DO NOTHING
-        m2 = _INSERT_OR_IGNORE_RE.match(s)
-        if m2 and "INSERT OR IGNORE" in s.upper():
-            table = m2.group(1)
-            tail = m2.group(2) or ""
-            if pg_cursor is not None:
-                self.ensure_pk_for(table, pg_cursor)
-            pk = self.get_pk(table)
-            if pk:
-                pk_list = pk if isinstance(pk, list) else [pk]
-                s = f"INSERT INTO {table} {tail} ON CONFLICT ({', '.join(pk_list)}) DO NOTHING"
-            else:
-                s = f"INSERT INTO {table} {tail} ON CONFLICT DO NOTHING"
-
-        # INTEGER PRIMARY KEY AUTOINCREMENT → SERIAL PRIMARY KEY (тільки CREATE TABLE)
-        s = re.sub(
-            r"INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT",
-            "SERIAL PRIMARY KEY",
-            s,
-            flags=re.IGNORECASE,
-        )
-
-        # datetime('now') → CURRENT_TIMESTAMP
-        s = re.sub(
-            r"datetime\s*\(\s*'now'\s*\)",
-            "CURRENT_TIMESTAMP",
-            s,
-            flags=re.IGNORECASE,
-        )
-        s = re.sub(
-            r"datetime\s*\(\s*'now'\s*,\s*'localtime'\s*\)",
-            "CURRENT_TIMESTAMP",
-            s,
-            flags=re.IGNORECASE,
-        )
-
-        # strftime('%Y-%m-%d %H:%M:%S', 'now') → TO_CHAR(CURRENT_TIMESTAMP, 'YYYY-MM-DD HH24:MI:SS')
-        s = re.sub(
-            r"strftime\s*\(\s*'%Y-%m-%d %H:%M:%S'\s*,\s*'now'\s*\)",
-            "TO_CHAR(CURRENT_TIMESTAMP, 'YYYY-MM-DD HH24:MI:SS')",
-            s,
-            flags=re.IGNORECASE,
-        )
-
-        # MAX(0, expr) → GREATEST(0, expr) — SQLite MAX is scalar with 2+ args,
-        # but PG MAX is aggregate-only. GREATEST works in PG.
-        s = re.sub(r'\bMAX\s*\(\s*0\s*,', 'GREATEST(0,', s, flags=re.IGNORECASE)
-
-        # CAST(... AS REAL) used with LIKE → CAST(... AS TEXT)
-        # PostgreSQL has no "real LIKE text" operator (error: operator does not exist: real ~~ unknown).
-        # SQLite coerces REAL→text for LIKE; we replicate by casting to TEXT instead.
-        s = re.sub(
-            r'CAST\s*\((.+?)\s+AS\s+REAL\)\s*(LIKE|NOT\s+LIKE)',
-            r'CAST(\1 AS TEXT) \2',
-            s,
-            flags=re.IGNORECASE,
-        )
-
-        # Quote reserved words (user → "user") + rowid → ctid
-        s = _quote_reserved_words(s)
-
-        # ? → %s
-        s = _replace_question_marks(s)
-        return s
-
-
-_TRANSLATOR = _SQLTranslator()
-
-
-# ──────────────────────────────────────────────────────────────────────
-# PostgreSQL connection wrapper
-# ──────────────────────────────────────────────────────────────────────
-
-class _PGCursor:
-    """psycopg2 cursor wrapper: додає RETURNING id для INSERT і lastrowid."""
-
-    def __init__(self, pg_cursor, translator: _SQLTranslator):
-        self._cur = pg_cursor
-        self._translator = translator
-        self._lastrowid: Optional[int] = None
-
-    @property
-    def lastrowid(self) -> Optional[int]:
-        return self._lastrowid
-
-    @property
-    def rowcount(self) -> int:
-        return self._cur.rowcount or 0
-
-    @property
-    def description(self):
-        return self._cur.description
-
-    def execute(self, sql: str, params: Tuple = ()):
-        translated = self._translator.translate(sql, pg_cursor=self._cur)
-        if translated is None:
-            # PRAGMA — skip. Повертаємо self для ланцюжків, без реального execute.
-            return self
-
-        upper = translated.lstrip().upper()
-        if upper.startswith("INSERT") and "RETURNING" not in upper:
-            # Додаємо RETURNING id через SAVEPOINT — якщо таблиця без колонки `id`,
-            # rollback до savepoint і retry без RETURNING (PG abortить транзакцію при помилці).
-            try:
-                self._cur.execute("SAVEPOINT sp_returning")
-                translated_with_returning = translated.rstrip().rstrip(";") + " RETURNING id"
-                self._cur.execute(translated_with_returning, params)
-                row = self._cur.fetchone()
-                if row and row[0] is not None:
-                    self._lastrowid = int(row[0])
-                self._cur.execute("RELEASE SAVEPOINT sp_returning")
-            except Exception:
-                # ROLLBACK TO SAVEPOINT відновлює транзакцію з попереднього стану
+        # ── PRAGMA emulation for PG ──
+        if s_raw.upper().startswith("PRAGMA"):
+            m = re.match(
+                r'PRAGMA\s+table_info\s*\(\s*["\']?(\w+)["\']?\s*\)',
+                s_raw, re.IGNORECASE
+            )
+            if m:
+                tbl = m.group(1)
                 try:
-                    self._cur.execute("ROLLBACK TO SAVEPOINT sp_returning")
-                    self._cur.execute("RELEASE SAVEPOINT sp_returning")
+                    self._cur.execute(
+                        """
+                        SELECT
+                            (c.ordinal_position - 1)::int AS cid,
+                            c.column_name AS name,
+                            c.data_type AS type,
+                            CASE WHEN c.is_nullable = 'NO' THEN 1 ELSE 0 END AS notnull,
+                            c.column_default AS dflt_value,
+                            CASE WHEN pk.column_name IS NOT NULL THEN 1 ELSE 0 END AS pk
+                        FROM information_schema.columns c
+                        LEFT JOIN (
+                            SELECT kcu.column_name
+                            FROM information_schema.table_constraints tc
+                            JOIN information_schema.key_column_usage kcu
+                              ON tc.constraint_name = kcu.constraint_name
+                             AND tc.table_schema = kcu.table_schema
+                            WHERE tc.table_name = %s
+                              AND tc.constraint_type = 'PRIMARY KEY'
+                        ) pk ON pk.column_name = c.column_name
+                        WHERE c.table_name = %s
+                        ORDER BY c.ordinal_position
+                        """,
+                        (tbl, tbl)
+                    )
                 except Exception:
-                    pass
-                self._cur.execute(translated, params)
-                self._lastrowid = None
-        else:
-            self._cur.execute(translated, params)
-        return self
+                    self._cur.execute("SELECT 1 WHERE FALSE")
+                return self._cur
+            # Other PRAGMAs — return empty result so fetchall() doesn't crash
+            self._cur.execute("SELECT 1 WHERE FALSE")
+            return self._cur
 
-    def executemany(self, sql: str, seq):
-        translated = self._translator.translate(sql, pg_cursor=self._cur)
-        if translated is None:
-            return self
-        self._cur.executemany(translated, seq)
-        return self
+        adapted = _adapt_sql(sql)
+        if adapted is None:
+            self._cur.execute("SELECT 1 WHERE FALSE")
+            return self._cur
 
-    def fetchone(self):
-        return self._cur.fetchone()
+        # For INSERTs without RETURNING, add RETURNING id only if table has id column
+        a_upper = adapted.strip().upper()
+        if a_upper.startswith("INSERT") and "RETURNING" not in a_upper:
+            m = re.match(r'INSERT\s+INTO\s+["\']?(\w+)', adapted, re.IGNORECASE)
+            if m and self._has_id_column(m.group(1)):
+                adapted = adapted.rstrip(";").rstrip() + " RETURNING id"
+
+        self._cur.execute(adapted, params)
+
+        # Capture lastrowid from RETURNING
+        if "RETURNING ID" in adapted.upper():
+            try:
+                row = self._cur.fetchone()
+                if row:
+                    self.lastrowid = row[0]
+            except Exception:
+                pass
+
+        return self._cur
 
     def fetchall(self):
         return self._cur.fetchall()
 
-    def fetchmany(self, size=None):
-        if size is None:
-            return self._cur.fetchmany()
-        return self._cur.fetchmany(size)
-
-    def close(self):
-        self._cur.close()
-
-
-class _PGConnection:
-    """psycopg2 connection wrapper з SQLite-сумісним API."""
-
-    def __init__(self, dsn: str):
-        import psycopg2  # local import: дозволяє працювати без psycopg2 коли SQLite-only
-        self._pg = psycopg2.connect(dsn)
-        self._pg.autocommit = False
-        # Завантажуємо PK для поточних таблиць (якщо такі вже є).
-        try:
-            with self._pg.cursor() as c:
-                _TRANSLATOR.load_pk_cache(c)
-        except Exception as e:
-            logger.warning(f"db_compat: initial PK load failed: {e}")
-
-    def cursor(self):
-        return _PGCursor(self._pg.cursor(), _TRANSLATOR)
-
-    def execute(self, sql: str, params: Tuple = ()):
-        cur = self.cursor()
-        cur.execute(sql, params)
-        return cur
-
-    def commit(self):
-        self._pg.commit()
-
-    def rollback(self):
-        self._pg.rollback()
-
-    def close(self):
-        self._pg.close()
-
-    @property
-    def backend(self) -> str:
-        return "postgres"
-
-
-# ──────────────────────────────────────────────────────────────────────
-# SQLite fallback wrapper (щоб API повністю збігався)
-# ──────────────────────────────────────────────────────────────────────
-
-class _SQLiteCursor:
-    def __init__(self, cursor):
-        self._cur = cursor
-
-    @property
-    def lastrowid(self):
-        return self._cur.lastrowid
+    def fetchone(self):
+        return self._cur.fetchone()
 
     @property
     def rowcount(self):
         return self._cur.rowcount
 
-    @property
-    def description(self):
-        return self._cur.description
-
-    def execute(self, sql, params=()):
-        self._cur.execute(sql, params)
-        return self
-
-    def executemany(self, sql, seq):
-        self._cur.executemany(sql, seq)
-        return self
-
-    def fetchone(self):
-        return self._cur.fetchone()
-
-    def fetchall(self):
-        return self._cur.fetchall()
-
-    def fetchmany(self, size=None):
-        if size is None:
-            return self._cur.fetchmany()
-        return self._cur.fetchmany(size)
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
 
     def close(self):
-        self._cur.close()
+        return self._cur.close()
 
 
-class _SQLiteConnection:
-    def __init__(self, db_path: str):
-        import sqlite3 as _sqlite3
-        self._conn = _sqlite3.connect(db_path, check_same_thread=False)
-        try:
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA synchronous=FULL")
-            self._conn.commit()
-        except Exception as e:
-            logger.warning(f"db_compat: PRAGMA setup failed: {e}")
-        self._sqlite3 = _sqlite3  # for backup() / sqlite3-specific calls
+class PgConnectionWrapper:
+    """Wraps psycopg2 connection to provide SQLite-compatible interface."""
+
+    def __init__(self, pg_conn):
+        self._conn = pg_conn
 
     def cursor(self):
-        return _SQLiteCursor(self._conn.cursor())
+        return PgCursorWrapper(self._conn.cursor())
 
     def execute(self, sql, params=()):
-        cur = self.cursor()
-        cur.execute(sql, params)
+        """Direct execute on connection (used for PRAGMA etc)."""
+        adapted = _adapt_sql(sql)
+        if adapted is None:
+            return self._conn.cursor()
+        cur = self._conn.cursor()
+        cur.execute(adapted, params)
         return cur
 
     def commit(self):
-        self._conn.commit()
-
-    def rollback(self):
-        self._conn.rollback()
+        return self._conn.commit()
 
     def close(self):
-        self._conn.close()
+        return self._conn.close()
 
-    @property
-    def backend(self) -> str:
-        return "sqlite"
-
-    # Проксування sqlite3-специфічних методів для беккапу
     def __getattr__(self, name):
         return getattr(self._conn, name)
 
 
-# ──────────────────────────────────────────────────────────────────────
-# Public API
-# ──────────────────────────────────────────────────────────────────────
-
-def connect(db_path: Optional[str] = None):
-    """Головна точка входу. Повертає SQLite- або PostgreSQL-сумісний connection.
-
-    Якщо заданий DATABASE_URL → PostgreSQL (параметр db_path ігнорується).
-    Інакше → SQLite, db_path за замовчуванням = bot.db поруч зі скриптом.
+def get_connection():
     """
-    backend = _detect_backend()
-    if backend == "postgres":
-        dsn = os.environ.get("DATABASE_URL", "")
-        if not dsn:
-            raise RuntimeError("DATABASE_URL is set to empty")
-        logger.info("db_compat: using PostgreSQL backend")
-        return _PGConnection(dsn)
+    Create database connection based on environment.
+    Returns (connection, db_type) where db_type is 'sqlite' or 'postgres'.
+    """
+    if USE_POSTGRES:
+        import psycopg2
+        logging.info("db_compat: using PostgreSQL backend")
+        pg_conn = psycopg2.connect(DATABASE_URL)
+        pg_conn.autocommit = False
+        wrapper = PgConnectionWrapper(pg_conn)
+        return wrapper, 'postgres'
     else:
-        if not db_path:
-            try:
-                here = os.path.dirname(os.path.abspath(__file__))
-            except NameError:
-                here = os.getcwd()
-            db_path = os.path.join(here, "bot.db")
-        logger.info(f"db_compat: using SQLite backend at {db_path}")
-        return _SQLiteConnection(db_path)
+        import sqlite3
+        _data_dir = os.environ.get("DATA_DIR", "")
+        if _data_dir:
+            os.makedirs(_data_dir, exist_ok=True)
+            DB_PATH = os.path.join(_data_dir, "bot.db")
+        else:
+            DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.db")
+        logging.info(f"db_compat: using SQLite backend ({DB_PATH})")
+        sqlite_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        sqlite_conn.execute("PRAGMA journal_mode=WAL")
+        sqlite_conn.execute("PRAGMA synchronous=FULL")
+        sqlite_conn.commit()
+        return sqlite_conn, 'sqlite'
 
 
-def get_backend() -> str:
-    """Повертає поточний бекенд ('postgres' або 'sqlite') — корисно для беккапу."""
-    return _detect_backend()
+def get_table_columns(connection, table_name):
+    """
+    Get list of column names for a table.
+    Works with both SQLite (PRAGMA) and PostgreSQL (information_schema).
+    """
+    if USE_POSTGRES:
+        cur = connection.cursor()
+        cur.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = %s ORDER BY ordinal_position",
+            (table_name,)
+        )
+        return [r[0] for r in cur.fetchall()]
+    else:
+        cur = connection.cursor()
+        cur.execute(f"PRAGMA table_info({table_name})")
+        return [r[1] for r in cur.fetchall()]
 
 
-def is_sqlite(conn) -> bool:
-    return isinstance(conn, _SQLiteConnection)
-
-
-def is_postgres(conn) -> bool:
-    return isinstance(conn, _PGConnection)
+def table_exists(connection, table_name):
+    """Check if a table exists."""
+    if USE_POSTGRES:
+        cur = connection.cursor()
+        cur.execute(
+            "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = %s)",
+            (table_name,)
+        )
+        return cur.fetchone()[0]
+    else:
+        cur = connection.cursor()
+        cur.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+        return cur.fetchone() is not None
