@@ -2651,7 +2651,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 amount_uah = amount / 100.0
                 logging.info(f"Monobank webhook: tx={tx_id} amount={amount_uah:.2f} UAH")
                 pending = db_query(
-                    "SELECT id, pack, player_id, chat_id FROM orders WHERE status='pending' AND CAST(amount AS REAL) LIKE ?",
+                    "SELECT id, pack, player_id, chat_id FROM orders WHERE status='pending' AND amount::text LIKE ?",
                     (f"%{amount_uah:.0f}%",)
                 )
                 if not pending:
