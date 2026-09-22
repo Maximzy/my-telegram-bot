@@ -1,9 +1,11 @@
 import sqlite3, uuid, logging, threading, os, re, json, urllib.request, urllib.parse, random, asyncio, time, collections, secrets, hmac as _hmac_mod, hashlib as _hashlib_mod
-import db_compat
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, KeyboardButton, LabeledPrice
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters, PreCheckoutQueryHandler
+
+# ── Database compatibility layer (SQLite + PostgreSQL) ──
+from db_compat import get_connection, get_table_columns, table_exists, USE_POSTGRES, _adapt_sql
 
 # ── Payment service: Monobank verification + FazerCards auto-delivery ──
 import payment_service
@@ -20,7 +22,6 @@ from payment_service import (
 
 # --- НАЛАШТУВАННЯ ---
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-# Strip accidental "TELEGRAM_BOT_TOKEN " prefix if user pasted the var name too
 if TOKEN.upper().startswith("TELEGRAM_BOT_TOKEN"):
     TOKEN = TOKEN[len("TELEGRAM_BOT_TOKEN"):].strip()
 if not TOKEN:
@@ -35,7 +36,6 @@ MY_ID = int(os.environ.get("OWNER_ID", "1440236609"))
 SHOP_TAG = os.environ.get("SHOP_TAG", "@NezukoUCShop")
 STARS_RATE_DEFAULT = float(os.environ.get("STARS_RATE", "0.81"))
 STARS_RATE = STARS_RATE_DEFAULT
-TEST_NO_POINTS_DEDUCT = os.environ.get("TEST_NO_POINTS_DEDUCT", "").strip() in ("1", "true", "TRUE", "True")
 PREMIUM_PACKS_BASE = [
     {"id": "prem_3m",  "label": "Telegram Premium 3 міс",  "price": 530},
     {"id": "prem_6m",  "label": "Telegram Premium 6 міс",  "price": 700},
@@ -100,20 +100,17 @@ def get_premium_packs() -> list:
 
 logging.basicConfig(level=logging.INFO)
 
-# Если задана DATA_DIR (например, Railway Volume /data), база хранится там
-_data_dir = os.environ.get("DATA_DIR", "")
-if _data_dir:
-    os.makedirs(_data_dir, exist_ok=True)
-    DB_PATH = os.path.join(_data_dir, "bot.db")
-else:
-    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.db")
-conn = db_compat.connect(DB_PATH)
+# --- DATABASE CONNECTION (SQLite or PostgreSQL via DATABASE_URL) ---
+conn, DB_TYPE = get_connection()
 db_lock = threading.Lock()
-# PRAGMA виконує тільки SQLite-бекенд; на Postgres — skip'ається автоматично.
-if db_compat.is_sqlite(conn):
+
+if DB_TYPE == 'sqlite':
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=FULL")
     conn.commit()
+    DB_PATH = conn.execute("PRAGMA database_list").fetchone()[2] if hasattr(conn, 'execute') else "bot.db"
+else:
+    DB_PATH = "postgresql (DATABASE_URL)"
 
 def db_exec(sql, params=()):
     with db_lock:
@@ -178,7 +175,6 @@ def run_migrations(connection):
         c.execute("ALTER TABLE orders ADD COLUMN notified_admin INTEGER DEFAULT 0")
     if "payment_bank" not in _ord_cols:
         c.execute("ALTER TABLE orders ADD COLUMN payment_bank TEXT")
-    # ── Monobank + FazerCards integration columns ──
     if "monobank_tx_id" not in _ord_cols:
         c.execute("ALTER TABLE orders ADD COLUMN monobank_tx_id TEXT")
     if "fazercards_order_id" not in _ord_cols:
@@ -234,14 +230,8 @@ RISE_PACKS = {
     "⭐️ Набір Підйом 3 (300 UC + 79 міні емблем) - 199 грн": 199,
 }
 TG_GIFTS = {
-    "🐣 Пасхальний": 50,
-    "🎉 1 Квітня": 50,
-    "🍀 Патрика": 50,
-    "🌸 8 Березня": 50,
-    "❤️ Валентина": 50,
-    "💝 Серце Валентина": 50,
-    "🧸 Новорічний": 50,
-    "🎄 Ялинка Новорічна": 50,
+    "🐣 Пасхальний": 50, "🎉 1 Квітня": 50, "🍀 Патрика": 50, "🌸 8 Березня": 50,
+    "❤️ Валентина": 50, "💝 Серце Валентина": 50, "🧸 Новорічний": 50, "🎄 Ялинка Новорічна": 50,
 }
 ALL_PACKS = {**PACKS, **PRIME_PACKS, **PRIME_PLUS_PACKS, **RISE_PACKS, **TG_GIFTS}
 SMALL_UC = set(list(PACKS.keys())[:6])
@@ -271,37 +261,37 @@ BONUS_TYPES = {
 
 # --- ДОСЯГНЕННЯ ---
 ACHIEVEMENTS = {
-    "novice":       {"emoji":"🟢","name":"Новачок",             "desc":"Ти зробив перший крок у світ UC 😄",                  "hint":"Зробити першу покупку.",                      "manual":0},
-    "regular":      {"emoji":"🔥","name":"Постійник",            "desc":"Ти вже своя людина в шопі.",                          "hint":"Зробити 5 покупок.",                          "manual":0},
-    "vip":          {"emoji":"👑","name":"VIP Клієнт",           "desc":"Ти занадто часто тут з'являєшся 😄",                 "hint":"Зробити 15 покупок.",                         "manual":0},
-    "whale":        {"emoji":"🐋","name":"Кит",                  "desc":"Nezuko тебе любить.",                                 "hint":"Витратити 1000 грн в боті.",                  "manual":0},
-    "night_owl":    {"emoji":"🌙","name":"Нічний житель",        "desc":"Справжні донатери не сплять вночі.",                 "hint":"Зробити замовлення після 00:00 до 06:00.",    "manual":0},
-    "early_bird":   {"emoji":"☀️","name":"Ранній гравець",       "desc":"Поки всі сплять — ти вже фармиш UC.",                "hint":"Зробити покупку о 07:00–08:00.",              "manual":0},
-    "lucky":        {"emoji":"🎰","name":"Улюбленець удачі",     "desc":"Колесо фортуни сьогодні було на твоєму боці.",       "hint":"Вибити рідкісний приз із колеса.",            "manual":0},
-    "unlucky":      {"emoji":"💀","name":"Невдаха",              "desc":"Іноді удача йде у відпустку…",                       "hint":"3 рази підряд програти в колесі.",            "manual":0},
-    "bonus_hunter": {"emoji":"🎁","name":"Мисливець за бонусами","desc":"Ти не пропускаєш жодного бонусу.",                  "hint":"Активувати 5 промокодів.",                    "manual":0},
-    "secret_seeker":{"emoji":"🕵️","name":"Шукач секретів",      "desc":"Ти вмієш знаходити те, чого інші не бачать.",        "hint":"Знайти прихований промокод.",                 "manual":0},
-    "recruiter":    {"emoji":"📢","name":"Рекламщик",            "desc":"Ти приводиш нових людей у шоп.",                     "hint":"Запросити 10 друзів.",                        "manual":0},
-    "magnet":       {"emoji":"🧲","name":"Магніт для людей",     "desc":"Люди приходять за твоїм посиланням знову і знову.",  "hint":"Запросити 20 друзів.",                        "manual":0},
-    "loyal":        {"emoji":"🧡","name":"Вірний клієнт",        "desc":"Ти залишаєшся з шопом довгий час.",                  "hint":"Бути зареєстрованим більше місяця.",          "manual":0},
-    "daily7":       {"emoji":"📆","name":"Щоденний",             "desc":"Ти майже живеш у боті 😄",                           "hint":"Заходити 7 днів підряд.",                     "manual":0},
-    "flash":        {"emoji":"⚡","name":"Швидкий як флешка",    "desc":"Ти оформлюєш замовлення швидше за всіх.",            "hint":"Зробити покупку одразу після входу в міні апп.","manual":0},
-    "legend":       {"emoji":"🏆","name":"Легенда шопу",         "desc":"Тебе вже знають усі.",                               "hint":"Отримати Топ 1 в таблиці лідерів.",           "manual":0},
-    "pubg_fan":     {"emoji":"🎮","name":"PUBG Fan",             "desc":"UC Shop від Nezuko вже частина твого життя.",         "hint":"Зробити 3 замовлення UC.",                    "manual":0},
-    "uc_addict":    {"emoji":"🔥","name":"UC Залежний",          "desc":"Схоже, без UC ти вже не можеш 😄",                   "hint":"Купити UC 5 разів за один день.",             "manual":0},
-    "precise":      {"emoji":"🎯","name":"Точний постріл",       "desc":"Ти активуєш промокоди швидше за інших.",             "hint":"Встигнути використати лімітований промокод.", "manual":0},
-    "saver":        {"emoji":"🧠","name":"Хитрий",               "desc":"Ти вмієш економити.",                                "hint":"Використати 10 знижок.",                      "manual":0},
-    "gambler":      {"emoji":"🎲","name":"Азартний",             "desc":"Ти занадто любиш колесо фортуни.",                   "hint":"Прокрутити платне колесо 20 разів.",          "manual":0},
-    "jackpot":      {"emoji":"💎","name":"Джекпот",              "desc":"Найрідкісніша удача.",                               "hint":"Вибити найрідкісніший приз в колесі.",        "manual":0},
-    "rocket":       {"emoji":"🚀","name":"Ракета",               "desc":"Ти дуже швидко ростеш.",                             "hint":"Зробити 5 покупок за 1 годину.",              "manual":0},
-    "trusted":      {"emoji":"🛡️","name":"Довірений",           "desc":"Адміністрація тобі довіряє.",                        "hint":"Призначається адміном.",                      "manual":1},
-    "risky":        {"emoji":"😈","name":"Ризиковий",            "desc":"Ти любиш випробовувати удачу.",                      "hint":"Купити платне колесо 10 разів.",              "manual":0},
-    "old":          {"emoji":"❤️","name":"Олд",                 "desc":"Ти з шопом ще з давніх часів.",                      "hint":"Один із найперших користувачів.",             "manual":1},
-    "secret_ach":   {"emoji":"🔐","name":"Секретне досягнення",  "desc":"????",                                               "hint":"Приховано 😄",                                "manual":0},
-    "collector":    {"emoji":"📦","name":"Колекціонер",          "desc":"Ти зібрав безліч досягнень.",                        "hint":"Отримати 20 досягнень.",                      "manual":0},
-    "tester":       {"emoji":"🧪","name":"Тестер",               "desc":"Ти бачив функції раніше за інших.",                  "hint":"Призначається адміном.",                      "manual":1},
-    "danger":       {"emoji":"☢️","name":"Небезпечний донатер", "desc":"Твій баланс лякає оточуючих 😄",                    "hint":"Витратити 10000 грн у боті.",                 "manual":0},
-    "partner":      {"emoji":"🌐","name":"Партнер",              "desc":"Ти дуже допоміг власнику магазина.",                 "hint":"Призначається адміном.",                      "manual":1},
+    "novice":       {"emoji":"🟢","name":"Новачок","desc":"Ти зробив перший крок у світ UC 😄","hint":"Зробити першу покупку.","manual":0},
+    "regular":      {"emoji":"🔥","name":"Постійник","desc":"Ти вже своя людина в шопі.","hint":"Зробити 5 покупок.","manual":0},
+    "vip":          {"emoji":"👑","name":"VIP Клієнт","desc":"Ти занадто часто тут з'являєшся 😄","hint":"Зробити 15 покупок.","manual":0},
+    "whale":        {"emoji":"🐋","name":"Кит","desc":"Nezuko тебе любить.","hint":"Витратити 1000 грн в боті.","manual":0},
+    "night_owl":    {"emoji":"🌙","name":"Нічний житель","desc":"Справжні донатери не сплять вночі.","hint":"Зробити замовлення після 00:00 до 06:00.","manual":0},
+    "early_bird":   {"emoji":"☀️","name":"Ранній гравець","desc":"Поки всі сплять — ти вже фармиш UC.","hint":"Зробити покупку о 07:00–08:00.","manual":0},
+    "lucky":        {"emoji":"🎰","name":"Улюбленець удачі","desc":"Колесо фортуни сьогодні було на твоєму боці.","hint":"Вибити рідкісний приз із колеса.","manual":0},
+    "unlucky":      {"emoji":"💀","name":"Невдаха","desc":"Іноді удача йде у відпустку…","hint":"3 рази підряд програти в колесі.","manual":0},
+    "bonus_hunter": {"emoji":"🎁","name":"Мисливець за бонусами","desc":"Ти не пропускаєш жодного бонусу.","hint":"Активувати 5 промокодів.","manual":0},
+    "secret_seeker":{"emoji":"🕵️","name":"Шукач секретів","desc":"Ти вмієш знаходити те, чого інші не бачать.","hint":"Знайти прихований промокод.","manual":0},
+    "recruiter":    {"emoji":"📢","name":"Рекламщик","desc":"Ти приводиш нових людей у шоп.","hint":"Запросити 10 друзів.","manual":0},
+    "magnet":       {"emoji":"🧲","name":"Магніт для людей","desc":"Люди приходять за твоїм посиланням знову і знову.","hint":"Запросити 20 друзів.","manual":0},
+    "loyal":        {"emoji":"🧡","name":"Вірний клієнт","desc":"Ти залишаєшся з шопом довгий час.","hint":"Бути зареєстрованим більше місяця.","manual":0},
+    "daily7":       {"emoji":"📆","name":"Щоденний","desc":"Ти майже живеш у боті 😄","hint":"Заходити 7 днів підряд.","manual":0},
+    "flash":        {"emoji":"⚡","name":"Швидкий як флешка","desc":"Ти оформлюєш замовлення швидше за всіх.","hint":"Зробити покупку одразу після входу в міні апп.","manual":0},
+    "legend":       {"emoji":"🏆","name":"Легенда шопу","desc":"Тебе вже знають усі.","hint":"Отримати Топ 1 в таблиці лідерів.","manual":0},
+    "pubg_fan":     {"emoji":"🎮","name":"PUBG Fan","desc":"UC Shop від Nezuko вже частина твого життя.","hint":"Зробити 3 замовлення UC.","manual":0},
+    "uc_addict":    {"emoji":"🔥","name":"UC Залежний","desc":"Схоже, без UC ти вже не можеш 😄","hint":"Купити UC 5 разів за один день.","manual":0},
+    "precise":      {"emoji":"🎯","name":"Точний постріл","desc":"Ти активуєш промокоди швидше за інших.","hint":"Встигнути використати лімітований промокод.","manual":0},
+    "saver":        {"emoji":"🧠","name":"Хитрий","desc":"Ти вмієш економити.","hint":"Використати 10 знижок.","manual":0},
+    "gambler":      {"emoji":"🎲","name":"Азартний","desc":"Ти занадто любиш колесо фортуни.","hint":"Прокрутити платне колесо 20 разів.","manual":0},
+    "jackpot":      {"emoji":"💎","name":"Джекпот","desc":"Найрідкісніша удача.","hint":"Вибити найрідкісніший приз в колесі.","manual":0},
+    "rocket":       {"emoji":"🚀","name":"Ракета","desc":"Ти дуже швидко ростеш.","hint":"Зробити 5 покупок за 1 годину.","manual":0},
+    "trusted":      {"emoji":"🛡️","name":"Довірений","desc":"Адміністрація тобі довіряє.","hint":"Призначається адміном.","manual":1},
+    "risky":        {"emoji":"😈","name":"Ризиковий","desc":"Ти любиш випробовувати удачу.","hint":"Купити платне колесо 10 разів.","manual":0},
+    "old":          {"emoji":"❤️","name":"Олд","desc":"Ти з шопом ще з давніх часів.","hint":"Один із найперших користувачів.","manual":1},
+    "secret_ach":   {"emoji":"🔐","name":"Секретне досягнення","desc":"????","hint":"Приховано 😄","manual":0},
+    "collector":    {"emoji":"📦","name":"Колекціонер","desc":"Ти зібрав безліч досягнень.","hint":"Отримати 20 досягнень.","manual":0},
+    "tester":       {"emoji":"🧪","name":"Тестер","desc":"Ти бачив функції раніше за інших.","hint":"Призначається адміном.","manual":1},
+    "danger":       {"emoji":"☢️","name":"Небезпечний донатер","desc":"Твій баланс лякає оточуючих 😄","hint":"Витратити 10000 грн у боті.","manual":0},
+    "partner":      {"emoji":"🌐","name":"Партнер","desc":"Ти дуже допоміг власнику магазина.","hint":"Призначається адміном.","manual":1},
 }
 
 SPEND_BADGES = [
@@ -319,16 +309,15 @@ def get_spend_badge(total_spent):
     return None
 
 POINTS_SHOP = [
-    {"id":"uc30",       "name":"🎁 30 UC безкоштовно",      "cost":400,  "bonus_type":"free_uc_30"},
-    {"id":"uc60",       "name":"🎁 60 UC безкоштовно",      "cost":800,  "bonus_type":"free_uc_60"},
-    {"id":"disc_s1",    "name":"Знижка 1% (малі паки)",     "cost":150,  "bonus_type":"discount_small_1"},
-    {"id":"disc_s2",    "name":"Знижка 2% (малі паки)",     "cost":300,  "bonus_type":"discount_small_2"},
-    {"id":"disc_m1",    "name":"Знижка 1% (середні паки)",  "cost":220,  "bonus_type":"discount_medium_1"},
-    {"id":"disc_m2",    "name":"Знижка 2% (середні паки)",  "cost":440,  "bonus_type":"discount_medium_2"},
-    {"id":"extra_spin", "name":"Повторний прокрут рулетки", "cost":100,  "bonus_type":"extra_spin"},
+    {"id":"uc30",       "name":"🎁 30 UC безкоштовно","cost":400,  "bonus_type":"free_uc_30"},
+    {"id":"uc60",       "name":"🎁 60 UC безкоштовно","cost":800,  "bonus_type":"free_uc_60"},
+    {"id":"disc_s1",    "name":"Знижка 1% (малі паки)","cost":150,  "bonus_type":"discount_small_1"},
+    {"id":"disc_s2",    "name":"Знижка 2% (малі паки)","cost":300,  "bonus_type":"discount_small_2"},
+    {"id":"disc_m1",    "name":"Знижка 1% (середні паки)","cost":220,  "bonus_type":"discount_medium_1"},
+    {"id":"disc_m2",    "name":"Знижка 2% (середні паки)","cost":440,  "bonus_type":"discount_medium_2"},
+    {"id":"extra_spin", "name":"Повторний прокрут рулетки","cost":100,  "bonus_type":"extra_spin"},
 ]
 
-# --- ПАКЕТИ ЗІРОК (Telegram Stars → бали) ---
 STARS_PACKAGES = [
     {"id": "stars_50",  "stars": 50,  "points": 500,  "label": "50 ⭐ → 500 балів"},
     {"id": "stars_100", "stars": 100, "points": 1100, "label": "100 ⭐ → 1100 балів (+10%)"},
@@ -337,21 +326,20 @@ STARS_PACKAGES = [
 ]
 
 FREE_WHEEL_PRIZES = [
-    {"id":"nothing", "name":"Нічого",      "weight":80, "type":"nothing",              "value":0,   "rarity":"common"},
-    {"id":"disc12",  "name":"Знижка 1-2%", "weight":10, "type":"random_discount_small","value":0,   "rarity":"rare"},
-    {"id":"pts50",   "name":"50 балів",    "weight":5,  "type":"points",               "value":50,  "rarity":"rare"},
-    {"id":"pts100",  "name":"100 балів",   "weight":4,  "type":"points",               "value":100, "rarity":"epic"},
-    {"id":"pts200",  "name":"200 балів",   "weight":1,  "type":"points",               "value":200, "rarity":"legendary"},
+    {"id":"nothing", "name":"Нічого","weight":80, "type":"nothing","value":0,   "rarity":"common"},
+    {"id":"disc12",  "name":"Знижка 1-2%","weight":10, "type":"random_discount_small","value":0,   "rarity":"rare"},
+    {"id":"pts50",   "name":"50 балів","weight":5,  "type":"points","value":50,  "rarity":"rare"},
+    {"id":"pts100",  "name":"100 балів","weight":4,  "type":"points","value":100, "rarity":"epic"},
+    {"id":"pts200",  "name":"200 балів","weight":1,  "type":"points","value":200, "rarity":"legendary"},
 ]
 
 PAID_WHEEL_PRIZES = [
-    {"id":"nothing", "name":"Нічого",   "weight":25, "type":"nothing",    "value":0,   "rarity":"common"},
-    {"id":"uc30",    "name":"30 UC",    "weight":25, "type":"free_uc_30", "value":30,  "rarity":"rare"},
-    {"id":"uc60",    "name":"60 UC",    "weight":25, "type":"free_uc_60", "value":60,  "rarity":"epic"},
-    {"id":"pts500",  "name":"500 балів","weight":25, "type":"points",     "value":500, "rarity":"legendary"},
+    {"id":"nothing", "name":"Нічого","weight":25, "type":"nothing","value":0,   "rarity":"common"},
+    {"id":"uc30",    "name":"30 UC","weight":25, "type":"free_uc_30","value":30,  "rarity":"rare"},
+    {"id":"uc60",    "name":"60 UC","weight":25, "type":"free_uc_60","value":60,  "rarity":"epic"},
+    {"id":"pts500",  "name":"500 балів","weight":25, "type":"points","value":500, "rarity":"legendary"},
 ]
 
-# --- КЛАВІАТУРИ ---
 MAIN_KB = [
     ["🛍 Магазин"],
     ["🏆 Топ донатерів", "🏅 Досягнення"],
@@ -376,7 +364,6 @@ def get_main_kb(uid):
         extras.append("🎁 30 UC Free")
     if extras:
         kb = [extras] + kb
-    # Додаємо кнопку Mini App якщо домен відомий
     _domain = (
         os.getenv("BOT_DOMAIN") or
         os.getenv("REPLIT_DEV_DOMAIN") or
@@ -404,55 +391,45 @@ ADMIN_KB = [
 user_states = {}
 admin_last_seen = 0.0
 
-# ── RATE LIMITING & BRUTE-FORCE PROTECTION ────────────────────────────────────
 _rl_lock = threading.Lock()
-_rl_buckets: dict = collections.defaultdict(list)          # key -> [timestamps]
-_rl_admin_fails: dict = collections.defaultdict(list)      # ip  -> [timestamps]
-_rl_admin_lockout: dict = {}                               # ip  -> lockout_until
-MAX_POST_BYTES = 512 * 1024  # 512 KB hard limit per request
+_rl_buckets: dict = collections.defaultdict(list)
+_rl_admin_fails: dict = collections.defaultdict(list)
+_rl_admin_lockout: dict = {}
+MAX_POST_BYTES = 512 * 1024
 
-# Brute-force protection for Telegram admin password
-_tg_admin_fails: dict = collections.defaultdict(list)     # uid -> [timestamps]
-_tg_admin_lockout: dict = {}                              # uid -> lockout_until
-TG_ADMIN_MAX_FAILS = 3       # max wrong attempts
-TG_ADMIN_LOCKOUT_SEC = 1800  # 30 min lockout after max fails
+_tg_admin_fails: dict = collections.defaultdict(list)
+_tg_admin_lockout: dict = {}
+TG_ADMIN_MAX_FAILS = 3
+TG_ADMIN_LOCKOUT_SEC = 1800
 
-# 2FA OTP storage: uid -> {code, expires_at}
 _admin_otp: dict = {}
-ADMIN_OTP_TTL = 300  # 5 minutes
+ADMIN_OTP_TTL = 300
 
-# Admin session activity tracker: uid -> last_activity timestamp
 _admin_last_activity: dict = {}
-ADMIN_SESSION_TTL = 1800  # 30 min inactivity = auto logout
+ADMIN_SESSION_TTL = 1800
 
-# Init-data-based admin sessions: token -> (user_id, expires_at)
 _admin_sessions: dict = {}
-ADMIN_INITDATA_SESSION_TTL = 8 * 3600  # 8 hours
+ADMIN_INITDATA_SESSION_TTL = 8 * 3600
 
-# Fake payment abuse tracker: uid -> [timestamps]
 _fake_pay_attempts: dict = collections.defaultdict(list)
 FAKE_PAY_MAX = 3
-FAKE_PAY_WINDOW = 3600  # within 1 hour
+FAKE_PAY_WINDOW = 3600
 
 def _generate_otp() -> str:
     return str(secrets.randbelow(900000) + 100000)
 
 def _admin_touch(uid: int):
-    """Update admin session activity timestamp."""
     _admin_last_activity[uid] = time.time()
 
 def _admin_session_valid(uid: int) -> bool:
-    """Return True if admin session is still active (not expired)."""
     last = _admin_last_activity.get(uid, 0)
     return (time.time() - last) < ADMIN_SESSION_TTL
 
 def _admin_logout(uid: int):
-    """Expire admin session."""
     _admin_last_activity.pop(uid, None)
     _admin_otp.pop(uid, None)
 
 def log_admin_action(admin_id: int, action: str, detail: str = ""):
-    """Log admin action to DB."""
     try:
         db_exec("INSERT INTO admin_action_log (admin_id, action, detail, ts) VALUES (?,?,?,?)",
                 (admin_id, action[:128], detail[:512], created_at_now()))
@@ -460,7 +437,6 @@ def log_admin_action(admin_id: int, action: str, detail: str = ""):
         pass
 
 def _check_fake_pay(uid: int) -> bool:
-    """Track fake payment attempts. Returns True if user should be autobanned."""
     now = time.time()
     attempts = _fake_pay_attempts[uid]
     attempts[:] = [t for t in attempts if now - t < FAKE_PAY_WINDOW]
@@ -468,13 +444,10 @@ def _check_fake_pay(uid: int) -> bool:
     return len(attempts) >= FAKE_PAY_MAX
 
 def _check_suspicious_player_id(player_id: str, current_uid: int) -> bool:
-    """Return True if player_id was used by 3+ different Telegram accounts."""
     rows = db_query("SELECT DISTINCT chat_id FROM orders WHERE player_id=? AND chat_id != ?", (player_id, current_uid))
-    return len(rows) >= 2  # 2 others + current = 3+ total
+    return len(rows) >= 2
 
 def _tg_admin_check(uid: int, password: str) -> tuple:
-    """Telegram admin password check with brute-force lockout.
-    Returns (ok: bool, error: str)."""
     now = time.time()
     with _rl_lock:
         if uid in _tg_admin_lockout and now < _tg_admin_lockout[uid]:
@@ -502,7 +475,6 @@ def _tg_admin_check(uid: int, password: str) -> tuple:
     return True, ""
 
 def _rl_allow(key: str, max_calls: int, window_sec: int) -> bool:
-    """Sliding-window rate limiter. Returns True if request is allowed."""
     now = time.time()
     with _rl_lock:
         bucket = _rl_buckets[key]
@@ -513,14 +485,9 @@ def _rl_allow(key: str, max_calls: int, window_sec: int) -> bool:
         return True
 
 def _rl_admin_check(ip: str, password: str) -> tuple:
-    """Admin password check: accepts raw ADMIN_PASSWORD or a valid session token.
-    No IP-based lockout — the password/token is the security mechanism.
-    Returns (ok: bool, error: str)."""
     pwd = str(password)
-    # Accept raw admin password
     if _hmac_mod.compare_digest(pwd, ADMIN_PASSWORD):
         return True, ""
-    # Accept valid init-data session token
     session = _admin_sessions.get(pwd)
     if session:
         s_uid, s_exp = session
@@ -532,17 +499,15 @@ def _rl_admin_check(ip: str, password: str) -> tuple:
     return False, "Невірний пароль."
 
 def _get_client_ip(handler) -> str:
-    """Extract real client IP, considering proxy headers."""
     xff = handler.headers.get("X-Forwarded-For", "")
     if xff:
         return xff.split(",")[0].strip()
     return handler.client_address[0] if handler.client_address else "unknown"
 
-_ip_blacklist: dict = {}   # ip -> blacklisted_until timestamp
+_ip_blacklist: dict = {}
 _ip_violation_count: dict = collections.defaultdict(int)
 
 def _sec_log(ip: str, path: str, event: str, detail: str = ""):
-    """Log a security event to DB and stderr."""
     try:
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         db_exec("INSERT INTO security_log (ts, ip, path, event, detail) VALUES (?,?,?,?,?)",
@@ -552,34 +517,29 @@ def _sec_log(ip: str, path: str, event: str, detail: str = ""):
     logging.warning(f"[SECURITY] {event} | ip={ip} path={path} | {detail}")
 
 def _ip_is_blocked(ip: str) -> bool:
-    """Return True if IP is currently blacklisted."""
     until = _ip_blacklist.get(ip, 0)
     return time.time() < until
 
 def _ip_violation(ip: str, path: str, reason: str):
-    """Record a violation; auto-blacklist after 20 violations in 10 min."""
     with _rl_lock:
         _ip_violation_count[ip] += 1
         count = _ip_violation_count[ip]
     _sec_log(ip, path, "VIOLATION", f"#{count} — {reason}")
     if count >= 20:
         with _rl_lock:
-            _ip_blacklist[ip] = time.time() + 3600  # 1-hour block
+            _ip_blacklist[ip] = time.time() + 3600
             _ip_violation_count[ip] = 0
         _sec_log(ip, path, "IP_BLACKLISTED", f"Auto-blacklisted after {count} violations")
 
 _CTRL_CHARS_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
 
 def _sanitize(text: str, max_len: int = 500) -> str:
-    """Strip control characters and trim to max length."""
     return _CTRL_CHARS_RE.sub("", str(text))[:max_len]
 
 def _valid_player_id(pid: str) -> bool:
-    """PUBG Mobile player IDs are 5–16 digit numbers."""
     return bool(re.fullmatch(r'\d{5,16}', pid.strip()))
 
 def _rl_cleanup_worker():
-    """Periodically purge stale entries from rate-limit buckets to prevent memory leaks."""
     while True:
         time.sleep(600)
         cutoff = time.time() - 3600
@@ -613,10 +573,7 @@ def _load_miniapp_html():
     except Exception:
         return "<h1>Mini App не знайдено</h1>"
 
-_ALLOWED_ORIGINS = {
-    "https://web.telegram.org",
-    "https://t.me",
-}
+_ALLOWED_ORIGINS = {"https://web.telegram.org", "https://t.me"}
 
 def _cors_origin(handler) -> str:
     origin = handler.headers.get("Origin", "")
@@ -719,7 +676,6 @@ def _notify_admin_ticket(ticket_id, user_id, username, category, message):
     except Exception as e:
         logging.warning(f"ticket notify error: {e}")
 
-# --- ДОСЯГНЕННЯ + БАЛИ: ХЕЛПЕРИ ---
 def get_all_points_shop_items():
     overrides = {r[0]: r[1] for r in db_query("SELECT item_id, cost FROM points_price_overrides")}
     hidden = {r[0] for r in db_query("SELECT item_id FROM hidden_points_items")}
@@ -839,7 +795,6 @@ def check_achievements(user_id):
     if any(v >= 5 for v in day_counts.values()):
         grant_achievement(user_id, "uc_addict")
 
-    # Rocket: 5 purchases in 1 hour
     if done_count >= 5:
         times = sorted([r[1] for r in done_orders if r[1]])
         for i in range(len(times) - 4):
@@ -914,11 +869,9 @@ def deliver_wheel_prize(user_id, username, prize):
         check_achievements(user_id)
         _send_tg_message(user_id, "🎰 Колесо фортуни: Нічого не випало. Спробуй наступного разу!")
         return
-    # Reset consecutive losses on win
     db_exec("INSERT OR IGNORE INTO wheel_data (user_id) VALUES (?)", (user_id,))
     db_exec("UPDATE wheel_data SET consecutive_losses=0 WHERE user_id=?", (user_id,))
 
-# --- HTTP ОБРОБНИК ---
 class PolicyHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
@@ -1121,7 +1074,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
             user_id = int(params.get("user_id", 0))
             bonuses_raw = db_query("SELECT bonus_type, bonus_value, min_uc, max_uc FROM user_bonuses WHERE user_id=? AND used=0", (user_id,))
             ref_disc = db_query("SELECT id FROM ref_discounts WHERE user_id=?", (user_id,))
-            # For custom discounts keep each entry separate (need min_uc/max_uc), group the rest
             result = []
             counts = {}
             for bt, bv, min_uc, max_uc in bonuses_raw:
@@ -1141,7 +1093,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
 
         if path == "/api/top":
             rows = db_query(
-                "SELECT MAX(user), chat_id, SUM(CAST(COALESCE(amount,'0') AS INTEGER)) as total "
+                "SELECT user, chat_id, SUM(CAST(COALESCE(amount,0) AS INTEGER)) as total "
                 "FROM orders WHERE status='done' GROUP BY chat_id ORDER BY total DESC LIMIT 10"
             )
             top = []
@@ -1399,7 +1351,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
             donations = [{"id": r[0], "user_id": r[1], "user": f"@{r[2]}" if r[2] else str(r[1]),
                           "amount": r[3], "method": r[4], "status": r[5], "created_at": (r[6] or "")[:16]} for r in rows]
             _json_response(self, {"ok": True, "donations": donations}); return
-
 
         if path == "/api/admin/admins":
             pwd = params.get("password", "")
@@ -1695,7 +1646,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
             if not _valid_player_id(player_id):
                 _ip_violation(ip, path, f"invalid player_id={player_id[:32]}")
                 _json_response(self, {"ok": False, "error": "Ігровий ID повинен містити від 5 до 16 цифр"}); return
-            # Mix order validation
             if mix_packs is not None:
                 if not isinstance(mix_packs, list) or len(mix_packs) < 2:
                     _json_response(self, {"ok": False, "error": "Невірний мікс"}); return
@@ -1715,7 +1665,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
                     db_exec("DELETE FROM ref_discounts WHERE id=?", (disc_id,))
                 disc_pct = 0
             else:
-                # Single pack — server price always used, client amount ignored
                 if pack not in ALL_PACKS:
                     _json_response(self, {"ok": False, "error": "Пак не знайдено"}); return
                 disc_pct, disc_src, disc_id = get_user_discount(user_id, pack)
@@ -2049,29 +1998,22 @@ class PolicyHandler(BaseHTTPRequestHandler):
             pts = get_points(user_id)
             if pts < actual_cost:
                 _json_response(self, {"ok": False, "error": f"Недостатньо балів. Потрібно {actual_cost}, є {pts}"}); return
-            if TEST_NO_POINTS_DEDUCT:
-                logging.info(f"🧪 TEST_NO_POINTS_DEDUCT: skip списание {actual_cost} points у user {user_id} ({item['name']})")
-            else:
-                db_exec("UPDATE user_points SET points=points-? WHERE user_id=?", (actual_cost, user_id))
-                db_exec("INSERT INTO user_points_tx (user_id, delta, reason, created_at) VALUES (?,?,?,?)",
-                        (user_id, -actual_cost, f"Покупка: {item['name']}", created_at_now()))
-            _msg = f"✅ {item['name']} додано! Залишок балів: {pts - actual_cost}"
-            if TEST_NO_POINTS_DEDUCT:
-                _msg = f"🧪 TEST MODE — {item['name']} додано! Бали НЕ списано (TEST_NO_POINTS_DEDUCT=1)."
+            db_exec("UPDATE user_points SET points=points-? WHERE user_id=?", (actual_cost, user_id))
+            db_exec("INSERT INTO user_points_tx (user_id, delta, reason, created_at) VALUES (?,?,?,?)",
+                    (user_id, -actual_cost, f"Покупка: {item['name']}", created_at_now()))
             if item["bonus_type"] == "extra_spin":
                 db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)",
                         (user_id, "extra_spin", 1, created_at_now()))
             else:
                 db_exec("INSERT INTO user_bonuses (user_id, bonus_type, bonus_value, used, created_at) VALUES (?,?,?,0,?)",
                         (user_id, item["bonus_type"], 1, created_at_now()))
-            _json_response(self, {"ok": True, "message": _msg}); return
+            _json_response(self, {"ok": True, "message": f"✅ {item['name']} додано! Залишок балів: {pts - actual_cost}"}); return
 
         if path == "/api/wheel/spin-free":
             user_id = int(data.get("user_id", 0))
             if user_id and not _rl_allow(f"wheelf:{user_id}", 3, 60):
                 _json_response(self, {"ok": False, "error": "Забагато спроб крутити колесо."}, 429); return
             username = _sanitize(str(data.get("username", "")), 64)
-            # Check cooldown
             wheel = db_query_one("SELECT last_free_spin FROM wheel_data WHERE user_id=?", (user_id,))
             can_spin = True
             if wheel and wheel[0]:
@@ -2080,7 +2022,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
                     if (datetime.now() - last).total_seconds() < 86400:
                         can_spin = False
                 except: pass
-            # Check extra spin bonus
             extra = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type='extra_spin' AND used=0 LIMIT 1", (user_id,))
             if not can_spin and not extra:
                 wheel_data = db_query_one("SELECT last_free_spin FROM wheel_data WHERE user_id=?", (user_id,))
@@ -2108,7 +2049,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
             cur = db_exec("INSERT INTO pending_wheel_spins (user_id, username, created_at) VALUES (?,?,?)",
                     (user_id, username, created_at_now()))
             spin_id = cur.lastrowid
-            # Track paid spin count
             db_exec("INSERT OR IGNORE INTO wheel_data (user_id) VALUES (?)", (user_id,))
             db_exec("UPDATE wheel_data SET paid_spin_count=paid_spin_count+1 WHERE user_id=?", (user_id,))
             user_label_str = f"@{username}" if username else str(user_id)
@@ -2252,7 +2192,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
             discount_pct = int(data.get("discount_pct", 0))
             if not code or not bonus_type:
                 _json_response(self, {"ok": False, "error": "Заповни всі поля"}); return
-            # Allow discount_custom_X type
             if bonus_type == "discount_custom":
                 if discount_pct < 1 or discount_pct > 99:
                     _json_response(self, {"ok": False, "error": "Відсоток знижки має бути від 1 до 99"}); return
@@ -2624,7 +2563,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
             message = str(data.get("message", "")).strip()
             if not message:
                 _json_response(self, {"ok": False, "error": "Повідомлення порожнє"}); return
-            # Broadcast to ALL registered users (from user_profile + orders)
             uids = set()
             for r in db_query("SELECT DISTINCT user_id FROM user_profile"):
                 uids.add(r[0])
@@ -2638,7 +2576,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 except: pass
             _json_response(self, {"ok": True, "message": f"Розсилку надіслано. Отримали: {sent}"}); return
 
-        # ── Mini App: verify payment (Monobank) + auto-deliver UC (FazerCards) ──
         if path == "/api/verify-payment":
             order_id = str(data.get("order_id", "")).strip()
             if not order_id:
@@ -2677,7 +2614,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
             else:
                 _json_response(self, {"ok": True, "verified": False, "message": result.get("message")}); return
 
-        # ── Monobank webhook: real-time transaction notification ──────────────
         if path == "/webhooks/monobank":
             logging.info(f"Monobank webhook received from {ip}")
             try:
@@ -2690,15 +2626,13 @@ class PolicyHandler(BaseHTTPRequestHandler):
                     _json_response(self, {"status": "ok"}); return
                 amount_uah = amount / 100.0
                 logging.info(f"Monobank webhook: tx={tx_id} amount={amount_uah:.2f} UAH")
-                # Find pending orders matching this amount
                 pending = db_query(
-                    "SELECT id, pack, player_id, chat_id FROM orders WHERE status='pending' AND CAST(amount AS TEXT) LIKE ?",
+                    "SELECT id, pack, player_id, chat_id FROM orders WHERE status='pending' AND CAST(amount AS REAL) LIKE ?",
                     (f"%{amount_uah:.0f}%",)
                 )
                 if not pending:
                     logging.info(f"No pending orders matching {amount_uah:.2f} UAH")
                     _json_response(self, {"status": "ok"}); return
-                # Auto-verify first matching order
                 for row in pending:
                     oid, pck, pid, chid = row
                     result = _ps_verify_and_deliver(
@@ -2724,12 +2658,10 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 logging.error(f"Monobank webhook error: {e}", exc_info=True)
             _json_response(self, {"status": "ok"}); return
 
-        # ── FazerCards webhook: order status update ────────────────────────────
         if path == "/webhooks/fazercards":
             fc_sig = self.headers.get("X-Webhook-Signature", "")
             fc_event = self.headers.get("X-Webhook-Event", "unknown")
             logging.info(f"FazerCards webhook: event={fc_event} from {ip}")
-            # Verify signature
             secret = payment_service.FAZERCARDS_WEBHOOK_SECRET
             if secret:
                 if not _verify_fc_webhook(body, fc_sig, secret):
@@ -2742,7 +2674,6 @@ class PolicyHandler(BaseHTTPRequestHandler):
                 if not fc_order_id:
                     _json_response(self, {"status": "ok"}); return
                 logging.info(f"FazerCards webhook: order={fc_order_id} status={order_status}")
-                # Find order by fazercards_order_id
                 row = db_query_one(
                     "SELECT id, chat_id, pack, player_id, amount FROM orders WHERE fazercards_order_id=? OR fazercards_order_id LIKE ?",
                     (fc_order_id, f"%{fc_order_id}%")
@@ -2786,13 +2717,6 @@ def start_policy_server():
 
 
 def _db_backup_worker():
-    """Кожні 30 хв робить резервну копію бази у backup/ поряд із DB_PATH.
-
-    На PostgreSQL локальний беккап вимикається — Railway сам робить backup Postgres.
-    """
-    if db_compat.is_postgres(conn):
-        logging.info("DB backup: PostgreSQL — автобекап виконується на рівні Railway. Skip локального беккапу.")
-        return
     backup_dir = os.path.join(os.path.dirname(DB_PATH), "backup")
     os.makedirs(backup_dir, exist_ok=True)
     while True:
@@ -2806,7 +2730,6 @@ def _db_backup_worker():
                 src_conn.backup(bck_conn)
                 bck_conn.close()
                 src_conn.close()
-            # Лишаємо лише 48 останніх файлів (1 доба)
             files = sorted(
                 [f for f in os.listdir(backup_dir) if f.endswith(".db")],
                 reverse=True
@@ -2826,8 +2749,6 @@ def start_db_backup():
 
 
 def _get_webhook_base_url():
-    """Return https://<domain> for webhook registration, or None if not available."""
-    # Prefer explicit WEBAPP_URL (it already contains https:// + domain + path)
     webapp_url = os.environ.get("WEBAPP_URL", "").strip()
     if webapp_url:
         try:
@@ -2844,16 +2765,13 @@ def _get_webhook_base_url():
 
 
 def start_payment_webhooks():
-    """Register Monobank + FazerCards webhooks on startup (background thread)."""
     def _worker():
         import time as _t
-        _t.sleep(5)  # let web server start first
+        _t.sleep(5)
         base = _get_webhook_base_url()
         if not base:
             logging.warning("Webhook registration skipped: no public domain configured")
             return
-
-        # ── Monobank webhook ──
         mono_token = os.environ.get("MONOBANK_TOKEN", "")
         if mono_token:
             webhook_url = f"{base}/webhooks/monobank"
@@ -2864,8 +2782,6 @@ def start_payment_webhooks():
                 logging.warning(f"Monobank webhook registration failed: {e}")
         else:
             logging.info("Monobank token not set — webhook registration skipped")
-
-        # ── FazerCards webhook ──
         fc_key = os.environ.get("FAZERCARDS_API_KEY", "")
         if fc_key:
             fc_webhook_url = f"{base}/webhooks/fazercards"
@@ -2881,11 +2797,6 @@ def start_payment_webhooks():
 
 
 def _fazercards_poller_worker():
-    """Background poller: check FazerCards order status for processing orders.
-
-    Runs every 60 seconds. For each order with fazercards_order_id and
-    status='processing', polls FazerCards API. Updates status when completed/failed.
-    """
     import time as _t
     while True:
         try:
@@ -2901,7 +2812,6 @@ def _fazercards_poller_worker():
                     if not fc_status:
                         continue
                     db_exec("UPDATE orders SET fazercards_status=? WHERE id=?", (fc_status, oid))
-
                     if fc_status == "completed":
                         db_exec("UPDATE orders SET status='done', completed_at=? WHERE id=?",
                                 (created_at_now(), oid))
@@ -2929,7 +2839,6 @@ def _fazercards_poller_worker():
 
 
 def start_fazercards_poller():
-    """Start the background FazerCards order status poller."""
     fc_key = os.environ.get("FAZERCARDS_API_KEY", "")
     if not fc_key:
         logging.info("FazerCards poller not started (no API key)")
@@ -2938,16 +2847,13 @@ def start_fazercards_poller():
     logging.info("FazerCards poller запущено (кожні 60 сек)")
 
 
-# --- ПОМІЧНИКИ ---
 def is_admin(uid):
     if uid == MY_ID: return True
     return bool(db_query_one("SELECT id FROM admins WHERE id=?", (uid,)))
 
 def is_trusted_admin(user_id, password):
-    """Return True if password matches ADMIN_PASSWORD OR is a valid init-data session token."""
     if _hmac_mod.compare_digest(str(password), ADMIN_PASSWORD):
         return True
-    # Check init-data session token
     session = _admin_sessions.get(str(password))
     if session:
         s_uid, s_exp = session
@@ -2958,8 +2864,6 @@ def is_trusted_admin(user_id, password):
     return False
 
 def is_trusted_admin_post(ip: str, password: str) -> tuple:
-    """For POST admin endpoints: password check WITH brute-force protection.
-    Returns (ok: bool, error_msg: str)."""
     return _rl_admin_check(ip, password)
 
 def is_banned(uid):
@@ -3035,14 +2939,12 @@ def label_to_pack_key(label: str):
     return None
 
 def calc_best_uc(budget: int) -> tuple:
-    """0/1 knapsack: find combo of distinct UC packs that maximises UC within budget."""
     uc_packs = []
     for pack_key in PACKS:
         price = get_pack_price(pack_key)
         m = re.search(r'^(\d+)\s*UC', pack_key)
         if m and price > 0:
             uc_packs.append((pack_key, int(m.group(1)), price))
-    # Keep only packs that fit individually
     affordable = [(k, uc, p) for k, uc, p in uc_packs if p <= budget]
     if not affordable:
         return [], budget
@@ -3061,7 +2963,6 @@ def calc_best_uc(budget: int) -> tuple:
             best_uc = t_uc
             best_cost = t_cost
             best_mask = mask
-    # Build result sorted by UC descending for display
     subset = [(affordable[i][0], affordable[i][1], affordable[i][2])
               for i in range(na) if best_mask & (1 << i)]
     subset.sort(key=lambda x: x[1], reverse=True)
@@ -3103,13 +3004,12 @@ def user_label(username, chat_id=None):
 def get_done_sum(today_only=False):
     if today_only:
         today = datetime.now().strftime("%Y-%m-%d")
-        rows = db_query("SELECT CAST(COALESCE(amount,'0') AS INTEGER) FROM orders WHERE status='done' AND COALESCE(completed_at, created_at) LIKE ?", (f"{today}%",))
+        rows = db_query("SELECT CAST(COALESCE(amount, 0) AS INTEGER) FROM orders WHERE status='done' AND COALESCE(completed_at, created_at) LIKE ?", (f"{today}%",))
     else:
-        rows = db_query("SELECT CAST(COALESCE(amount,'0') AS INTEGER) FROM orders WHERE status='done'")
+        rows = db_query("SELECT CAST(COALESCE(amount, 0) AS INTEGER) FROM orders WHERE status='done'")
     return sum(r[0] for r in rows)
 
 def get_user_discount(uid, pack_name):
-    # Extract UC amount from pack name for range checks
     pack_uc = 0
     m = re.search(r"^(\d+)\s*UC", pack_name)
     if m:
@@ -3122,7 +3022,6 @@ def get_user_discount(uid, pack_name):
         for pct in [2, 1]:
             b = db_query_one("SELECT id FROM user_bonuses WHERE user_id=? AND bonus_type=? AND used=0 LIMIT 1", (uid, f"discount_medium_{pct}"))
             if b: return pct, "promo", b[0]
-    # Check custom range discounts
     if pack_uc > 0:
         custom = db_query("SELECT id, bonus_type, min_uc, max_uc FROM user_bonuses WHERE user_id=? AND bonus_type LIKE 'discount_custom_%' AND used=0", (uid,))
         best_pct, best_id = 0, None
@@ -3151,9 +3050,7 @@ def uses_left_label(uses_left, total_uses=None):
     return f"{uses_left} активацій залишилось"
 
 
-# --- КОМАНДИ ---
 def get_miniapp_url():
-    # Explicit WEBAPP_URL wins (for ngrok / dev / Railway)
     webapp_url = os.environ.get("WEBAPP_URL", "").strip()
     if webapp_url:
         return webapp_url
@@ -3182,7 +3079,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]])
     else:
         mini_app_btn = None
-    # Hidden letter N in the welcome message
     await update.message.reply_text(
         "🌸 Nezuko UC Shop\n\n"
         "Вітаю!\n"
@@ -3252,7 +3148,6 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🔑 Пароль:", reply_markup=ReplyKeyboardRemove())
 
 async def shop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Hidden letter K in shop
     await update.message.reply_text("🛍 Оберіть категорію:\n· · · K · · ·", reply_markup=SHOP_KB)
 
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3335,7 +3230,6 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    # Hidden letter U
     orders = db_query("SELECT id, pack, status FROM orders WHERE chat_id=? ORDER BY rowid DESC LIMIT 5", (uid,))
     if not orders:
         await update.message.reply_text("📭 У вас ще немає замовлень.\n· · · U · · ·"); return
@@ -3344,7 +3238,6 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Hidden letter E
     await update.message.reply_text(
         "ℹ️ Як користуватися ботом:\n\n"
         "1. «🛍 Магазин» → обери категорію\n"
@@ -3456,19 +3349,8 @@ async def importdb_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def reconnect_db(new_path: str, source_path: str = None):
-    """Close current connection, optionally replace DB file, then reopen.
-
-    source_path: if given, copy this file to new_path AFTER safely closing
-                 the old connection (prevents old WAL from corrupting new DB).
-
-    На PostgreSQL імпорт файлу БД не підтримується — використовуйте pg_dump/pg_restore
-    або перенесіть дані SQL-експортом.
-    """
     global conn
-    if db_compat.is_postgres(conn):
-        raise RuntimeError("reconnect_db: на PostgreSQL ця операція недоступна. Використовуйте pg_dump/pg_restore.")
     with db_lock:
-        # Checkpoint WAL so pending writes are flushed before we close
         try:
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             conn.commit()
@@ -3478,8 +3360,6 @@ def reconnect_db(new_path: str, source_path: str = None):
             conn.close()
         except Exception:
             pass
-        # Remove WAL/SHM files left from the old connection so they cannot
-        # be replayed onto the newly imported database file
         for _ext in ("-wal", "-shm"):
             _p = new_path + _ext
             if os.path.exists(_p):
@@ -3487,7 +3367,6 @@ def reconnect_db(new_path: str, source_path: str = None):
                     os.remove(_p)
                 except Exception:
                     pass
-        # Now it is safe to place the new DB file — no old WAL remains
         if source_path:
             import shutil as _shutil
             _shutil.copy2(source_path, new_path)
@@ -3502,12 +3381,6 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not is_admin(uid):
         await update.message.reply_text("⛔ Тільки для адміна."); return
-    if db_compat.is_postgres(conn):
-        await update.message.reply_text(
-            "ℹ️ На PostgreSQL локальний .db-бекап недоступний.\n"
-            "Використовуйте Railway → Postgres → Backups, або команду:\n"
-            "`pg_dump $DATABASE_URL` і надішліть файл вручну."
-        ); return
     await update.message.reply_text("⏳ Створюю резервну копію бази даних...")
     try:
         import shutil, tempfile
@@ -3541,13 +3414,219 @@ async def restartbot_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "⏳ Через кілька секунд бот знову буде доступний."
     )
     import asyncio as _asyncio
-    # Schedule stop so the reply is sent before polling ends.
-    # The outer while-loop in __main__ will restart main() automatically.
     _asyncio.get_event_loop().call_later(1.5, lambda: _asyncio.ensure_future(context.application.stop()))
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# MIGRATION: SQLite → PostgreSQL  (owner-only)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_pg_create(table_name, cols_info):
+    """Build a PostgreSQL CREATE TABLE from SQLite PRAGMA table_info output."""
+    pk_cols = [c[1] for c in cols_info if c[5]]
+    col_defs = []
+    for _cid, name, ctype, _notnull, dflt, pk in cols_info:
+        t = (ctype or "TEXT").upper()
+        if "INT" in t:
+            base = "INTEGER"
+        elif any(x in t for x in ("CHAR", "CLOB", "TEXT")):
+            base = "TEXT"
+        elif "BLOB" in t:
+            base = "BYTEA"
+        elif any(x in t for x in ("REAL", "FLOA", "DOUB")):
+            base = "DOUBLE PRECISION"
+        elif "BOOL" in t:
+            base = "BOOLEAN"
+        else:
+            base = "TEXT"
+
+        single_int_pk = (len(pk_cols) == 1 and pk and base == "INTEGER")
+        if single_int_pk:
+            col_defs.append(f'"{name}" SERIAL PRIMARY KEY')
+        else:
+            d = f'"{name}" {base}'
+            if pk:
+                d += " NOT NULL"
+            if dflt is not None and str(dflt).strip() != "":
+                d += f" DEFAULT {dflt}"
+            col_defs.append(d)
+
+    if len(pk_cols) > 1:
+        pk_sql = ", ".join(f'"{c}"' for c in pk_cols)
+        col_defs.append(f"PRIMARY KEY ({pk_sql})")
+
+    return f'CREATE TABLE "{table_name}" ({", ".join(col_defs)})'
+
+
+def _do_migration(pg_url, sqlite_path):
+    """Copy every table from SQLite to PG. Returns an HTML report string."""
+    import sqlite3
+    import psycopg2
+
+    sq = sqlite3.connect(sqlite_path)
+    sq_cur = sq.cursor()
+
+    pg = psycopg2.connect(pg_url)
+    pg.autocommit = False
+    pg_cur = pg.cursor()
+
+    sq_cur.execute(
+        "SELECT name FROM sqlite_master "
+        "WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+    )
+    table_names = [r[0] for r in sq_cur.fetchall()]
+
+    report = []
+    errors = []
+    total_rows = 0
+    tables_ok = 0
+
+    for tname in table_names:
+        sq_cur.execute(f'PRAGMA table_info("{tname}")')
+        cols_info = sq_cur.fetchall()
+        if not cols_info:
+            continue
+        columns = [c[1] for c in cols_info]
+        pk_cols = [c[1] for c in cols_info if c[5]]
+
+        try:
+            pg_cur.execute(f'DROP TABLE IF EXISTS "{tname}" CASCADE')
+            pg_cur.execute(_build_pg_create(tname, cols_info))
+            pg.commit()
+        except Exception as e:
+            pg.rollback()
+            errors.append(f"❌ {tname}: CREATE — {str(e)[:200]}")
+            report.append(f"❌ {tname}: create failed")
+            continue
+
+        sq_cur.execute(f'SELECT * FROM "{tname}"')
+        rows = sq_cur.fetchall()
+        n = len(rows)
+
+        if n == 0:
+            report.append(f"✓ {tname}: 0")
+            tables_ok += 1
+            continue
+
+        placeholders = ",".join(["%s"] * len(columns))
+        cols_q = ",".join(f'"{c}"' for c in columns)
+        insert_sql = f'INSERT INTO "{tname}" ({cols_q}) VALUES ({placeholders})'
+
+        ok = 0
+        fail = 0
+        for row in rows:
+            try:
+                pg_cur.execute(insert_sql, tuple(row))
+                ok += 1
+            except Exception as e:
+                pg.rollback()
+                fail += 1
+                if fail <= 2:
+                    errors.append(f"⚠️ {tname}: {str(e)[:200]}")
+                continue
+        pg.commit()
+
+        if len(pk_cols) == 1:
+            pk_name = pk_cols[0]
+            try:
+                pg_cur.execute(
+                    "SELECT pg_get_serial_sequence(%s, %s)",
+                    (f'"{tname}"', pk_name)
+                )
+                seq_row = pg_cur.fetchone()
+                seq = seq_row[0] if seq_row else None
+                if seq:
+                    pg_cur.execute(
+                        f'SELECT setval(%s, '
+                        f'COALESCE((SELECT MAX("{pk_name}") FROM "{tname}"), 0) + 1, '
+                        f'false)',
+                        (seq,)
+                    )
+                    pg.commit()
+            except Exception as e:
+                pg.rollback()
+                errors.append(f"seq {tname}: {str(e)[:120]}")
+
+        total_rows += ok
+        tables_ok += 1
+        suffix = f" ({fail} failed)" if fail else ""
+        report.append(f"✓ {tname}: {ok}/{n}{suffix}")
+
+    sq.close()
+    pg.close()
+
+    lines = [
+        "✅ <b>Миграция завершена</b>",
+        f"📊 Таблиц обработано: {tables_ok}/{len(table_names)}",
+        f"📦 Строк перенесено: {total_rows}",
+        "",
+    ]
+    lines.extend(report)
+    if errors:
+        lines.append("")
+        lines.append("⚠️ Ошибки (первые 15):")
+        lines.extend(errors[:15])
+    return "\n".join(lines)
+
+
+async def migrate_to_postgres_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if uid != MY_ID:
+        await update.message.reply_text("⛔ Тільки для власника бота.")
+        return
+
+    if USE_POSTGRES:
+        await update.message.reply_text(
+            "⚠️ Бот вже працює на PostgreSQL (DATABASE_URL задано).\n"
+            "Міграція не потрібна. Якщо хочеш перелити ще раз — тимчасово "
+            "прибери DATABASE_URL із Variables, передеплой, запусти команду знову."
+        )
+        return
+
+    pg_url = os.environ.get("PG_MIGRATION_URL", "").strip()
+    if not pg_url:
+        await update.message.reply_text(
+            "❌ Не задано змінну <code>PG_MIGRATION_URL</code> у Variables бота.\n\n"
+            "Додай її так:\n"
+            "<code>PG_MIGRATION_URL=${{Postgres.DATABASE_URL}}</code>\n\n"
+            "⚠️ І НЕ додавай поки що звичайну DATABASE_URL — інакше бот "
+            "переключиться на порожню PG.",
+            parse_mode="HTML"
+        )
+        return
+
+    await update.message.reply_text(
+        "⏳ Починаю міграцію SQLite → PostgreSQL.\n\n"
+        "• SQLite-файл не чіпаю, дані залишаються на місці.\n"
+        "• Це може зайняти кілька хвилин.\n"
+        "• Дочекайся звіту."
+    )
+
+    try:
+        report = await asyncio.to_thread(_do_migration, pg_url, DB_PATH)
+    except Exception as e:
+        logging.error(f"Migration failed: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Помилка міграції: {str(e)[:500]}")
+        return
+
+    for i in range(0, len(report), 3900):
+        await update.message.reply_text(report[i:i + 3900], parse_mode="HTML")
+
+    await update.message.reply_text(
+        "🎯 <b>Що робити далі:</b>\n\n"
+        "1. Railway → сервіс бота → Variables.\n"
+        "2. Додай <code>DATABASE_URL=${{Postgres.DATABASE_URL}}</code>.\n"
+        "3. Передеплой бота.\n"
+        "4. У логах має з'явитися: "
+        "<code>db_compat: using PostgreSQL backend</code>.\n\n"
+        "Поки DATABASE_URL не додано — бот працює на SQLite, "
+        "а дані вже лежать у PG. Якщо щось піде не так — просто "
+        "прибери DATABASE_URL і бот повернеться на SQLite.",
+        parse_mode="HTML"
+    )
+
+
 async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Хендлер для медіа-повідомлень під час очікування розсилки (фото, відео, стікер тощо)."""
     uid = update.effective_user.id
     if not is_admin(uid): return
     if is_banned(uid): return
@@ -3556,13 +3635,6 @@ async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_T
         doc = update.message.document
         if not doc:
             await update.message.reply_text("❌ Надішліть файл бази даних (.db)"); return
-        if db_compat.is_postgres(conn):
-            await update.message.reply_text(
-                "ℹ️ Імпорт .db-файлу недоступний на PostgreSQL.\n"
-                "Перенесіть дані через `pg_dump` → `psql` або SQL-міграцією."
-            )
-            user_states[uid] = None
-            return
         await update.message.reply_text("⏳ Завантажую файл та перевіряю...")
         try:
             import shutil, tempfile
@@ -3570,7 +3642,6 @@ async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_T
             tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
             tmp.close()
             await tg_file.download_to_drive(tmp.name)
-            # Validate SQLite magic bytes
             with open(tmp.name, "rb") as f:
                 magic = f.read(16)
             if not magic.startswith(b"SQLite format 3"):
@@ -3579,8 +3650,7 @@ async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_T
                     "❌ Файл не є базою SQLite. Операцію скасовано.\n"
                     "Спробуйте ще раз — надішліть правильний .db файл."
                 )
-                return  # state stays WAIT_DB_FILE — user can retry
-            # Backup current db using sqlite3.backup API (safe, respects WAL)
+                return
             ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             backup_path = os.path.join(os.path.dirname(DB_PATH), f"backup_before_import_{ts}.db")
             with db_lock:
@@ -3589,13 +3659,8 @@ async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_T
                 src.backup(dst)
                 dst.close()
                 src.close()
-            # reconnect_db checkpoints WAL, closes old conn, removes WAL/SHM,
-            # copies source_path → DB_PATH, then opens a fresh connection.
-            # This is the only correct order — copying BEFORE closing causes
-            # the old WAL to overwrite the new DB on the next checkpoint.
             reconnect_db(DB_PATH, source_path=tmp.name)
             os.remove(tmp.name)
-            # Success — only NOW clear the state
             user_states[uid] = None
             await update.message.reply_text(
                 f"✅ База даних успішно замінена!\n\n"
@@ -3605,7 +3670,6 @@ async def handle_broadcast_media(update: Update, context: ContextTypes.DEFAULT_T
             )
             logging.info(f"DB imported by owner {uid}, backup: {backup_path}")
         except Exception as e:
-            # State stays WAIT_DB_FILE so user can retry without /importdb
             await update.message.reply_text(
                 f"❌ Помилка імпорту: {e}\n\n"
                 f"Надішліть файл ще раз — повторювати /importdb не потрібно."
@@ -3644,7 +3708,6 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📝 Причина: {reason}\n\n"
         f"Для розблокування: /unban {target_id}"
     )
-    # Повідомляємо забаненого
     try:
         await context.bot.send_message(
             target_id,
@@ -3660,7 +3723,6 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(uid):
         await update.message.reply_text("⛔ Тільки для адміна."); return
     if not context.args:
-        # Показати список заблокованих
         rows = db_query("SELECT user_id, reason, banned_at FROM banned_users ORDER BY banned_at DESC")
         if not rows:
             await update.message.reply_text("✅ Немає заблокованих користувачів."); return
@@ -3752,7 +3814,6 @@ def _collect_broadcast_uids():
             for r in db_query(f"SELECT DISTINCT {col} FROM {tbl} WHERE {col} IS NOT NULL"):
                 if r[0]: uids.add(r[0])
         except: pass
-    # Виключаємо заблокованих
     for r in db_query("SELECT user_id FROM banned_users"):
         uids.discard(r[0])
     return uids
@@ -3783,9 +3844,6 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, src
     )
 
 
-# --- ГОЛОВНИЙ ОБРОБНИК ПОВІДОМЛЕНЬ ---
-# ──────────────────────────────────────────────────────────────────────────────
-
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if not update.message: return
@@ -3796,7 +3854,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.text: return
     text = update.message.text
     state = user_states.get(uid)
-    # Auto-logout expired admin sessions
     if state == "ADMIN_MODE" and is_admin(uid) and not _admin_session_valid(uid):
         _admin_logout(uid)
         user_states[uid] = None
@@ -3805,8 +3862,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if state == "ADMIN_MODE" and is_admin(uid):
         _admin_touch(uid)
-
-    # ── Глобальні кнопки (завжди спрацьовують, незалежно від стану) ───────────
 
     if text == "📄 Політика":
         await policy_command(update, context); return
@@ -3823,8 +3878,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("❌ Mini App тимчасово недоступний.")
         return
-
-    # ── Пріоритетні стани ──────────────────────────────────────────────────────
 
     if state == "WAIT_REVIEW":
         user_states[uid] = None
@@ -3930,8 +3983,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ Промокод *{code}* створено!\n🎁 Бонус: {bonus_name}\n🔢 Активацій: {uses}", parse_mode="Markdown")
         return
 
-    # ── Адмін кнопки ──────────────────────────────────────────────────────────
-
     if is_admin(uid):
         if "Замовлення" in text:
             orders = db_query("SELECT id, user, pack, player_id, chat_id FROM orders WHERE status='pending'")
@@ -3975,8 +4026,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_states[uid] = None
             await update.message.reply_text("Головне меню", reply_markup=ReplyKeyboardMarkup(get_main_kb(uid), resize_keyboard=True))
             return
-
-    # ── Загальні кнопки ────────────────────────────────────────────────────────
 
     if text == "⚙️ Адмін":
         await admin_panel(update, context); return
@@ -4047,9 +4096,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons)); return
 
     if text == "🏆 Топ донатерів":
-        # Hidden letter O — uses stored amount column (same as mini app /api/top)
         rows = db_query(
-            "SELECT MAX(user), chat_id, SUM(CAST(COALESCE(amount,'0') AS INTEGER)) as total "
+            "SELECT user, chat_id, SUM(CAST(COALESCE(amount,0) AS INTEGER)) as total "
             "FROM orders WHERE status='done' GROUP BY chat_id ORDER BY total DESC LIMIT 10"
         )
         if not rows:
@@ -4073,7 +4121,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ref_link = f"https://t.me/{bot_username}?start=ref_{uid}"
         refs = db_query("SELECT referred_id FROM referrals WHERE referrer_id=?", (uid,))
         discounts = db_query("SELECT id FROM ref_discounts WHERE user_id=?", (uid,))
-        # Hidden letter Z
         msg = (
             f"👥 РЕФЕРАЛЬНА СИСТЕМА\n\n"
             f"🔗 Ваше посилання:\n{ref_link}\n\n"
@@ -4159,15 +4206,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[uid] = {"step": "FREE_UC_ID", "bonus_id": bonus[0], "uc": uc, "bt": bt}
         await update.message.reply_text(f"🎮 Введіть ваш ігровий ID для нарахування {uc} UC:", reply_markup=ReplyKeyboardRemove()); return
 
-    # ── Вибір пакету ───────────────────────────────────────────────────────────
-
     _matched_pack = label_to_pack_key(text)
     if _matched_pack:
         price = get_pack_price(_matched_pack)
         user_states[uid] = {"pack": _matched_pack, "step": "ID", "price": price}
         await update.message.reply_text(f"🎮 Введіть ваш ігровий ID:", reply_markup=ReplyKeyboardRemove()); return
-
-    # ── Тікет: повідомлення від юзера ──────────────────────────────────────────
 
     if isinstance(state, dict) and state.get("step") == "TICKET_MSG":
         msg_text = text.strip()
@@ -4215,8 +4258,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logging.warning(f"ticket reply send error: {e}")
         user_states[uid] = None
         await update.message.reply_text(f"✅ Відповідь надіслано на тікет #{ticket_id}!"); return
-
-    # ── Флоу замовлення ────────────────────────────────────────────────────────
 
     if isinstance(state, dict) and state.get("step") == "FREE_UC_ID":
         state["game_id"] = text
@@ -4296,9 +4337,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[uid] = None
         return
 
-    # ── AI-помічник (Gemini) — відповідає на всі нерозпізнані повідомлення ─────
-    # Якщо користувач знаходиться в активному стані очікування вводу —
-    # не передавати в AI, а нагадати що потрібно ввести.
     if state is not None:
         await update.message.reply_text(
             "⬆️ Будь ласка, введіть відповідь на попереднє запитання або натисніть /start щоб почати заново.",
@@ -4313,7 +4351,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-# --- CALLBACK ОБРОБНИК ---
 async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -4324,7 +4361,6 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(q.from_user.id, "✍️ Напишіть ваш відгук:")
         return
 
-    # ── Донат: вибір суми ────────────────────────────────────────────────────
     if data.startswith("donate_amount_") or data == "donate_custom":
         if data == "donate_custom":
             user_states[q.from_user.id] = "WAIT_DONATE_CUSTOM"
@@ -4552,7 +4588,6 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(MY_ID, f"🕵️ Підозрілий PUBG ID!\n🎮 ID: {player_id}\n👤 {user_label(q.from_user.username, pay_uid)}\nЦей ID вже використовувався з інших акаунтів!")
             except: pass
 
-        # ── Notify admin (fallback for manual processing) ──
         notif_row = db_query_one("SELECT notified_admin FROM orders WHERE id=?", (order_id,))
         if not (notif_row and notif_row[0]):
             try:
@@ -4562,13 +4597,11 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db_exec("UPDATE orders SET notified_admin=1 WHERE id=?", (order_id,))
             except: pass
 
-        # ── AUTO-VERIFY via Monobank + AUTO-DELIVER via FazerCards ──
         try:
             amount_uah = float(amount_str) if amount_str else 0
         except (ValueError, TypeError):
             amount_uah = 0
 
-        # Show "checking" message
         await q.edit_message_text(
             f"⏳ <b>Перевіряємо оплату...</b>\n\n"
             f"🆔 Замовлення {order_id}\n"
@@ -4578,7 +4611,6 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML"
         )
 
-        # Run sync payment verification in a thread (non-blocking)
         result = await asyncio.to_thread(
             _ps_verify_and_deliver,
             order_id=order_id,
@@ -4596,21 +4628,15 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mono_tx_id = result.get("monobank_tx_id")
 
         if verified:
-            # Payment verified — update order
             db_exec(
                 "UPDATE orders SET payment_verified=1, monobank_tx_id=?, fazercards_order_id=?, fazercards_status=? WHERE id=?",
                 (mono_tx_id or "", fc_order_id or "", fc_status or "", order_id)
             )
 
             if fc_order_id:
-                # Auto-delivered via FazerCards
                 db_exec("UPDATE orders SET auto_delivered=1, status='processing' WHERE id=?", (order_id,))
-
-                # Nice success message for user
                 btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 В меню", callback_data="back_to_main")]])
                 await q.edit_message_text(msg, reply_markup=btn, parse_mode="HTML")
-
-                # Notify admin about auto-delivery
                 try:
                     await context.bot.send_message(MY_ID,
                         f"🤖 <b>АВТО-ВИДАЧА UC</b>\n"
@@ -4624,11 +4650,8 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 except: pass
             else:
-                # Verified but manual delivery needed (30/120/180 UC, TG gifts, etc.)
                 btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 В меню", callback_data="back_to_main")]])
                 await q.edit_message_text(msg, reply_markup=btn, parse_mode="HTML")
-
-                # Notify admin that payment verified but manual delivery needed
                 try:
                     await context.bot.send_message(MY_ID,
                         f"✅ <b>Оплата підтверджена (Monobank)</b>\n"
@@ -4643,7 +4666,6 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             check_achievements(chat_id)
         else:
-            # Payment not found — let user retry
             btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Я оплатив", callback_data=f"paid_{order_id}")]])
             await q.edit_message_text(msg, reply_markup=btn, parse_mode="HTML")
         return
@@ -4702,9 +4724,6 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _send_db_to_owner(context: ContextTypes.DEFAULT_TYPE):
     try:
-        if db_compat.is_postgres(conn):
-            logging.info("_send_db_to_owner: skip — PostgreSQL беккап робить Railway.")
-            return
         tmp = DB_PATH + ".send_tmp"
         with db_lock:
             src = sqlite3.connect(DB_PATH)
@@ -4731,11 +4750,11 @@ async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def successful_payment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     payment = update.message.successful_payment
-    payload = payment.invoice_payload  # stars_points_{pkg_id}_{user_id}
+    payload = payment.invoice_payload
     uid = update.effective_user.id
     try:
         parts = payload.split("_")
-        pkg_id = "_".join(parts[2:4])  # e.g. stars_50
+        pkg_id = "_".join(parts[2:4])
         pkg = next((p for p in STARS_PACKAGES if p["id"] == pkg_id), None)
         if not pkg:
             logging.warning(f"Unknown stars package in payload: {payload}")
@@ -4786,6 +4805,7 @@ def main():
     app.add_handler(CommandHandler("ban", ban_command))
     app.add_handler(CommandHandler("unban", unban_command))
     app.add_handler(CommandHandler("restartbot", restartbot_command))
+    app.add_handler(CommandHandler("migrate_to_postgres", migrate_to_postgres_command))
     app.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
