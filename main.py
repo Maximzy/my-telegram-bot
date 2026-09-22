@@ -2741,6 +2741,9 @@ def start_policy_server():
 
 
 def _db_backup_worker():
+    if USE_POSTGRES:
+        logging.info("Автобекап БД: PostgreSQL — SQLite-бэкап вимкнено (використовуй Railway snapshots або pg_dump).")
+        return
     backup_dir = os.path.join(os.path.dirname(DB_PATH), "backup")
     os.makedirs(backup_dir, exist_ok=True)
     while True:
@@ -4748,6 +4751,8 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _send_db_to_owner(context: ContextTypes.DEFAULT_TYPE):
+    if USE_POSTGRES:
+        return
     try:
         tmp = DB_PATH + ".send_tmp"
         with db_lock:
