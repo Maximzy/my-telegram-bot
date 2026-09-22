@@ -56,6 +56,10 @@ def _adapt_sql(sql):
     # Replace ? with %s (psycopg2 param style)
     sql = sql.replace("?", "%s")
 
+    # `user` is a reserved word in PostgreSQL. Quote it wherever it appears as a
+    # standalone column name (not part of user_id / username / current_user etc).
+    sql = re.sub(r'(?<!["\w])user(?!["\w])', '"user"', sql, flags=re.IGNORECASE)
+
     # ── INSERT OR IGNORE -> INSERT ... ON CONFLICT DO NOTHING ──
     m = re.match(r'INSERT\s+OR\s+IGNORE\s+INTO\s+["\']?(\w+)["\']?', sql, re.IGNORECASE)
     if m:
