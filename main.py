@@ -204,7 +204,10 @@ def run_migrations(connection):
     c.execute("CREATE TABLE IF NOT EXISTS hidden_points_items (item_id TEXT PRIMARY KEY)")
     connection.commit()
 
-run_migrations(conn)
+if DB_TYPE == 'sqlite':
+    run_migrations(conn)
+else:
+    logging.info("db_compat: skip run_migrations() — схема уже создана миграцией")
 
 logging.info(f"База даних: {DB_PATH}")
 
