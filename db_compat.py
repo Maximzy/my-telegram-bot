@@ -28,8 +28,8 @@ _INSERT_OR_IGNORE_PKS = {
     'points_price_overrides': 'item_id',
     'banned_users': 'user_id',
     'promo_codes': 'code',
-    'used_promo_codes': None,        # composite (user_id, code)
-    'user_achievements': None,       # composite (user_id, achievement_id)
+    'used_promo_codes': None,
+    'user_achievements': None,
     'user_points': 'user_id',
     'user_profile': 'user_id',
     'wheel_data': 'user_id',
@@ -59,6 +59,15 @@ def _adapt_sql(sql):
     # `user` is a reserved word in PostgreSQL. Quote it wherever it appears as a
     # standalone column name (not part of user_id / username / current_user etc).
     sql = re.sub(r'(?<!["\w])user(?!["\w])', '"user"', sql, flags=re.IGNORECASE)
+
+    # `amount` is TEXT in orders. COALESCE(amount, 0) in PG fails
+    # ("COALESCE types text and integer cannot be matched").
+    # Rewrite to a safe cast that tolerates empty strings too.
+    sql = re.sub(
+        r'COALESCE\s*\(\s*amount\s*,\s*0\s*\)',
+        "COALESCE(NULLIF(amount, '')::int, 0)",
+        sql, flags=re.IGNORECASE
+    )
 
     # ── INSERT OR IGNORE -> INSERT ... ON CONFLICT DO NOTHING ──
     m = re.match(r'INSERT\s+OR\s+IGNORE\s+INTO\s+["\']?(\w+)["\']?', sql, re.IGNORECASE)
@@ -173,7 +182,6 @@ class PgCursorWrapper:
                 except Exception:
                     self._cur.execute("SELECT 1 WHERE FALSE")
                 return self._cur
-            # Other PRAGMAs — return empty result so fetchall() doesn't crash
             self._cur.execute("SELECT 1 WHERE FALSE")
             return self._cur
 
@@ -191,7 +199,6 @@ class PgCursorWrapper:
 
         self._cur.execute(adapted, params)
 
-        # Capture lastrowid from RETURNING
         if "RETURNING ID" in adapted.upper():
             try:
                 row = self._cur.fetchone()
@@ -229,7 +236,6 @@ class PgConnectionWrapper:
         return PgCursorWrapper(self._conn.cursor())
 
     def execute(self, sql, params=()):
-        """Direct execute on connection (used for PRAGMA etc)."""
         adapted = _adapt_sql(sql)
         if adapted is None:
             return self._conn.cursor()
@@ -239,6 +245,9 @@ class PgConnectionWrapper:
 
     def commit(self):
         return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
 
     def close(self):
         return self._conn.close()
