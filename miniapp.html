@@ -1560,8 +1560,12 @@ async function loadUserBonuses() {
 }
 
 function getPackDiscount(packName, bonuses) {
+  if (!bonuses) bonuses = [];
   const m = packName.match(/^(\d+)\s*UC/);
-  if (!m) return 0;
+  if (!m) {
+    if (bonuses.some(b => b.type === 'ref_discount')) return 1;
+    return 0;
+  }
   const uc = parseInt(m[1]);
   const isSmall = uc >= 30 && uc <= 660;
   const isMedium = uc >= 1800 && uc <= 8100;
@@ -1584,9 +1588,10 @@ function getPackDiscount(packName, bonuses) {
       }
     }
   }
-  return best;
+  if (best > 0) return best;
+  if (bonuses.some(b => b.type === 'ref_discount')) return 1;
+  return 0;
 }
-
 function discountedPrice(price, pct) {
   return Math.max(1, Math.floor(price * (100 - pct) / 100));
 }
@@ -1729,8 +1734,18 @@ refreshOnline();
 // ─── INIT USER (клієнт + сервер fallback) ────────────────────────────────────
 async function initUser() {
   refreshUser();
-  if (uid) { api('/api/track-visit', 'POST', { user_id: uid }).catch(() => {}); return; }
-  // Якщо uid досі 0 — верифікуємо initData на сервері
+  const _rerender = async () => {
+    try {
+      await loadUserBonuses();
+      renderPopular();
+      if (curCat) await showPacks(curCat);
+    } catch(e) {}
+  };
+  if (uid) {
+    api('/api/track-visit', 'POST', { user_id: uid }).catch(() => {});
+    _rerender();
+    return;
+  }
   const rawData = tg?.initData || '';
   if (!rawData) return;
   try {
@@ -1739,6 +1754,7 @@ async function initUser() {
       uid = r.user_id;
       uname = r.username || '';
       api('/api/track-visit', 'POST', { user_id: uid }).catch(() => {});
+      await _rerender();
     }
   } catch(e) {}
 }
@@ -2055,7 +2071,11 @@ async function selectPack(p) {
     if (bestDisc > 0) {
       const base = prices[p] || 0;
       const dp = discountedPrice(base, bestDisc);
-      document.getElementById('discInfo').textContent = `🎉 Знижка ${bestDisc}% → ${dp} грн`;
+      document.getElementById('selPackPrice').innerHTML =
+        '<s style="opacity:.4;font-weight:600;font-size:.72em">' + base + ' грн</s> ' +
+        '<span style="color:#f9a8d4">' + dp + ' грн</span>';
+      document.getElementById('discInfo').innerHTML =
+        '✂️ Знижка ' + bestDisc + '% — економія ' + (base - dp) + ' грн';
     }
   }
   document.getElementById('shopPacks').style.display = 'none';
@@ -2255,7 +2275,13 @@ async function submitOrder() {
   const gnick = document.getElementById('payNick').textContent;
   const isFlash = (Date.now() - visitTs) < 90000;
   const submitPack = mixFinalPack || curPack;
-  const submitAmount = mixFinalPack ? mixFinalAmount : (prices[curPack] || 0);
+    const submitAmount = mixFinalPack
+    ? mixFinalAmount
+    : (() => {
+        const base = prices[curPack] || 0;
+        const pct = getPackDiscount(curPack, userBonuses);
+        return pct > 0 ? discountedPrice(base, pct) : base;
+      })();
   const _selCard = _payCards[_selectedCardIdx] || null;
   const _bankName = _selCard ? _selCard.bank_name : '';
   const payload = { user_id: uid, username: uname, pack: submitPack,
