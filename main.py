@@ -2375,8 +2375,10 @@ class PolicyHandler(BaseHTTPRequestHandler):
                     if rate <= 0: raise ValueError
                     set_setting("stars_rate", str(rate))
                     updated.append(f"Курс зірок → {rate} грн/⭐")
-                except Exception:
-                    _json_response(self, {"ok": False, "error": "Невірний курс зірок"}); return
+                except Exception as _e:
+                    import traceback
+                    logging.error(f"[TG-PRICES] FAILED raw={stars_rate_raw!r} err={_e!r}\n{traceback.format_exc()}")
+                    _json_response(self, {"ok": False, "error": f"V2: {_e}"}); return
             prem_ids = {p["id"] for p in PREMIUM_PACKS_BASE}
             for key, val in data.items():
                 if key.endswith("_price") and key[:-len("_price")] in prem_ids:
