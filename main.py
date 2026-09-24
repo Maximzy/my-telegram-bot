@@ -2362,7 +2362,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
             db_exec("DELETE FROM custom_points_items WHERE id=?", (item_id,))
             _json_response(self, {"ok": True, "message": "Приз видалено"}); return
 
-        if path == "/api/admin/update-tg-prices":
+        if          path == "/api/admin/update-tg-prices":
             pwd = str(data.get("password", ""))
             _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
             if not _ok_adm:
@@ -2371,7 +2371,7 @@ class PolicyHandler(BaseHTTPRequestHandler):
             stars_rate_raw = data.get("stars_rate")
             if stars_rate_raw is not None:
                 try:
-                    rate = float(stars_rate_raw)
+                    rate = float(str(stars_rate_raw).replace(",", "."))
                     if rate <= 0: raise ValueError
                     set_setting("stars_rate", str(rate))
                     updated.append(f"Курс зірок → {rate} грн/⭐")
