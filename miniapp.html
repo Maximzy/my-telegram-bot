@@ -2391,10 +2391,6 @@ async function showTgShop(cat) {
       tgStarsRate = r.stars_rate || 0.81;
       tgShopTag = r.shop_tag || '';
       if (r.premium_packs && r.premium_packs.length > 0) tgPremiumPacks = r.premium_packs;
-      if (r.payment_card) {
-        const c = r.payment_card.replace(/(\d{4})/g,'$1 ').trim();
-        document.getElementById('tgPayCardNum').textContent = c;
-      }
       document.getElementById('tgStarsRateDisplay').textContent = `1 ⭐ = ${tgStarsRate} грн`;
     }
   } catch(e) {}
