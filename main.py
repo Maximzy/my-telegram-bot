@@ -436,7 +436,7 @@ _admin_sessions: dict = {}
 ADMIN_INITDATA_SESSION_TTL = 8 * 3600
 
 _fake_pay_attempts: dict = collections.defaultdict(list)
-FAKE_PAY_MAX = 3
+FAKE_PAY_MAX = 5
 FAKE_PAY_WINDOW = 3600
 
 def _generate_otp() -> str:
@@ -464,8 +464,18 @@ def _check_fake_pay(uid: int) -> bool:
     now = time.time()
     attempts = _fake_pay_attempts[uid]
     attempts[:] = [t for t in attempts if now - t < FAKE_PAY_WINDOW]
-    attempts.append(now)
     return len(attempts) >= FAKE_PAY_MAX
+
+
+def _fake_pay_inc(uid: int):
+    now = time.time()
+    attempts = _fake_pay_attempts[uid]
+    attempts[:] = [t for t in attempts if now - t < FAKE_PAY_WINDOW]
+    attempts.append(now)
+
+
+def _fake_pay_reset(uid: int):
+    _fake_pay_attempts[uid] = []
 
 def _check_suspicious_player_id(player_id: str, current_uid: int) -> bool:
     rows = db_query("SELECT DISTINCT chat_id FROM orders WHERE player_id=? AND chat_id != ?", (player_id, current_uid))
@@ -4605,14 +4615,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pack, player_id, amount_str, status, chat_id = res
         if status != "pending":
             await q.answer("Це замовлення вже оброблено."); return
-        if _check_fake_pay(pay_uid):
-            db_exec("INSERT OR IGNORE INTO banned_users (user_id, reason, banned_at) VALUES (?,?,?)",
-                    (pay_uid, "Авто-бан: підозра у фейкових оплатах", created_at_now()))
-            logging.warning(f"[SECURITY] Auto-banned for fake payments: uid={pay_uid}")
-            try:
-                await context.bot.send_message(MY_ID, f"🚫 Авто-бан за фейкові оплати\n👤 {user_label(q.from_user.username, pay_uid)}")
-            except: pass
-            await q.answer("⛔ Ваш акаунт заблоковано."); return
+    
         if _check_suspicious_player_id(player_id, pay_uid):
             try:
                 await context.bot.send_message(MY_ID, f"🕵️ Підозрілий PUBG ID!\n🎮 ID: {player_id}\n👤 {user_label(q.from_user.username, pay_uid)}\nЦей ID вже використовувався з інших акаунтів!")
@@ -4658,6 +4661,7 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mono_tx_id = result.get("monobank_tx_id")
 
         if verified:
+            _fake_pay_reset(pay_uid)
             db_exec(
                 "UPDATE orders SET payment_verified=1, monobank_tx_id=?, fazercards_order_id=?, fazercards_status=? WHERE id=?",
                 (mono_tx_id or "", fc_order_id or "", fc_status or "", order_id)
@@ -4696,10 +4700,18 @@ async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             check_achievements(chat_id)
         else:
+            _fake_pay_inc(pay_uid)
+            if _check_fake_pay(pay_uid):
+                db_exec("INSERT OR IGNORE INTO banned_users (user_id, reason, banned_at) VALUES (?,?,?)",
+                        (pay_uid, "Авто-бан: 5 невдалих спроб оплати за годину", created_at_now()))
+                logging.warning(f"[SECURITY] Auto-banned for 5 failed payments: uid={pay_uid}")
+                try:
+                    await context.bot.send_message(MY_ID, f"🚫 Авто-бан: 5 невдалих оплат\n👤 {user_label(q.from_user.username, pay_uid)}")
+                except: pass
+                await q.answer("⛔ Ваш акаунт заблоковано за багаторазові невдалі спроби оплати."); return
             btn = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Я оплатив", callback_data=f"paid_{order_id}")]])
             await q.edit_message_text(msg, reply_markup=btn, parse_mode="HTML")
         return
-
     if data == "promo_create":
         if is_admin(q.from_user.id):
             user_states[q.from_user.id] = {"step": "WAIT_PROMO_CODE_NAME"}
