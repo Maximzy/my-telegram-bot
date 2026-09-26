@@ -2495,10 +2495,12 @@ class PolicyHandler(BaseHTTPRequestHandler):
             if not target_uid2:
                 _json_response(self, {"ok": False, "error": "user_id required"}); return
             db_exec("INSERT OR IGNORE INTO user_points (user_id, points) VALUES (?,0)", (target_uid2,))
-            db_exec("UPDATE user_points SET points=MAX(0,points+?) WHERE user_id=?", (delta2, target_uid2))
+            cur_pts_row = db_query_one("SELECT points FROM user_points WHERE user_id=?", (target_uid2,))
+            cur_pts = cur_pts_row[0] if cur_pts_row else 0
+            new_pts_val = max(0, cur_pts + delta2)
+            db_exec("UPDATE user_points SET points=? WHERE user_id=?", (new_pts_val, target_uid2))
             new_pts = get_points(target_uid2)
             _json_response(self, {"ok": True, "message": f"Баланс оновлено: {'+' if delta2>=0 else ''}{delta2} → {new_pts} балів", "new_points": new_pts}); return
-
         if path == "/api/admin/add-card":
             pwd = str(data.get("password", ""))
             _ok_adm, _err_adm = is_trusted_admin_post(ip, pwd)
